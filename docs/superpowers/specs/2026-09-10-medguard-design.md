@@ -239,14 +239,20 @@ LLM 生成 SQL          ← 此时无数据
 
 ### 4.2 核心原则：算法层一行不改
 
-产品层是**纯适配器**。两个接触点（**导入路径经源码核实**）：
+产品层是**纯适配器**。三个接触点（**导入路径经源码核实，实测于 2026-09-10**）：
 
 ```python
-# 1. 加载标注
+# ① 加载策略
 from ssa.loader import load_ssa          # src/ssa/loader.py:132
 ssa = load_ssa(db_id=datasource_id, ssa_dir=<数据源专属目录>)
 
-# 2. 完整管线（主路径，内部自会构造 SecurityAuditor）
+# ② 取违规详情（UI 事件卡片用）—— 管线返回里没有这个
+from auditor.base import SecurityAuditor      # src/auditor/base.py
+auditor = SecurityAuditor(ssa)
+audit_results = auditor.audit_all([{"id": sq["id"], "sql": sq["sql"]} for sq in plan])
+# → [AuditResult(sub_query_index, violations=[Violation(...)])]
+
+# ③ 取改写与降级（对比面板与徽章用）
 from security_auditor import run_security_auditor_pipeline   # src/security_auditor.py:762
 out = run_security_auditor_pipeline(
     decomposition_plan=plan,      # [{id, description, sql}, ...]
@@ -255,7 +261,11 @@ out = run_security_auditor_pipeline(
 )
 ```
 
-> `run_security_auditor_pipeline` 位于 `src/security_auditor.py`，**不在** `src/auditor/base.py`（后者只含 `SecurityAuditor` 类）。
+> **为什么是三个而不是两个**：`run_security_auditor_pipeline` 只返回违规**计数**（`violations_before`/`violations_after` 为整数），不返回违规**详情**。UI 需要展示"哪一列、什么类型、为什么"，因此必须直接调用 `SecurityAuditor.audit_all()`。
+>
+> 两者都是零 LLM、零数据库访问的纯 AST 计算，可安全地各调一次。
+>
+> `run_security_auditor_pipeline` 位于 `src/security_auditor.py`，**不在** `src/auditor/base.py`（后者含 `SecurityAuditor` 类）。
 
 **复用方式**：`pip install -e J:\race\AIC\NL2SQL`（论文仓库已含 `pyproject.toml`）。
 
@@ -292,25 +302,48 @@ NL→SQL 翻译 ──▶ [{id, description, sql}, ...]（查询计划）
 
 ### 5.1 `run_security_auditor_pipeline` 返回值
 
+> ⚠️ **`audit_report` 有三种形状，随执行路径变化**（2026-09-10 实测）。前端契约必须按"可选字段"处理，不能假设字段恒定存在。
+
 ```python
 {
   "audited_plan": [{"id": 0, "description": "...", "sql": "..."}],  # 改写后
-  "audit_report": {
-      "passed": bool,
-      "violations": [...],
-      "rewrites_applied": int,
-      "rewrite_log": ["Rule A: Removing A11 (ECL=controlled, not needed downstream)"],
-      "semantic_degradation": "L0"|"L1"|"L2"|"L3",
-      "dimensions_checked": [...],
-  },
-  "degradation_level": "L0",
+  "audit_report": { ... },        # ← 形状见下表，三种
+  "degradation_level": "L0"|"L1"|"L2"|"L3",
   "degradation_message": "...",
   "audit_trace": [{"agent": "security_auditor", "decision": "rewrite_and_pass",
                    "rewrites": 1, "rationale": "..."}],
 }
 ```
 
-**注意**：`rewrite_log` 是**字符串数组**，非结构化对象。改写 diff 面板需产品层自行做 SQL 行级 diff 或解析这些字符串。
+**`audit_report` 的三种形状**：
+
+| 路径 | 键 | 说明 |
+|---|---|---|
+| **无 SSA** | `passed`, `violations`, `note` | `note="No SSA available"` |
+| **干净**（零违规） | `passed`, `violations`(=`[]`), `dimensions_checked`, `rewrite_log`(=`[]`), `semantic_degradation` | 唯一含 `violations` 数组的路径 |
+| **有违规并改写** | `passed`, `violations_before`(int), `violations_after`(int), `rewrites_applied`, `rewrite_log`, `semantic_degradation` | **无 `violations` 键**；`dimensions_checked` 消失 |
+
+**两个关键坑**：
+
+1. **`violations_before` / `violations_after` 是整数，不是数组。** 有违规时 `violations` 键**根本不存在**——产品层无法从管线返回中拿到违规详情。
+
+2. **违规详情必须另行调用 `SecurityAuditor.audit_all()`**（见 §4.2 接触点 ③）。它返回 `AuditResult` 列表，每个含 `Violation` 对象：
+
+```python
+Violation(type="column_unnecessary_exposure",   # ViolationType 枚举
+          sub_query_index=0,
+          column="Patient.Diagnosis",           # 全限定列名
+          severity="rewritable",                # ViolationSeverity 枚举
+          detail="Patient.Diagnosis (ECL=controlled) is SELECTed but not consumed by any",
+          tables=None, derived_expression=None,
+          sub_query_id="0")
+```
+
+3. **`rewrite_log` 是字符串数组**，非结构化对象：
+   `["Rule A: Removing Patient.Diagnosis (ECL=controlled, not needed downstream)"]`
+   改写 diff 面板需产品层自行做 SQL 行级 diff 或解析这些字符串。
+
+> **产品层调用策略**：先 `audit_all()` 取违规详情（用于事件卡片）→ 再 `run_security_auditor_pipeline()` 取改写与降级（用于对比面板与徽章）。两次调用都是零 LLM、零查库的纯 AST 计算。
 
 ### 5.2 六种违规类型（需产品化文案）
 
@@ -343,6 +376,10 @@ L0 通过 / L1 聚合替代 / L2 意图变更 / L3 已拒绝
 逐列审查界面：列名 / 标签（free·受控·禁止）/ 标注理由 / 审查状态，附跨域规则编辑区。
 
 **产品差异化核心**：列掩码、RLS 都是"配一次就完事"，而**策略是会腐烂的资产**——新加一列即失效。本产品把策略做成一等公民的工作流。
+
+> **"腐烂"在这里不是修辞，是精确的安全属性。** 源码核实（`ssa/loader.py:63`）：`SSALabels.get()` 在策略中找不到某列时返回 `ECLLevel.FREE`——即**未标注列默认放行**（fail-open）。因此"往库里加一列、忘了标注"的后果是医盾**静默放行**该列，既无告警也无痕迹。
+>
+> 界面上的「审查状态」正因为这一点从装饰变成了检测项：它对比库中实际列与策略标注，把未标注的列标出来。这是产品层能提供的、算法层看不见的价值。
 
 ### 6.3 模块③ 查询与拦截控制台（核心）
 
@@ -530,7 +567,7 @@ API 预留端到端模式字段，4 周内只实现演示模式。**此取舍需
 
 | 周 | 后端 | 前端 | 文档/演示 |
 |---|---|---|---|
-| W1 | 仓库搭建、`pip install -e` 通路、**6 表演示库 seed + SSA 手写（后端负责人审定）** | 脚手架、路由、API 契约（冻结） | 需求分析文档、演示脚本初稿 |
+| W1 | 仓库搭建、`pip install -e` 通路、**5 表演示库 seed + SSA 手写（后端负责人审定）** | 脚手架、路由、API 契约（冻结） | 需求分析文档、演示脚本初稿 |
 | W2 | FastAPI 四路由 + **层一准入** + labels 映射 | 模块①② + 令牌切换 | 架构设计文档 |
 | W3 | 审计 API 联调、错误处理 | 模块③④ | 测试报告、视频分镜 |
 | W4 | 集成测试、**演示数据校验** | 体验打磨 | 录视频、文档定稿 |
