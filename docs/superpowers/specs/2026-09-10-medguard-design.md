@@ -75,15 +75,19 @@
 
 ```python
 # 1. 加载标注
+from ssa.loader import load_ssa          # src/ssa/loader.py:132
 ssa = load_ssa(db_id=datasource_id, ssa_dir=<数据源专属目录>)
 
 # 2. 完整管线（主路径，内部自会构造 SecurityAuditor）
+from security_auditor import run_security_auditor_pipeline   # src/security_auditor.py:762
 out = run_security_auditor_pipeline(
     decomposition_plan=plan,      # [{id, description, sql}, ...]
     db_id=datasource_id,
     ssa_dir=<数据源专属目录>,
 )
 ```
+
+> **导入路径经源码核实**（2026-09-10）：`run_security_auditor_pipeline` 位于 `src/security_auditor.py`，**不在** `src/auditor/base.py`（后者只含 `SecurityAuditor` 类）。`load_ssa` 位于 `src/ssa/loader.py`。`pip install -e` 后顶层包名为 `ssa` / `auditor` / `security_auditor`。
 
 > `SecurityAuditor` / `audit_single()` 是 `run_security_auditor_pipeline` 内部使用的类。产品层若需展示**单条子查询**的细粒度审计结果，可直接调用；否则走管线即可。
 
