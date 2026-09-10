@@ -160,6 +160,7 @@ LLM 生成 SQL          ← 此时无数据
 | 本人的临床数据 | 我的检验结果、我的用药、我的影像报告、我的诊断 |
 | 本人的费用数据 | 我的费用明细 |
 | **不涉及患者表的医院信息** | 心内科有哪些医生、某医生什么职称 |
+| 医护人员的执业信息 | 医生姓名（对外公示的执业信息，**不是患者数据**） |
 
 **病患令牌禁止的范围**：
 
@@ -167,6 +168,8 @@ LLM 生成 SQL          ← 此时无数据
 |---|---|
 | 任何其他患者的个人数据 | 别人的姓名、电话、诊断 |
 | **任何涉及其他患者的统计数据** | 疾病分布、科室接诊量、罕见病计数 |
+
+> **医生信息的边界**：医生**不是患者**，其执业信息（姓名、科室、职称）可查且合理。但医生的**个人联系方式**（`staff.phone`）属个人信息，在病患令牌下由**层二审计**处理——出现在中间结果或非必要位置时按 controlled 列规则拦截。这区分了"执业信息公开"与"个人信息保护"。
 
 > **为什么统计数据也禁止**：罕见病个例少，小样本聚合可直接反推个体。既然"可反推性"不可判定，就采取全称禁止——**病患令牌不触碰任何涉及其他患者的数据**。
 
@@ -352,6 +355,12 @@ L0 通过 / L1 聚合替代 / L2 意图变更 / L3 已拒绝
 3. **改写对比** —— 改写前后 SQL diff + 改写日志 + 降级徽章
 4. **准入判定** —— 层一结果（放行/拒绝 + 理由）
 
+**层一拒绝时的用户可见文案**（统一措辞，不遮掩、不误导）：
+
+> **「该查询涉及其他患者信息，无法提供。」**
+
+**为什么明确说明而不是假装"查不到"**：含糊的失败会让用户反复换问法试探，既浪费资源也让用户困惑。明确告知边界是**可解释性**的体现——用户知道自己碰到了什么规则，而不是以为系统坏了。此文案对所有涉及其他患者数据的查询统一适用（个人数据与统计数据不作区分，避免通过错误信息差异反推数据存在性）。
+
 ### 6.4 模块④ 安全事件报告
 
 历史记录列表 + 检测效能指标 + 一键导出 JSON。
@@ -372,22 +381,25 @@ L0 通过 / L1 聚合替代 / L2 意图变更 / L3 已拒绝
 
 ## 7. 演示库设计（医院数据仿真版）
 
-### 7.1 表结构（8 表覆盖主要数据域）
+### 7.1 表结构（5 表）
 
 | 表 | 说明 | 关键列 |
 |---|---|---|
 | `patients` | 患者主索引 | `patient_id`；id_card=**blocked**；name/phone/birth_date/address=**controlled**；gender/blood_type=free |
 | `staff` | 医护人员 | `staff_id`；title/department/specialty=free；name/phone=**controlled**（患者可查医生信息） |
 | `visits` | 就诊/住院 | `visit_id`, `patient_id`, `doctor_id`；department/visit_type/visit_date=free |
-| `diagnoses` | 诊断 | `diagnosis_id`, `visit_id`, `patient_id`；icd_code/diagnosis_name=**blocked**；severity=controlled |
-| `medications` | 医嘱用药 | `order_id`, `visit_id`, `patient_id`；drug_name/dosage/frequency/route=free（患者可查"药怎么用"） |
-| `lab_tests` | 检验 | `test_id`, `visit_id`, `patient_id`；test_name/result_value/unit/ref_range=free（患者可查检验结果） |
-| `imaging` | 影像 | `image_id`, `visit_id`, `patient_id`；modality/body_part=free；findings/impression=**controlled**（患者可查影像结果） |
+| `clinical_records` | **临床记录**（诊断/用药/检验/影像合一） | `record_id`, `visit_id`, `patient_id`；`record_type`=diagnosis·medication·lab·imaging；icd_code/diagnosis_name=**blocked**；findings/impression/severity=**controlled**；drug_name/dosage/frequency/route/test_name/result_value/unit/ref_range/modality/body_part=free |
 | `billing` | 费用结算 | `bill_id`, `visit_id`, `patient_id`；amount=**controlled**，insurance_type/item_name=free |
 
-**表间外键**：临床表均含 `visit_id → visits`、`patient_id → patients`；`visits.doctor_id → staff`
+**表间外键**：`visits.patient_id → patients`、`visits.doctor_id → staff`；`billing.patient_id → patients`、`billing.visit_id → visits`；`clinical_records.patient_id → patients`、`clinical_records.visit_id → visits`
+
+**为什么是 5 张表不是 8**：原本 8 表中的 `diagnoses`/`medications`/`lab_tests`/`imaging` 四张表结构同构（都是 `visit_id + patient_id + 若干列`），合并为 `clinical_records` 一张，用 `record_type` 区分。**合并的收益是造数据与写标注的工作量减少约 40%**（这是 W1-W2 的关键路径），代价是演示时"诊断/用药/检验/影像"在界面上属于同一张表的四种记录类型。
+
+> 需求中病患要查的三类内容——**医嘱用药**、**检验结果**、**影像结果**——全部保留在 `clinical_records` 中，未做任何削减。
 
 > **设计决策：临床表反规范化 `patient_id`**。严格来说 `patient_id` 可经 `visit_id → visits` 推导，无需冗余。但层一准入规则依赖"查询中可直接出现 `patient_id = <令牌绑定值>`"这一判定——反规范化让规则保持简单、可测、无需解析 JOIN 路径。真实医院 OLTP 库普遍采用同样的反规范化。这是**有意的设计取舍**，非疏漏。
+
+> **责任归属**：本演示库由**后端负责人统一审**——包含表结构、虚构数据、逐列 SSA 标注、跨域规则。SSA 标注需人工定案（annotator 不生成 `cross_domain_rules`，见 §7.3），审定后的 YAML 即为演示的权威策略文件。
 
 **数据规模**：200–500 行虚构数据。用 `患者001`、`TEST-000001` 等一眼假的命名。
 
@@ -429,11 +441,11 @@ L0 通过 / L1 聚合替代 / L2 意图变更 / L3 已拒绝
 
 ```yaml
 cross_domain_rules:
-  - table_pair: [diagnoses, billing]
+  - table_pair: [clinical_records, billing]
     join_key: visit_id
     forbid_personal_level: true
     allow_aggregate_level: true
-    reason: 临床诊断与费用结算属不同安全域，个人级关联可推断特定疾病的治疗成本
+    reason: 临床记录与费用结算属不同安全域，个人级关联可推断特定疾病的治疗成本
 ```
 
 ### 7.4 ⚠️ 演示库构造的硬性约束
@@ -458,7 +470,7 @@ cross_domain_rules:
 | 令牌 | 问题 | 触发 |
 |---|---|---|
 | 医护 | 统计各科室接诊量 | 列级 — 中间子查询多选 name/phone |
-| 医护 | 糖尿病患者产生了多少费用 | **跨域** — diagnoses↔billing 个人级 JOIN |
+| 医护 | 糖尿病患者产生了多少费用 | **跨域** — clinical_records↔billing 个人级 JOIN |
 | 医护 | 按诊断结果分类统计患者数 | 派生 — `CASE WHEN diagnosis_name LIKE '%糖尿病%'` |
 | 医护 | 导出患者基本信息核对表 | blocked — id_card 出现在 SELECT → L3 |
 | 病患 | 我上次的血糖是多少 | 层一放行 + 层二通过 |
@@ -518,7 +530,7 @@ API 预留端到端模式字段，4 周内只实现演示模式。**此取舍需
 
 | 周 | 后端 | 前端 | 文档/演示 |
 |---|---|---|---|
-| W1 | 仓库搭建、`pip install -e` 通路、**8 表演示库 seed + SSA 手写** | 脚手架、路由、API 契约（冻结） | 需求分析文档、演示脚本初稿 |
+| W1 | 仓库搭建、`pip install -e` 通路、**6 表演示库 seed + SSA 手写（后端负责人审定）** | 脚手架、路由、API 契约（冻结） | 需求分析文档、演示脚本初稿 |
 | W2 | FastAPI 四路由 + **层一准入** + labels 映射 | 模块①② + 令牌切换 | 架构设计文档 |
 | W3 | 审计 API 联调、错误处理 | 模块③④ | 测试报告、视频分镜 |
 | W4 | 集成测试、**演示数据校验** | 体验打磨 | 录视频、文档定稿 |
@@ -551,7 +563,7 @@ J:\race\AIC\
     │       ├── components/    PlanViewer / SqlDiff / EventCard / DegradationBadge
     │       └── api/           openapi-typescript 自动生成的类型
     ├── demo/
-    │   ├── seed.py            建 8 表 + 灌虚构数据
+    │   ├── seed.py            建 5 张表 + 灌虚构数据
     │   ├── ssa/regional_health.yaml   ← 手写，含跨域规则
     │   └── queries.json       预设查询库（按令牌分组）
     ├── data/                  运行时生成（gitignore）
@@ -585,7 +597,7 @@ J:\race\AIC\
 | 风险 | 说明 | 应对 |
 |---|---|---|
 | **演示库触发失败** | 三维度在基准库上零触发（跨域/派生），演示库构造必须逐条实测 | W1 完成演示库后立即验证全部预设查询 |
-| **8 表工作量大** | 结构化数据 + 逐列标注 + 跨域规则，是 W1-W2 的关键路径 | 第 3 人专职；标注可参考论文仓库既有 YAML 的格式 |
+| **演示库工作量大** | 5 张表的结构化数据 + 逐列标注 + 跨域规则，是 W1-W2 的关键路径 | 已由 8 表降为 5 表（同构临床表合并，工作量约 -40%）；**由后端负责人统一审定** |
 | **层一规则被绕过** | 若 Agent 能构造不引用患者表的等价查询 | 层二纵深防御仍在；文档声明中介层次边界 |
 | **L3 未经验证** | 全量数据仅 1 列 blocked，L3 路径未在规模上检验 | 演示库 `id_card`/`diagnosis_name` 提供真实触发场景 |
 | **改写语义变化** | Rule A/B/D 不保证一般语义等价；EX 不变是实测经验结果 | 文档中如实说明，不声称"由构造保证" |
