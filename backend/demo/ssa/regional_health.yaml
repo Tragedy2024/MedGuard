@@ -1,0 +1,97 @@
+db_id: regional_health
+description: 区域医疗集团演示库（医院数据仿真版）
+column_labels:
+  patients:
+    patient_id: free
+    name: controlled
+    phone: controlled
+    birth_date: controlled
+    address: controlled
+    id_card: blocked
+    gender: free
+    blood_type: free
+  staff:
+    staff_id: free
+    name: controlled
+    phone: controlled
+    title: free
+    department: free
+    specialty: free
+  visits:
+    visit_id: free
+    patient_id: free
+    doctor_id: free
+    department: free
+    visit_type: free
+    visit_date: free
+  clinical_records:
+    record_id: free
+    visit_id: free
+    patient_id: free
+    record_type: free
+    icd_code: blocked
+    diagnosis_name: blocked
+    severity: controlled
+    drug_name: free
+    dosage: free
+    frequency: free
+    route: free
+    test_name: free
+    result_value: free
+    unit: free
+    ref_range: free
+    modality: free
+    body_part: free
+    findings: controlled
+    impression: controlled
+  billing:
+    bill_id: free
+    visit_id: free
+    patient_id: free
+    amount: controlled
+    insurance_type: free
+    item_name: free
+    bill_date: free
+column_reasons:
+  patients:
+    id_card: 唯一标识符，任何场景不得出现在 SELECT
+    name: 个人标识
+    phone: 个人联系方式
+    birth_date: 出生日期可结合其他信息重识别
+    address: 住址属个人标识
+    gender: 不具识别性
+    blood_type: 不具识别性
+  staff:
+    name: 医生执业信息公开可查
+    phone: 个人联系方式，非执业信息
+  clinical_records:
+    icd_code: ICD 编码等同诊断结论
+    diagnosis_name: 诊断信息公开可推断就医事实
+    severity: 病情程度属个人健康信息
+    findings: 影像所见属个人健康信息
+    impression: 影像结论属个人健康信息
+  billing:
+    amount: 费用金额属个人财务信息
+cross_domain_rules:
+- table_pair:
+  - clinical_records
+  - billing
+  join_key: visit_id
+  forbid_personal_level: true
+  allow_aggregate_level: true
+  reason: 临床记录与费用结算属不同安全域，个人级关联可推断特定疾病的治疗成本
+review_notes: '标注依据：
+
+  - id_card：唯一标识符，任何场景不得出现在 SELECT
+
+  - icd_code / diagnosis_name：诊断信息公开可推断就医事实，列为禁止
+
+  - name / phone / birth_date / address：个人标识，受控
+
+  - staff.name / staff.phone：医生执业信息可查（姓名），但联系方式属个人信息，受控
+
+  - billing.amount：费用金额属个人财务信息，受控
+
+  - findings / impression / severity：影像与诊断结论，受控
+
+  - 跨域规则：临床与费用分属不同安全域，由后端负责人审定'

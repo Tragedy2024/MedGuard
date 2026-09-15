@@ -1,0 +1,80 @@
+{
+  "doctor_dept_visits": {
+    "token_types": ["staff"],
+    "question": "统计各科室接诊量",
+    "plan": [
+      {"id": 0, "description": "中间：按科室聚合就诊量",
+       "sql": "SELECT department, COUNT(*) AS visit_count FROM visits GROUP BY department"},
+      {"id": 1, "description": "最终：输出科室接诊量",
+       "sql": "SELECT department, COUNT(*) AS visit_count FROM visits GROUP BY department"}
+    ]
+  },
+  "doctor_diabetes_cost": {
+    "token_types": ["staff"],
+    "question": "糖尿病患者产生了多少费用",
+    "plan": [
+      {"id": 0, "description": "中间：关联临床记录与费用（跨域个人级 JOIN）",
+       "sql": "SELECT c.patient_id, c.diagnosis_name, b.amount FROM clinical_records c JOIN billing b ON c.visit_id = b.visit_id WHERE c.record_type = 'diagnosis'"},
+      {"id": 1, "description": "最终：按诊断汇总费用",
+       "sql": "SELECT SUM(amount) FROM billing"}
+    ]
+  },
+  "doctor_diagnosis_stats": {
+    "token_types": ["staff"],
+    "question": "按诊断结果分类统计患者数",
+    "plan": [
+      {"id": 0, "description": "中间：按诊断分类（派生表达式引用诊断列）",
+       "sql": "SELECT CASE WHEN diagnosis_name LIKE '%糖尿病%' THEN '糖尿病' ELSE '其他' END AS grp, patient_id FROM clinical_records WHERE record_type = 'diagnosis'"},
+      {"id": 1, "description": "最终：统计各类患者数",
+       "sql": "SELECT COUNT(DISTINCT patient_id) FROM clinical_records"}
+    ]
+  },
+  "doctor_export_roster": {
+    "token_types": ["staff"],
+    "question": "导出患者基本信息核对表",
+    "plan": [
+      {"id": 0, "description": "最终：导出患者信息（含禁止列）",
+       "sql": "SELECT patient_id, name, id_card FROM patients"}
+    ]
+  },
+  "patient_my_lab": {
+    "token_types": ["patient"],
+    "question": "我上次的血糖是多少",
+    "plan": [
+      {"id": 0, "description": "最终：我的血糖结果",
+       "sql": "SELECT test_name, result_value, unit FROM clinical_records WHERE patient_id = '{subject_id}' AND record_type = 'lab' AND test_name = '血糖'"}
+    ]
+  },
+  "patient_my_medication": {
+    "token_types": ["patient"],
+    "question": "医生给我开的药怎么吃",
+    "plan": [
+      {"id": 0, "description": "最终：我的用药说明",
+       "sql": "SELECT drug_name, dosage, frequency, route FROM clinical_records WHERE patient_id = '{subject_id}' AND record_type = 'medication'"}
+    ]
+  },
+  "patient_my_imaging": {
+    "token_types": ["patient"],
+    "question": "我的影像报告怎么说",
+    "plan": [
+      {"id": 0, "description": "最终：我的影像结论",
+       "sql": "SELECT modality, body_part, impression FROM clinical_records WHERE patient_id = '{subject_id}' AND record_type = 'imaging'"}
+    ]
+  },
+  "patient_doctors": {
+    "token_types": ["patient"],
+    "question": "心内科有哪些医生",
+    "plan": [
+      {"id": 0, "description": "最终：心内科医生列表",
+       "sql": "SELECT name, title, specialty FROM staff WHERE department = '心内科'"}
+    ]
+  },
+  "patient_others_count": {
+    "token_types": ["patient"],
+    "question": "得这个病的有多少人",
+    "plan": [
+      {"id": 0, "description": "统计患者数（涉及其他患者）",
+       "sql": "SELECT COUNT(*) FROM patients"}
+    ]
+  }
+}
