@@ -9,6 +9,9 @@ __pycache__/
 .venv/
 venv/
 .pytest_cache/
+# 构建产物。vendor/ 里曾混进一份（含论文仓库 README 全文，属溯源混淆），
+# 已删除并记于 vendor/nl2sql/VENDOR-PATCHES.md §2。加通配防止再带进来。
+*.egg-info/
 
 # Node / React
 node_modules/

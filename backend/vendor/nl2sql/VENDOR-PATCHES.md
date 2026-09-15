@@ -29,6 +29,32 @@
 **上游同步提示**：将来若从 MAC-SQL 更新 `core/`，这两行会重新出现，
 需要再次删除，或改用安装 pandas / tiktoken。
 
+### 2. 删除 `src/nl2sql_security_audit.egg-info/`（5 个文件）
+
+**改动**：删掉整个 egg-info 目录。
+
+**依据**：这是 `pip install -e` 的**构建产物**，不是源码。三条证据：
+
+1. **本产品不经过它**：`backend/deps.py` 靠 `sys.path.insert(0, config.ALGO_SRC_DIR)`
+   导入算法层，查的是目录而不是包元数据。删除前后算法层可用性不变。
+2. **全仓库零引用**：`backend/backend/`、`demo/`、`tests/`、`scripts/`、`frontend/src/`
+   检索 `egg-info` / `egg_info` 无命中。
+3. **同仓库既有的判断**：`__pycache__/` 同样属构建产物，已被 `.gitignore` 排除、
+   零跟踪。
+
+**为什么值得删（不只是省体积）**：`PKG-INFO` 里粘的是**论文仓库的 README 全文**——
+包含 `data/` 2.4G 数据集、31 个基准库、14,424 次 LLM 调用等属于论文的内容。
+它躺在产品仓库的 vendor 目录里，会让读者误以为那份 README 描述的是 MedGuard。
+`SOURCES.txt` 也列着本仓库**并不存在**的 `tests/test_security_pipeline.py`。
+这是溯源混淆，删掉比留着干净。
+
+**行为影响**：无。已跑 123 项测试与前端构建验证。
+
+**如何防止复发**：`.gitignore` 已加 `*.egg-info/`。将来若有人对 vendor 目录
+执行 `pip install -e`，产物不会再被跟踪。
+
+**上游同步提示**：从上游重新拷贝 `src/` 时，这个目录会一起带过来，需要再次删除。
+
 ---
 
 ## 未改但值得知道的事
