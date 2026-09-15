@@ -16,21 +16,36 @@
    ═══════════════════════════════════════════════════════════════════ */
 
 :root {
-  /* ── 纸面与墨 ───────────────────────────────── */
-  --paper: #fbfaf8;
+  /* ── 主题色：医院蓝 ─────────────────────────────
+     蓝是全站主题色——品牌、导航、控件、链接、区块标题都用它。
+     红/琥珀/绿是**安全等级语义**，只在展示层级判定时出现（下一节）。 */
+  --brand: #1b4a78;
+  --brand-deep: #143a5e;
+  --brand-soft: #2a6296;
+  --brand-bg: #eef4fa;
+  --brand-rule: #c9daea;
+
+  /* 深蓝底上的前景色 */
+  --on-brand: #ffffff;
+  --on-brand-dim: rgba(255, 255, 255, 0.74);
+  --on-brand-line: rgba(255, 255, 255, 0.24);
+
+  /* ── 纸面与墨（冷白，医院感）─────────────────── */
+  --paper: #f7f9fb;
   --paper-raised: #ffffff;
-  --paper-sunken: #f5f3ef;
+  --paper-sunken: #eef2f6;
 
-  --ink: #14181d;
-  --muted: #6e757d;          /* 计划书沿用名 */
-  --ink-soft: #4a5158;
-  --ink-faint: #8a9099;
+  --ink: #16202b;
+  --muted: #6b7885;          /* 计划书沿用名 */
+  --ink-soft: #4a5763;
+  --ink-faint: #8a95a1;
 
-  --line: #e3e0da;           /* 计划书沿用名：发丝线 */
-  --rule-soft: #efedE8;
-  --rule-strong: #cfcbc3;
+  --line: #e1e7ed;           /* 计划书沿用名：发丝线 */
+  --rule-soft: #edf1f5;
+  --rule-strong: #c6d0da;
 
-  /* ── 三色出口（全站唯一彩色）───────────────── */
+  /* ── 三色出口：**内容语义**，绝不用于装饰 ───────
+     这三个色是设计文档约定的安全判定语义，不可挪用。 */
   --layer1: #b3261e;         /* 层一 · 准入阻断 */
   --layer1-bg: #fdf0ef;
   --layer1-rule: #e9c3c0;
@@ -85,7 +100,7 @@ a {
 }
 
 :focus-visible {
-  outline: 2px solid var(--ink);
+  outline: 2px solid var(--brand);
   outline-offset: 2px;
 }
 
@@ -121,8 +136,9 @@ a {
   align-items: center;
   gap: 24px;
   padding: 16px var(--gutter);
-  background: var(--paper-raised);
-  border-bottom: 1px solid var(--line);
+  background: var(--brand);
+  color: var(--on-brand);
+  border-bottom: 1px solid var(--brand-deep);
   position: sticky;
   top: 0;
   z-index: 10;
@@ -140,6 +156,7 @@ a {
   font-weight: 500;
   font-size: 19px;
   letter-spacing: 0.01em;
+  color: var(--on-brand);
   white-space: nowrap;
 }
 
@@ -149,8 +166,8 @@ a {
   font-weight: 500;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--ink-soft);
-  border: 1px solid var(--rule-strong);
+  color: var(--on-brand-dim);
+  border: 1px solid var(--on-brand-line);
   border-radius: 2px;
   padding: 3px 8px;
   white-space: nowrap;
@@ -170,15 +187,15 @@ a {
   font-size: 10px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--ink-faint);
+  color: var(--on-brand-dim);
 }
 
 .token-buttons {
   display: flex;
-  border: 1px solid var(--rule-strong);
+  border: 1px solid var(--on-brand-line);
   border-radius: 3px;
   overflow: hidden;
-  background: var(--paper-raised);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .token-buttons button {
@@ -188,28 +205,28 @@ a {
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
-  color: var(--ink-soft);
+  color: var(--on-brand-dim);
   transition: background-color 0.15s var(--ease), color 0.15s var(--ease);
 }
 
 .token-buttons button + button {
-  border-left: 1px solid var(--rule-strong);
+  border-left: 1px solid var(--on-brand-line);
 }
 
 .token-buttons button:hover:not(.active) {
-  background: var(--paper-sunken);
-  color: var(--ink);
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--on-brand);
 }
 
 .token-buttons button.active {
-  background: var(--ink);
-  color: var(--paper);
+  background: var(--on-brand);
+  color: var(--brand);
 }
 
 .token-subject {
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--ink-faint);
+  color: var(--on-brand-dim);
   min-width: 84px;
 }
 
@@ -239,18 +256,18 @@ a {
   right: 0;
   bottom: -1px;
   height: 2px;
-  background: var(--ink);
+  background: var(--brand);
   transform: scaleX(0);
   transform-origin: left;
   transition: transform 0.22s var(--ease);
 }
 
 .app-nav a:hover {
-  color: var(--ink-soft);
+  color: var(--brand-soft);
 }
 
 .app-nav a.active {
-  color: var(--ink);
+  color: var(--brand);
   font-weight: 500;
 }
 
@@ -281,14 +298,16 @@ a {
   font-weight: 500;
   font-size: 26px;
   letter-spacing: 0.01em;
+  color: var(--brand-deep);
   padding-bottom: 12px;
-  border-bottom: 1px solid var(--rule-strong);
+  border-bottom: 2px solid var(--brand-rule);
 }
 
 .page > h3 {
   font-size: 15px;
   font-weight: 600;
   letter-spacing: 0.01em;
+  color: var(--brand);
   margin-top: 8px;
 }
 
@@ -311,6 +330,7 @@ a {
 .card {
   background: var(--paper-raised);
   border: 1px solid var(--line);
+  border-left: 3px solid var(--brand-rule);
   border-radius: 3px;
   padding: 18px 20px;
 }
@@ -340,18 +360,19 @@ a {
 .empty-state button {
   margin-top: 8px;
   padding: 9px 22px;
-  border: 1px solid var(--ink);
+  border: 1px solid var(--brand);
   border-radius: 3px;
-  background: var(--ink);
-  color: var(--paper);
+  background: var(--brand);
+  color: var(--on-brand);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: opacity 0.15s var(--ease);
+  transition: background-color 0.15s var(--ease), border-color 0.15s var(--ease);
 }
 
 .empty-state button:hover:not(:disabled) {
-  opacity: 0.85;
+  background: var(--brand-deep);
+  border-color: var(--brand-deep);
 }
 
 .empty-state button:disabled {
