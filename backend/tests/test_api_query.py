@@ -101,12 +101,97 @@ def test_metrics_count_audit_only_not_execution(client):
     assert m["elapsed_ms"] >= 0
 
 
-def test_direct_endpoint_is_reserved_not_implemented(client):
-    """端到端模式预留接口：契约已定义，功能待接线。"""
+@pytest.fixture
+def isolated_cache(tmp_path, monkeypatch):
+    """把问答缓存指向临时文件。
+
+    必须隔离：QUERY_CACHE_FILE 默认指向 demo/query_cache.json，那是演示要
+    预热的真文件——测试往里写会污染演示内容。
+    """
+    from backend import config
+    path = str(tmp_path / "query_cache.json")
+    monkeypatch.setattr(config, "QUERY_CACHE_FILE", path)
+    return path
+
+
+def test_direct_rejects_empty_question(client, isolated_cache):
+    r = client.post("/api/query/direct", json={
+        "token": STAFF, "datasource_id": "regional_health", "question": "   "})
+    assert r.status_code == 422
+
+
+def test_direct_cache_hit_never_calls_llm(client, isolated_cache, monkeypatch):
+    """命中缓存必须完全离线。
+
+    这是演示能稳的关键：预热过的问法要毫秒级返回，且不依赖网络。
+    这里把 decompose 换成"一调就炸"，用来证明它根本没被碰。
+    """
+    from backend import query_cache, llm_nl2sql
+
+    def _boom(*_a, **_k):
+        raise AssertionError("命中缓存时不应调用模型")
+
+    monkeypatch.setattr(llm_nl2sql, "decompose", _boom)
+
+    query_cache.store(
+        "我上次的血糖是多少",
+        [{"id": 0, "description": "最终：我的血糖结果",
+          "sql": "SELECT test_name, result_value, unit FROM clinical_records "
+                 "WHERE patient_id = 'P001' AND record_type = 'lab' "
+                 "AND test_name = '血糖'"}],
+        "patient",
+    )
+
     r = client.post("/api/query/direct", json={
         "token": PATIENT, "datasource_id": "regional_health",
         "question": "我上次的血糖是多少"})
-    assert r.status_code == 501
+    assert r.status_code == 200
+    body = r.json()
+    assert body["admission"]["passed"] is True
+    # 指标条只报审计开销——翻译走缓存，审计仍零 LLM
+    assert body["metrics"]["llm_calls"] == 0
+    assert body["metrics"]["db_access"] == 0
+
+
+def test_direct_cache_hit_still_runs_layer1(client, isolated_cache):
+    """命中缓存**不等于放行**——层一准入照常拦截。
+
+    这条是「缓存的是计划不是答案」的可验证形式：缓存若绕过审计，
+    安全演示就没有意义了。
+    """
+    from backend import query_cache
+
+    query_cache.store(
+        "得这个病的有多少人",
+        [{"id": 0, "description": "统计某诊断的患者数",
+          "sql": "SELECT COUNT(*) FROM patients WHERE patient_id IN "
+                 "(SELECT patient_id FROM clinical_records "
+                 "WHERE diagnosis_name = '2型糖尿病')"}],
+        "patient",
+    )
+
+    r = client.post("/api/query/direct", json={
+        "token": PATIENT, "datasource_id": "regional_health",
+        "question": "得这个病的有多少人"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["admission"]["passed"] is False
+    assert body["plan"] == []
+    assert body["result"] is None
+    assert body["degradation"]["level"] == "L3"
+
+
+def test_direct_uncached_without_key_gives_actionable_503(
+        client, isolated_cache, monkeypatch):
+    """未收录且无模型 → 明确说明原因，而不是 500 或假装成功。"""
+    from backend import llm_nl2sql
+    monkeypatch.setattr(llm_nl2sql, "llm_available", lambda: False)
+
+    r = client.post("/api/query/direct", json={
+        "token": STAFF, "datasource_id": "regional_health",
+        "question": "一个绝对没有收录过的问法"})
+    assert r.status_code == 503
+    assert "OPENAI_API_KEY" in r.json()["detail"]
 
 
 def test_unknown_question_id_404(client):

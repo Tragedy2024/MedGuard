@@ -48,3 +48,42 @@ PATIENT_TABLES = frozenset({
 # 演示库标识（当前唯一数据源；将来接入真实库时扩展为列表配置）
 DEMO_DATASOURCE_ID = "regional_health"
 DEMO_DATASOURCE_NAME = "区域医疗集团"
+
+
+# ── .env（API Key 等敏感配置）────────────────────────────────────
+# 两处都找：交付包根目录、backend/。不覆盖已存在的环境变量。
+# MAC-SQL 的 core/api_config.py 也会自行向上查找 .env，这里重复加载是
+# 有意的——产品层需要**提前**知道 LLM 是否可用，才能做优雅降级。
+def _load_env_file(path: str) -> None:
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, _, v = line.partition("=")
+                k, v = k.strip(), v.strip()
+                if k and v and k not in os.environ:
+                    os.environ[k] = v
+    except OSError:
+        pass
+
+
+for _p in (os.path.join(_PROJECT_ROOT, ".env"),
+           os.path.join(os.path.dirname(_PROJECT_ROOT), ".env")):
+    _load_env_file(_p)
+
+
+# ── LLM（自然语言 → SQL 的翻译环节）──────────────────────────────
+# 注意：审计环节（医盾）零 LLM，这条配置只影响「翻译」，不影响安全声明。
+LLM_API_KEY = os.environ.get("OPENAI_API_KEY") or ""
+LLM_API_BASE = os.environ.get("OPENAI_API_BASE") or "https://api.deepseek.com/v1"
+LLM_MODEL = os.environ.get("MODEL_NAME") or "deepseek-v4-pro"
+
+# ── 问答缓存 ─────────────────────────────────────────────────────
+# 系统自动积累的「问法 → 查询计划」缓存。演示时先查它（离线、确定性、
+# 毫秒级），未命中再调 LLM。预热方式就是提前跑几次查询。
+QUERY_CACHE_FILE = os.environ.get(
+    "MEDGUARD_QUERY_CACHE", os.path.join(DEMO_DIR, "query_cache.json")
+)
+QUERY_CACHE_PER_TOKEN = int(os.environ.get("MEDGUARD_QUERY_CACHE_LIMIT", "10"))

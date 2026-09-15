@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from backend import config
+from backend import config, llm_nl2sql, query_cache
 from backend.admission import admission_check_plan
 from backend.db import save_report
 from backend.deps import audit_plan
@@ -50,37 +50,48 @@ def run_query(req: QueryRequest):
         for sq in spec["plan"]
     ]
 
+    resp = _pipeline(plan, spec["question"], req.token, req.datasource_id, t0)
+    _persist(spec["question"], req.token.type, resp)
+    return resp
+
+
+def _pipeline(plan: list, question: str, token: Token,
+              datasource_id: str, t0: float) -> QueryResponse:
+    """层一准入 → 层二审计 → 执行 → 组装响应。
+
+    预置查询与自由提问共用这一条管线——**它们只在「计划从哪来」上不同**，
+    审计与拦截完全一致。这是自由提问不削弱安全演示的原因。
+    """
+    subject = token.subject_id or ""
+
     # 【层一】准入 —— 只对病患令牌执行（医护令牌的权限范围由医院
     # RLS 式策略管理，不在本项目实现；其查询一律放行交层二审计）。
-    if req.token.type == "patient":
-        adm = admission_check_plan(plan, subject)
-        if not adm.passed:
-            resp = QueryResponse(
-                admission=AdmissionInfo(passed=False, reason=adm.reason,
-                                        checked_tables=adm.checked_tables,
-                                        bound_to_subject=False),
-                question=spec["question"],
-                plan=[], events=[],
-                rewrite=RewriteInfo(),
-                degradation=DegradationInfo(
-                    level="L3", label=DEGRADATION_LABELS["L3"],
-                    message=adm.reason or "",
-                    message_cn=adm.reason or DEGRADATION_MESSAGES["L3"]),
-                metrics=MetricsInfo(
-                    elapsed_ms=int((time.perf_counter() - t0) * 1000),
-                    llm_calls=0, db_access=0),
-                result=None,
-            )
-            _persist(req, spec, resp)
-            return resp
-    else:
-        adm = admission_check_plan(plan, subject)  # 仅取涉及的表面板信息
+    adm = admission_check_plan(plan, subject)
+    if token.type == "patient" and not adm.passed:
+        resp = QueryResponse(
+            admission=AdmissionInfo(passed=False, reason=adm.reason,
+                                    checked_tables=adm.checked_tables,
+                                    bound_to_subject=False),
+            question=question,
+            plan=[], events=[],
+            rewrite=RewriteInfo(),
+            degradation=DegradationInfo(
+                level="L3", label=DEGRADATION_LABELS["L3"],
+                message=adm.reason or "",
+                message_cn=adm.reason or DEGRADATION_MESSAGES["L3"]),
+            metrics=MetricsInfo(
+                elapsed_ms=int((time.perf_counter() - t0) * 1000),
+                llm_calls=0, db_access=0),
+            result=None,
+        )
+        return resp
+    if token.type != "patient":
         adm.passed = True
         adm.reason = None
 
     # 【层二】审计（零 LLM、零查库）
     audited_at = int((time.perf_counter() - t0) * 1000)   # 审计耗时到此为止
-    outcome = audit_plan(plan, req.datasource_id)
+    outcome = audit_plan(plan, datasource_id)
 
     # 执行（仅当未被 L3 拒绝）
     result = None
@@ -114,11 +125,11 @@ def run_query(req: QueryRequest):
             is_final=(i == len(display) - 1),
         ))
 
-    resp = QueryResponse(
+    return QueryResponse(
         admission=AdmissionInfo(passed=True, reason=None,
                                 checked_tables=adm.checked_tables,
                                 bound_to_subject=adm.bound_to_subject),
-        question=spec["question"],
+        question=question,
         plan=plan_items,
         events=[SecurityEvent(**v) for v in outcome.violations],
         rewrite=RewriteInfo(applied=outcome.rewrites_applied,
@@ -128,32 +139,55 @@ def run_query(req: QueryRequest):
             label=DEGRADATION_LABELS.get(outcome.degradation_level, ""),
             message=outcome.degradation_message,
             message_cn=DEGRADATION_MESSAGES.get(outcome.degradation_level, "")),
-        # metrics 只报审计开销：llm_calls 与 db_access 恒为 0，
-        # 这是「零 LLM、零查库」安全声明的可验证形式。查询执行不计入。
+        # metrics 只报**审计**开销：llm_calls 与 db_access 恒为 0，这是
+        # 「零 LLM、零查库」安全声明的可验证形式。翻译环节若调了模型不算
+        # 在这里——指标条文案写的是「审计阶段零模型调用」，范围已限定。
         metrics=MetricsInfo(elapsed_ms=audited_at, llm_calls=0, db_access=0),
         result=result,
     )
-    _persist(req, spec, resp)
-    return resp
 
 
 class DirectQueryRequest(BaseModel):
-    """端到端模式预留：自然语言直查（后续接入 NL→SQL 翻译时启用）。
-
-    当前返回 501，前端契约已冻结此形状，避免将来契约变更。
-    """
+    """自然语言直查。"""
     token: Token
     datasource_id: str
     question: str
 
 
-@router.post("/direct")
+@router.post("/direct", response_model=QueryResponse)
 def run_direct_query(req: DirectQueryRequest):
-    raise HTTPException(
-        status_code=501,
-        detail="端到端模式尚未启用：当前为演示模式（预置查询库）。"
-               "后续接入 NL→SQL 翻译后启用本接口。",
-    )
+    """自由提问：**缓存优先，未命中调模型翻译**。
+
+    缓存的是**计划**不是答案——命中后照样走层一准入与层二审计，安全演示
+    一点不打折。缓存的价值不只是提速（模型翻译约 47 秒），更是保演示质量：
+    模型倾向选更安全的写法，审计出来的违规常为 0；打磨过的计划才会触发
+    Rule C 拆分与跨域 JOIN 事件。
+    """
+    t0 = time.perf_counter()
+    question = (req.question or "").strip()
+    if not question:
+        raise HTTPException(status_code=422, detail="问题不能为空")
+
+    plan = query_cache.lookup(question, req.token.type)
+
+    if plan is None:
+        if not llm_nl2sql.llm_available():
+            raise HTTPException(
+                status_code=503,
+                detail="该问法暂未收录，且未配置模型（缺少 OPENAI_API_KEY），"
+                       "无法翻译新问法。请换一个已收录的问法。",
+            )
+        try:
+            plan = llm_nl2sql.decompose(question, req.datasource_id)
+        except llm_nl2sql.NL2SQLError as exc:
+            raise HTTPException(status_code=502,
+                                detail=f"翻译失败：{exc}") from exc
+        # 只写回成功的翻译；失败不该污染缓存
+        query_cache.store(question, plan, req.token.type, source="llm")
+
+    resp = _pipeline(plan, question, req.token, req.datasource_id, t0)
+    _persist(question, req.token.type, resp)
+    return resp
 
 
 def _execute(sql_by_id: Dict[Any, str], plan: list) -> Optional[ResultSet]:
@@ -181,13 +215,13 @@ def _execute(sql_by_id: Dict[Any, str], plan: list) -> Optional[ResultSet]:
     return ResultSet(columns=cols, rows=rows)
 
 
-def _persist(req: QueryRequest, spec: dict, resp: QueryResponse) -> None:
+def _persist(question: str, token_type: str, resp: QueryResponse) -> None:
     db_path = config.METADATA_DB
     if not os.path.exists(db_path):
         return
     save_report(db_path, {
-        "question": spec["question"],
-        "token_type": req.token.type,
+        "question": question,
+        "token_type": token_type,
         "degradation_level": resp.degradation.level,
         "event_count": len(resp.events),
         "payload": resp.model_dump(),
