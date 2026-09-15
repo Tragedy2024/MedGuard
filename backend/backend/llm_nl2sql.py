@@ -241,12 +241,15 @@ def decompose(
         # 先规整再试一次——模型书写习惯的差异不该让整条查询失败
         tasks = parse_qa_pairs(_normalize_output(raw))
     if not tasks:
-        # 把原文片段带出来——否则"没解析出子问题"这句话无法排查。
-        # 实测模型偶尔不按格式作答，没有原文就只能猜。
-        snippet = " ".join(raw.split())[:240]
+        # 原文进**日志**，不进异常消息。
+        # 实测模型有时会整段输出推理过程而不是「Sub question N + SQL」，
+        # 那段原文是排查用的；把它拼进异常消息会让医护在界面上看到一大段
+        # 模型内心戏——他们要的是一句能照着做的话。
+        snippet = " ".join(raw.split())[:400]
+        print(f"[nl2sql] 解析失败：原文 {len(raw)} 字符，开头 {snippet!r}",
+              flush=True)
         raise NL2SQLError(
-            f"模型输出里没有解析出子问题（原文 {len(raw)} 字符）"
-            f"{'，开头是：' + snippet if snippet else '，且输出为空'}。"
+            "没能把这个问法翻译成查询语句。请换一种说法，或从常用问题里选一个。"
         )
 
     return [

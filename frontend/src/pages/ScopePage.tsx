@@ -13,6 +13,7 @@ import { fetchPolicy } from '../api/policies'
 import type { EclLabel, Policy } from '../api/models'
 import { EclTag } from '../components/EclTag'
 import { useAuth } from '../store/auth'
+import { errorText } from '../api/client'
 
 const CX = 'regional_health'
 
@@ -57,7 +58,7 @@ export function ScopePage() {
   useEffect(() => {
     fetchPolicy(CX)
       .then(setPolicy)
-      .catch((e) => setError(String(e)))
+      .catch((e) => setError(errorText(e)))
   }, [])
 
   if (error) {

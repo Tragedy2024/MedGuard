@@ -8,6 +8,7 @@ import { DegradationBadge } from '../components/DegradationBadge'
 import { EventCard } from '../components/EventCard'
 import { PlanPanel } from '../components/PlanPanel'
 import { ResultTable } from '../components/ResultTable'
+import { errorText } from '../api/client'
 
 const DATASOURCE = 'regional_health'
 const TOKEN_TEXT: Record<TokenType, string> = { staff: '医护人员', patient: '病患' }
@@ -39,7 +40,7 @@ function Reports() {
         setReports(list)
         if (list.length > 0) void select(list[0].id)
       })
-      .catch((e) => setError(String(e)))
+      .catch((e) => setError(errorText(e)))
     // 只在挂载时拉一次列表
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -48,7 +49,7 @@ function Reports() {
     try {
       setDetail(await fetchReport(id))
     } catch (e) {
-      setError(String(e))
+      setError(errorText(e))
     }
   }
 

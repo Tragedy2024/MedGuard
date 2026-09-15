@@ -13,6 +13,7 @@ import { fetchDetectionMetrics } from '../api/reports'
 import type {
   DatasourceInfo, DetectionMetrics, Policy, SchemaTable,
 } from '../api/models'
+import { errorText } from '../api/client'
 
 export function DataSourcePage() {
   const [sources, setSources] = useState<DatasourceInfo[]>([])
@@ -40,7 +41,7 @@ export function DataSourcePage() {
         setPolicy(pol)
       }
     } catch (e) {
-      setError(String(e))
+      setError(errorText(e))
     }
   }
 
@@ -54,7 +55,7 @@ export function DataSourcePage() {
       await createDemoDatasource()
       await load()
     } catch (e) {
-      setError(String(e))
+      setError(errorText(e))
     } finally {
       setLoading(false)
     }

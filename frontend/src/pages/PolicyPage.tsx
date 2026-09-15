@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { fetchPolicy, updatePolicy } from '../api/policies'
 import type { EclLabel, Policy } from '../api/models'
 import { ECL_TEXT, EclTag } from '../components/EclTag'
+import { errorText } from '../api/client'
 
 const CX = 'regional_health'
 const LABELS: EclLabel[] = ['free', 'controlled', 'blocked']
@@ -15,7 +16,7 @@ export function PolicyPage() {
   useEffect(() => {
     fetchPolicy(CX)
       .then(setPolicy)
-      .catch((e) => setError(String(e)))
+      .catch((e) => setError(errorText(e)))
   }, [])
 
   if (error) {
@@ -52,7 +53,7 @@ export function PolicyPage() {
       await updatePolicy(CX, { column_labels: policy.column_labels })
       setDirty(false)
     } catch (e) {
-      setError(String(e))
+      setError(errorText(e))
     } finally {
       setSaving(false)
     }

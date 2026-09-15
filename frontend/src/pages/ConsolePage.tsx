@@ -7,6 +7,7 @@ import { presetsFor } from '../store/presets'
 import { AdmissionPanel } from '../components/AdmissionPanel'
 import { DegradationBadge } from '../components/DegradationBadge'
 import { ResultTable } from '../components/ResultTable'
+import { errorText } from '../api/client'
 
 const DATASOURCE = 'regional_health'
 
@@ -59,7 +60,7 @@ function Console() {
     try {
       setData(await fn())
     } catch (e) {
-      setError(String(e))
+      setError(errorText(e))
     } finally {
       setRunning(false)
     }
@@ -118,6 +119,31 @@ function Console() {
           {slow
             ? '正在翻译这个新问法……首次提问约需一分钟，之后就快了。'
             : '处理中…'}
+        </div>
+      )}
+
+      {/* 起手视图。空着是浪费——顺带如实说明两种提问方式的差别：
+          用户本来就该知道"同一个问法第二次会快得多"，以及为什么。 */}
+      {!data && !showBusy && !error && (
+        <div className="console-start">
+          <h4>两种提问方式</h4>
+          <ul>
+            <li>
+              <strong>自由提问</strong>
+              <span>
+                用大白话写。系统先查已收录的问法；没收录的会现场翻译，
+                首次约需一分钟，之后就快了。
+              </span>
+            </li>
+            <li>
+              <strong>常用问题</strong>
+              <span>上面的按钮，一键直达，毫秒返回。</span>
+            </li>
+          </ul>
+          <p className="console-start-note">
+            无论哪种方式，都会先经过<strong>层一准入</strong>与<strong>层二审计</strong>
+            ——审计阶段零模型调用、零数据库访问。
+          </p>
         </div>
       )}
       {error && (

@@ -48,6 +48,9 @@ const SHOTS = [
   // 路由守卫：医生直接敲 /policy 应被挡住，而不是渲染出策略页
   { name: '05-forbidden', path: '/policy', as: 'doctor' },
 
+  // 控制台起手视图（还没提问时的样子）
+  { name: '05b-console-empty', path: '/console', as: 'doctor', height: 1000 },
+
   // 控制台现在只呈现问题与结果；审计明细搬到安全报告页
   {
     name: '06-console-result',
