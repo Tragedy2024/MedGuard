@@ -6,12 +6,14 @@
  */
 import type { EclLabel } from '../api/types'
 
-const TEXT: Record<EclLabel, string> = {
+/** ECL 的中文名。下拉框等处也应显示这套文案，不要把 free/controlled/blocked
+ *  这类内部字符串暴露给非数据库专业的用户。 */
+export const ECL_TEXT: Record<EclLabel, string> = {
   free: '自由',
   controlled: '受控',
   blocked: '禁止',
 }
 
 export function EclTag({ label }: { label: EclLabel }) {
-  return <span className={`ecl ecl-${label}`}>{TEXT[label]}</span>
+  return <span className={`ecl ecl-${label}`}>{ECL_TEXT[label]}</span>
 }

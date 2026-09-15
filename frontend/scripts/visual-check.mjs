@@ -33,7 +33,16 @@ const SHOTS = [
     path: '/',
     act: async (p) => { await p.getByRole('button', { name: '病患' }).click() },
   },
-  { name: '03-policy', path: '/policy' },
+  { name: '03-policy', path: '/policy', height: 1300 },
+  {
+    name: '03b-policy-rules',
+    path: '/policy',
+    height: 1000,
+    act: async (p) => {
+      await p.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+      await p.waitForTimeout(250)
+    },
+  },
   { name: '04-console', path: '/console' },
   { name: '05-reports', path: '/reports' },
   // 空态：未载入演示数据。用一个空数组顶掉真实响应即可，无需清库。
