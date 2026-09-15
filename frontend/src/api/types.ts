@@ -45,7 +45,10 @@ export interface RewriteInfo {
 export interface DegradationInfo {
   level: 'L0' | 'L1' | 'L2' | 'L3'
   label: string
+  /** 算法层原文（英文），折叠展示供技术观众核对 */
   message: string
+  /** 产品层中文说明，面向医护与病患的主文案 */
+  message_cn: string
 }
 
 export interface MetricsInfo {

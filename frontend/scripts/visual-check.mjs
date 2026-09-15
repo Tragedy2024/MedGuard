@@ -47,7 +47,35 @@ const SHOTS = [
   },
   // 路由守卫：医生直接敲 /policy 应被挡住，而不是渲染出策略页
   { name: '05-forbidden', path: '/policy', as: 'doctor' },
-  { name: '06-console', path: '/console', as: 'doctor' },
+
+  // 控制台三条关键路径：层二跨域拦截 / 展开 SQL / 层一拒绝
+  {
+    name: '06-console-audit',
+    path: '/console',
+    as: 'doctor',
+    height: 1500,
+    act: (p) => p.getByRole('button', { name: '糖尿病患者产生了多少费用' }).click(),
+  },
+  {
+    name: '06b-console-sql-expanded',
+    path: '/console',
+    as: 'doctor',
+    height: 1400,
+    act: async (p) => {
+      await p.getByRole('button', { name: '糖尿病患者产生了多少费用' }).click()
+      await p.waitForTimeout(500)
+      await p.locator('.sql-diff > summary').first().click()
+      await p.waitForTimeout(250)
+    },
+  },
+  {
+    name: '06c-console-denied',
+    path: '/console',
+    as: 'patient',
+    height: 1100,
+    act: (p) => p.getByRole('button', { name: '得这个病的有多少人' }).click(),
+  },
+
   { name: '07-reports', path: '/reports', as: 'admin' },
 ]
 

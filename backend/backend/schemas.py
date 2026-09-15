@@ -52,7 +52,11 @@ class RewriteInfo(BaseModel):
 class DegradationInfo(BaseModel):
     level: str
     label: str
+    """算法层原文（英文）。保留供技术观众核对，界面折叠展示。"""
     message: str = ""
+    """产品层中文说明。面向医护与病患的主文案——算法层英文原文不该
+    直接出现在界面上（会议记录 §1.1 已否决的开发者工具形态）。"""
+    message_cn: str = ""
 
 
 class MetricsInfo(BaseModel):

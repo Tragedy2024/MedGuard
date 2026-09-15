@@ -25,6 +25,19 @@ DEGRADATION_LABELS = {
     "L3": "已拒绝",
 }
 
+# 面向用户的中文说明。算法层返回的 degradation_message 是英文原文
+# （如 "Cannot compute exact result due to privacy policy constraints..."），
+# 直接展示给医护与病患是不合适的——本产品的用户不是数据库专业人员。
+# 算法层一行不改（红线），故在**产品层**并置一条中文说明，原文保留供
+# 技术观众在「技术详情」里核对。
+DEGRADATION_MESSAGES = {
+    "L0": "",
+    "L1": "为确保不泄露个人信息，部分明细已替换为聚合结果。",
+    "L2": "为确保不泄露个人信息，本次查询无法给出完全精确的结果；"
+          "以下是与您的问题相关的另一种统计口径。",
+    "L3": "该查询涉及其他患者信息，无法提供。",
+}
+
 TOKEN_LABELS = {
     "staff": "医护人员",
     "patient": "病患",

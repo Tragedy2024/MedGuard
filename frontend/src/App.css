@@ -1081,3 +1081,661 @@ a {
   font-size: 12.5px;
   color: var(--muted);
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   核心展示组件（模块③ 消费）
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── 降级徽章 ────────────────────────────────────────────────── */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  border-radius: 2px;
+  border: 1px solid transparent;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.badge-pass {
+  background: var(--pass-bg);
+  border-color: var(--pass-rule);
+  color: var(--pass);
+}
+.badge-layer2 {
+  background: var(--layer2-bg);
+  border-color: var(--layer2-rule);
+  color: var(--layer2);
+}
+.badge-layer1 {
+  background: var(--layer1-bg);
+  border-color: var(--layer1-rule);
+  color: var(--layer1);
+}
+
+.badge-level {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+/* ── 准入面板（层一）─────────────────────────────────────────── */
+
+.layer-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  padding: 3px 8px;
+  border-radius: 2px;
+}
+
+.layer-1 {
+  background: var(--layer1);
+  color: #fff;
+}
+
+.admission {
+  border-radius: 3px;
+  padding: 16px 18px;
+  border: 1px solid;
+}
+
+.admission-pass {
+  background: var(--pass-bg);
+  border-color: var(--pass-rule);
+}
+
+.admission-deny {
+  background: var(--layer1-bg);
+  border-color: var(--layer1-rule);
+  border-left-width: 3px;
+}
+
+.admission-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.admission-verdict {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.admission-pass .admission-verdict {
+  color: var(--pass);
+}
+
+.admission-deny .admission-verdict {
+  color: var(--layer1);
+}
+
+.admission-row {
+  display: flex;
+  gap: 16px;
+  font-size: 13.5px;
+  margin: 6px 0;
+}
+
+.admission-row > span:first-child {
+  color: var(--muted);
+  min-width: 72px;
+  flex-shrink: 0;
+}
+
+.table-chip {
+  display: inline-block;
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  padding: 1px 8px;
+  margin-right: 6px;
+  font-size: 12.5px;
+}
+
+.admission-refusal {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--layer1);
+  line-height: 1.6;
+  padding: 4px 0;
+}
+
+/* ── 安全事件卡 ──────────────────────────────────────────────── */
+
+.event-card {
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--layer2);
+  border-radius: 3px;
+  padding: 12px 15px;
+  margin-bottom: 10px;
+}
+
+.event-card.sev-must_degrade {
+  border-left-color: var(--layer1);
+}
+
+.event-card.sev-rewritable {
+  border-left-color: var(--layer2);
+}
+
+.event-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 7px;
+}
+
+.event-type {
+  font-weight: 600;
+  font-size: 13.5px;
+}
+
+.event-sev,
+.event-sub {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+}
+
+.event-sev {
+  background: var(--layer2-bg);
+  color: var(--layer2);
+  border-radius: 2px;
+  padding: 1px 6px;
+}
+
+.event-card.sev-must_degrade .event-sev {
+  background: var(--layer1-bg);
+  color: var(--layer1);
+}
+
+.event-sub {
+  color: var(--ink-faint);
+  margin-left: auto;
+}
+
+.event-column {
+  font-size: 14px;
+}
+
+.event-column strong {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.event-column code {
+  color: var(--muted);
+}
+
+/* ── 技术详情（算法原始输出，默认折叠）──────────────────────── */
+
+.tech-detail {
+  margin-top: 9px;
+}
+
+.tech-detail > summary {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.tech-detail > summary::-webkit-details-marker {
+  display: none;
+}
+
+.tech-detail > summary::before {
+  content: '▸ ';
+}
+
+.tech-detail[open] > summary::before {
+  content: '▾ ';
+}
+
+.tech-detail > summary:hover {
+  color: var(--brand);
+}
+
+/* 整块折叠（如改写日志）：与上方内容留出间隔并加一条分隔线 */
+.tech-detail-block {
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule-soft);
+}
+
+.tech-detail pre {
+  margin: 7px 0 0;
+  padding: 9px 11px;
+  background: var(--paper-sunken);
+  border-radius: 2px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ── SQL diff（1+2：中文标注 + 默认折叠）────────────────────── */
+
+.sql-diff {
+  margin-top: 10px;
+}
+
+.sql-diff > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 11px;
+  background: var(--layer2-bg);
+  border: 1px solid var(--layer2-rule);
+  border-radius: 3px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  font-size: 12.5px;
+}
+
+.sql-diff > summary::-webkit-details-marker {
+  display: none;
+}
+
+.sql-diff > summary::before {
+  content: '▸';
+  color: var(--layer2);
+  font-size: 10px;
+}
+
+.sql-diff[open] > summary::before {
+  content: '▾';
+}
+
+.diff-summary {
+  font-weight: 600;
+  color: var(--layer2);
+}
+
+.diff-touched {
+  color: var(--ink-soft);
+}
+
+.diff-touched::before {
+  content: '· ';
+  color: var(--ink-faint);
+}
+
+.diff-hint {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+}
+
+.sql-diff[open] > .diff-hint {
+  display: none;
+}
+
+.diff-legend {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: var(--paper-sunken);
+  border-radius: 2px;
+}
+
+.diff-legend-title {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+}
+
+.diff-legend ul {
+  list-style: none;
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.diff-legend li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.diff-legend li code {
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+.sql-diff table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.sql-diff th {
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.sql-diff td {
+  padding: 5px 10px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.6;
+  vertical-align: top;
+  width: 50%;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--ink-soft);
+}
+
+.sql-diff .diff-changed td {
+  background: var(--layer2-bg);
+  color: var(--ink);
+}
+
+.diff-unchanged {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+  padding: 5px 0;
+}
+
+/* ── 分解方案 ────────────────────────────────────────────────── */
+
+.plan-item {
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+}
+
+.plan-item.has-violation {
+  border-left: 3px solid var(--layer2);
+}
+
+.plan-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13.5px;
+}
+
+.plan-id {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.plan-final {
+  font-size: 11px;
+  background: var(--pass-bg);
+  color: var(--pass);
+  border-radius: 2px;
+  padding: 2px 7px;
+}
+
+.plan-violation-count {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--layer2);
+  font-weight: 500;
+}
+
+.plan-hits {
+  list-style: none;
+  margin-top: 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.plan-hits li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.plan-hit-type {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  background: var(--layer2-bg);
+  color: var(--layer2);
+  border-radius: 2px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+
+/* ── 结果表格 ────────────────────────────────────────────────── */
+
+.result-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  background: var(--paper-raised);
+}
+
+.result-table th,
+.result-table td {
+  text-align: left;
+  padding: 9px 13px;
+  border-bottom: 1px solid var(--rule-soft);
+}
+
+.result-table th {
+  background: var(--brand-bg);
+  border-bottom: 1px solid var(--brand-rule);
+  font-weight: 500;
+  vertical-align: bottom;
+}
+
+.result-col {
+  display: block;
+  color: var(--brand-deep);
+}
+
+.result-col-raw {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+}
+
+.result-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.result-table tbody tr:hover {
+  background: var(--paper-sunken);
+}
+
+.result-empty {
+  color: var(--muted);
+  font-size: 13.5px;
+  padding: 14px 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   模块③ 查询与拦截控制台（演示主舞台）
+   ═══════════════════════════════════════════════════════════════════ */
+
+.preset-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.preset-bar button {
+  padding: 9px 16px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 3px;
+  background: var(--paper-raised);
+  color: var(--ink-soft);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s var(--ease), background-color 0.15s var(--ease),
+    color 0.15s var(--ease);
+}
+
+.preset-bar button:hover:not(:disabled) {
+  border-color: var(--brand);
+  background: var(--brand-bg);
+  color: var(--brand-deep);
+}
+
+.preset-bar button:disabled {
+  color: var(--ink-faint);
+  cursor: default;
+}
+
+.console-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.console-head h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--brand-deep);
+}
+
+.deny-note {
+  font-size: 13.5px;
+  color: var(--muted);
+  padding: 12px 16px;
+  background: var(--paper-sunken);
+  border-radius: 3px;
+}
+
+/* 两栏：左方案 / 右事件。窄屏塌成单栏 */
+.panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  align-items: start;
+}
+
+@media (max-width: 1080px) {
+  .panels {
+    grid-template-columns: 1fr;
+  }
+}
+
+.panel {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 16px 18px;
+}
+
+.panel h4 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: 13px;
+}
+
+.panel h4 + h4,
+.panel .event-card + h4 {
+  margin-top: 18px;
+}
+
+.count {
+  font-family: var(--font-mono);
+  background: var(--layer2-bg);
+  color: var(--layer2);
+  padding: 1px 7px;
+  border-radius: 8px;
+  letter-spacing: 0;
+}
+
+.rewrite-log {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.rewrite-log li {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.65;
+  color: var(--muted);
+  padding-left: 12px;
+  position: relative;
+}
+
+.rewrite-log li::before {
+  content: '·';
+  position: absolute;
+  left: 2px;
+  color: var(--ink-faint);
+}
+
+.degradation-message {
+  font-size: 13.5px;
+  color: var(--muted);
+  line-height: 1.7;
+  padding: 12px 16px;
+  background: var(--paper-sunken);
+  border-radius: 3px;
+}
+
+/* ── 指标条：零 LLM / 零查库的现场证据 ──────────────────────── */
+
+.metrics-bar {
+  display: flex;
+  gap: 26px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 13px 18px;
+  background: var(--brand);
+  color: var(--on-brand-dim);
+  border-radius: 3px;
+  font-size: 12.5px;
+}
+
+.metrics-bar strong {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--on-brand);
+  margin-left: 4px;
+}
+
+.metrics-note {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--on-brand-dim);
+}

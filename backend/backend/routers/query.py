@@ -19,7 +19,7 @@ from backend import config
 from backend.admission import admission_check_plan
 from backend.db import save_report
 from backend.deps import audit_plan
-from backend.labels import DEGRADATION_LABELS
+from backend.labels import DEGRADATION_LABELS, DEGRADATION_MESSAGES
 from backend.schemas import (AdmissionInfo, DegradationInfo, MetricsInfo,
                              PlanItem, QueryRequest, QueryResponse,
                              ResultSet, RewriteInfo, SecurityEvent, Token)
@@ -64,7 +64,8 @@ def run_query(req: QueryRequest):
                 rewrite=RewriteInfo(),
                 degradation=DegradationInfo(
                     level="L3", label=DEGRADATION_LABELS["L3"],
-                    message=adm.reason or ""),
+                    message=adm.reason or "",
+                    message_cn=adm.reason or DEGRADATION_MESSAGES["L3"]),
                 metrics=MetricsInfo(
                     elapsed_ms=int((time.perf_counter() - t0) * 1000),
                     llm_calls=0, db_access=0),
@@ -125,7 +126,8 @@ def run_query(req: QueryRequest):
         degradation=DegradationInfo(
             level=outcome.degradation_level,
             label=DEGRADATION_LABELS.get(outcome.degradation_level, ""),
-            message=outcome.degradation_message),
+            message=outcome.degradation_message,
+            message_cn=DEGRADATION_MESSAGES.get(outcome.degradation_level, "")),
         # metrics 只报审计开销：llm_calls 与 db_access 恒为 0，
         # 这是「零 LLM、零查库」安全声明的可验证形式。查询执行不计入。
         metrics=MetricsInfo(elapsed_ms=audited_at, llm_calls=0, db_access=0),
