@@ -1105,16 +1105,57 @@ a { color: inherit; }
 .diff-legend li { display: flex; align-items: baseline; gap: 11px; font-size: 13.5px; }
 .diff-legend li code { font-size: 11.5px; color: var(--ink-faint); }
 
-.sql-diff table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 9px; }
-.sql-diff th {
-  text-align: left; font-family: var(--font-mono); font-size: 10px; font-weight: 500;
-  letter-spacing: 0.1em; color: var(--ink-faint); padding: 6px 11px; border-bottom: 2px solid var(--rule-strong);
+/* 两侧各成**连续的代码块**，而不是按行号对齐的表格。
+   理由见 SqlDiff.tsx 顶部：改写前后结构常常完全不同（Rule C 会把一条
+   跨域查询拆成两条聚合子查询），行号对齐后一侧大半是空白，读起来是断的。 */
+.diff-sides {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 10px;
 }
-.sql-diff td {
-  padding: 6px 11px; font-family: var(--font-mono); font-size: 12px; line-height: 1.6;
-  vertical-align: top; width: 50%; white-space: pre-wrap; word-break: break-word; color: var(--ink-soft);
+
+@media (max-width: 820px) {
+  .diff-sides { grid-template-columns: 1fr; }
 }
-.sql-diff .diff-changed td { background: var(--layer2-bg); color: var(--ink); }
+
+.diff-side { min-width: 0; }
+
+.diff-side-title {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  padding-bottom: 7px;
+  border-bottom: 2px solid var(--rule-strong);
+}
+
+.diff-side-body {
+  margin: 0;
+  padding: 10px 0 0;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.75;
+  color: var(--ink-soft);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+}
+
+/* 被处理的列名**就地**标出。
+   不用「整行标色」：算法的 SQL 常常是一整行，一行就是整条语句，
+   标了等于没标。精确到列名，读者才能一眼找到哪个字段被动了。 */
+.diff-col-mark {
+  background: var(--layer2-bg);
+  color: var(--layer2);
+  font-weight: 600;
+  border-bottom: 1.5px solid var(--layer2);
+  border-radius: 2px;
+  padding: 0 2px;
+}
+
 .diff-unchanged { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-faint); padding: 6px 0; }
 
 /* ── 分解方案 ───────────────────────────────────────── */

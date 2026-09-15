@@ -79,8 +79,10 @@ export function AliasProvider({
             out = out.split(qualified).join(cn)
             hit = true
           }
-          // 裸列名只在词边界处替换，避免误伤（如 id 命中 patient_id）
-          const re = new RegExp(`(?<![\\w.])${col}(?![\\w])`)
+          // 裸列名按词边界替换，避免误伤（如 id 命中 patient_id）。
+          // **不排除前导点号**：SQL 里列常是限定形式（test_name 前的
+          // 限定符），排除点号会导致一条都匹配不上。
+          const re = new RegExp(`(?<!\\w)${col}(?!\\w)`)
           if (re.test(out)) {
             out = out.replace(re, cn)
             hit = true
