@@ -11,6 +11,7 @@ spider 分支输出单条 SQL，没有中间步骤，安全演示会失去「中
 本产品不使用。
 """
 import os
+import re
 import sqlite3
 import sys
 from typing import Any, Dict, List, Tuple
@@ -131,19 +132,60 @@ def build_schema_text(datasource_id: str) -> Tuple[str, str]:
         con.close()
 
 
-def _patient_binding(subject_id: str) -> str:
-    """病患令牌的绑定约束，塞进 MAC-SQL 模板的 evidence 槽位。
+def _normalize_output(raw: str) -> str:
+    """把模型输出规整成 `decomposer_parser` 认的格式。
 
-    **不给这段约束，模型会写出 `patient_id = :patient_id` 这类参数占位符**——
-    它既不能被执行（sqlite3 会当成未绑定参数），更要命的是**没有绑定到本人**，
-    等于绕过了层一准入的前提。所以这是安全约束，不是提示词优化。
+    `SUBQ_PATTERN` 要求 `SQL` **独占一行**、下一行才是 ``` 围栏：
+
+        Sub question 1: ……
+        SQL
+        ```sql
+        SELECT …
+        ```
+
+    但实测模型的书写习惯不一致。deepseek-v4-flash 会写成
+    `SQL: ```sql`（冒号 + 围栏挤在同一行），于是整条解析失败、用户拿到
+    "无法处理"——而这只差一次字符串规整。不规整的话约一半提问会失败。
+
+    放在这里而不是改 `decomposer_parser.py`：那是 vendor 代码，保持原样；
+    适配属于产品层的责任（与 deps.py 对算法层的做法一致）。
     """
-    return (
-        f"当前查询者是病患令牌，只能访问患者 {subject_id} 本人的数据。"
-        f"凡涉及患者个人的过滤条件，必须直接使用字面量 '{subject_id}'"
-        f"（例如 patient_id = '{subject_id}'），"
-        f"不要使用 :param 之类的参数占位符，也不要用其他患者编号。"
-    )
+    t = raw or ""
+    # 1) SQL 与围栏同行（可能带半角/全角冒号，也可能没有分隔）
+    t = re.sub(r'(?im)^[ \t]*SQL[ \t]*[:：]?[ \t]*```', 'SQL\n```', t)
+    # 2) 子问题行写成 "SQL:" 单独一行，其后才是围栏——合并掉多余的冒号行
+    t = re.sub(r'(?im)^[ \t]*SQL[ \t]*[:：][ \t]*$', 'SQL', t)
+    return t
+
+
+def _binding_hint(token_type: str, subject_id: str) -> str:
+    """令牌主体的身份约束，塞进 MAC-SQL 模板的 evidence 槽位。
+
+    **不给这段，模型会写出 `patient_id = :patient_id` 这类参数占位符**——
+    它既执行不了（sqlite3 会当成未绑定参数），更要命的是**等于没有绑定到本人**，
+    绕过了层一准入的前提。所以这是安全约束，不是提示词优化。
+
+    医护令牌同理（实测）：问「我治疗了哪些患者」而系统不说「我」是谁时，
+    模型只能写 `:doctor_id`，那 SQL 解析不了 → 整条查询处理失败。
+    给工号之后这类第一人称问法才答得出来。
+    """
+    if token_type == "patient" and subject_id:
+        return (
+            f"当前查询者是病患令牌，只能访问患者 {subject_id} 本人的数据。"
+            f"凡涉及患者个人的过滤条件，必须直接使用字面量 '{subject_id}'"
+            f"（例如 patient_id = '{subject_id}'），"
+            f"不要使用 :param 之类的参数占位符，也不要用其他患者编号。"
+        )
+    if token_type == "staff" and subject_id:
+        return (
+            f"当前查询者是医护人员令牌，医生工号为 {subject_id}。"
+            f"凡涉及本人（「我」「我的患者」「我治疗/接诊」）的条件，"
+            f"必须直接使用字面量 '{subject_id}' 过滤，"
+            f"例如 SELECT COUNT(DISTINCT patient_id) FROM visits "
+            f"WHERE doctor_id = '{subject_id}'。"
+            f"不要使用 :param 之类的参数占位符。"
+        )
+    return ""
 
 
 def decompose(
@@ -180,10 +222,7 @@ def decompose(
         "idx": 0,
         "db_id": datasource_id,
         "query": question.strip(),
-        "evidence": (
-            _patient_binding(subject_id)
-            if token_type == "patient" and subject_id else ""
-        ),
+        "evidence": _binding_hint(token_type, subject_id),
         "desc_str": desc_str,
         "fk_str": fk_str,
         "difficulty": "",
@@ -198,6 +237,9 @@ def decompose(
 
     raw = msg.get("qa_pairs") or ""
     tasks = parse_qa_pairs(raw)
+    if not tasks:
+        # 先规整再试一次——模型书写习惯的差异不该让整条查询失败
+        tasks = parse_qa_pairs(_normalize_output(raw))
     if not tasks:
         # 把原文片段带出来——否则"没解析出子问题"这句话无法排查。
         # 实测模型偶尔不按格式作答，没有原文就只能猜。

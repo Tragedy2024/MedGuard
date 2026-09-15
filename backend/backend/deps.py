@@ -20,8 +20,8 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Set
 
 from backend import config
-from backend.labels import (PARSE_FAILED_MESSAGE, SEVERITY_LABELS,
-                            VIOLATION_LABELS)
+from backend.labels import (PARSE_FAILED_LABEL, PARSE_FAILED_MESSAGE,
+                            SEVERITY_LABELS, VIOLATION_LABELS)
 
 
 def _ensure_algo_on_path() -> None:
@@ -76,6 +76,9 @@ class AuditOutcome:
     """产品层中文说明。留空则由路由按等级取默认文案；非默认情形
     （如解析失败）在此给出更准确的措辞，避免复用会误导人的文案。"""
     degradation_message_cn: str = ""
+    """同上的标签覆盖。解析失败**不是策略拒绝**，用 L3 的默认标签
+    「已拒绝」会让用户以为被规则挡住了，从而反复换问法试探。"""
+    degradation_label: str = ""
 
 
 def _restore_final_projection(audited_sql: str, original_sql: str,
@@ -257,6 +260,7 @@ def audit_plan(plan: List[Dict[str, Any]], datasource_id: str) -> AuditOutcome:
             degradation_level="L3",
             degradation_message=f"cannot parse sub-query: {exc}",
             degradation_message_cn=PARSE_FAILED_MESSAGE,
+            degradation_label=PARSE_FAILED_LABEL,
         )
 
     return AuditOutcome(

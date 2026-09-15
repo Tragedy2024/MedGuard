@@ -141,7 +141,10 @@ def _pipeline(plan: list, question: str, token: Token,
                             log=outcome.rewrite_log),
         degradation=DegradationInfo(
             level=outcome.degradation_level,
-            label=DEGRADATION_LABELS.get(outcome.degradation_level, ""),
+            # 算法层给了更准确的标签就用它（如解析失败的「无法处理」），
+            # 否则按等级取默认。两者语义不同，不可混用。
+            label=(outcome.degradation_label
+                   or DEGRADATION_LABELS.get(outcome.degradation_level, "")),
             message=outcome.degradation_message,
             # 算法层给了更准确的中文就用它（如解析失败），否则按等级取默认
             message_cn=(outcome.degradation_message_cn

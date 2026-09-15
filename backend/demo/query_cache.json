@@ -1,72 +1,41 @@
 {
   "version": 1,
   "entries": {
-    "全院各科室的门诊量分别是多少": {
-      "plan": [
-        {
-          "id": 0,
-          "description": "查询所有门诊类型的就诊记录对应的科室。",
-          "sql": "SELECT `department`\nFROM `visits`\nWHERE `visit_type` = '门诊';"
-        },
-        {
-          "id": 1,
-          "description": "按科室统计门诊量。",
-          "sql": "SELECT `department`, COUNT(*) AS `门诊量`\nFROM `visits`\nWHERE `visit_type` = '门诊'\nGROUP BY `department`;"
-        }
-      ],
-      "token_types": [
-        "staff"
-      ],
-      "hits": 4,
-      "created_at": "2026-09-15T16:10:05",
-      "last_used": "2026-09-15T16:21:18",
-      "source": "llm"
-    },
-    "我今天诊断了多少患者": {
-      "plan": [
-        {
-          "id": 0,
-          "description": "Get the visit IDs of visits that occurred today.",
-          "sql": "SELECT `visit_id`\nFROM `visits`\nWHERE `visit_date` = DATE('now')"
-        },
-        {
-          "id": 1,
-          "description": "Count the number of distinct patients who have diagnosis records in today's visits.",
-          "sql": "SELECT COUNT(DISTINCT T1.`patient_id`)\nFROM `clinical_records` AS T1\nINNER JOIN `visits` AS T2\nON T1.`visit_id` = T2.`visit_id`\nWHERE T1.`record_type` = 'diagnosis'\n  AND T2.`visit_date` = DATE('now')"
-        }
-      ],
-      "token_types": [
-        "staff"
-      ],
-      "hits": 0,
-      "created_at": "2026-09-15T16:18:53",
-      "last_used": "2026-09-15T16:18:53",
-      "source": "llm"
-    },
     "我治疗了哪些患者": {
       "plan": [
         {
           "id": 0,
-          "description": "找出“我”对应的医生工号（假设当前医生工号为 `:doctor_id`）。",
-          "sql": "-- 无需额外查询，直接使用当前医生工号 :doctor_id"
-        },
-        {
-          "id": 1,
-          "description": "找出该医生治疗过的所有患者编号。",
-          "sql": "SELECT DISTINCT T1.`patient_id`\n  FROM visits AS T1\n  WHERE T1.`doctor_id` = :doctor_id"
-        },
-        {
-          "id": 2,
-          "description": "获取这些患者的姓名。",
-          "sql": "SELECT DISTINCT T2.`name`\n  FROM visits AS T1\n  INNER JOIN patients AS T2\n  ON T1.`patient_id` = T2.`patient_id`\n  WHERE T1.`doctor_id` = :doctor_id"
+          "description": "找出医生工号为 `'S001'` 的医生接诊/治疗过的患者编号。",
+          "sql": "SELECT DISTINCT patient_id\nFROM visits\nWHERE doctor_id = 'S001';"
         }
       ],
       "token_types": [
         "staff"
       ],
-      "hits": 13,
-      "created_at": "2026-09-15T16:21:51",
-      "last_used": "2026-09-15T16:26:40",
+      "hits": 2,
+      "created_at": "2026-09-15T16:33:43",
+      "last_used": "2026-09-15T16:33:43",
+      "source": "llm"
+    },
+    "我上次的血糖是多少": {
+      "plan": [
+        {
+          "id": 0,
+          "description": "Get all blood glucose test records for patient P001 with their visit dates.",
+          "sql": "SELECT T2.`result_value`, T1.`visit_date`\nFROM `clinical_records` AS T2\nINNER JOIN `visits` AS T1\n  ON T2.`visit_id` = T1.`visit_id`\nWHERE T2.`patient_id` = 'P001'\n  AND T2.`test_name` = '血糖';"
+        },
+        {
+          "id": 1,
+          "description": "Return the blood glucose result from the most recent visit.",
+          "sql": "SELECT T2.`result_value`\nFROM `clinical_records` AS T2\nINNER JOIN `visits` AS T1\n  ON T2.`visit_id` = T1.`visit_id`\nWHERE T2.`patient_id` = 'P001'\n  AND T2.`test_name` = '血糖'\nORDER BY T1.`visit_date` DESC\nLIMIT 1;"
+        }
+      ],
+      "token_types": [
+        "patient"
+      ],
+      "hits": 0,
+      "created_at": "2026-09-15T16:34:00",
+      "last_used": "2026-09-15T16:34:00",
       "source": "llm"
     }
   }

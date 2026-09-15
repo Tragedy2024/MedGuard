@@ -225,6 +225,50 @@ def test_direct_accepts_plan_with_literal_binding(
     assert body["admission"]["bound_to_subject"] is True
 
 
+def test_binding_hint_gives_identity_for_both_token_types():
+    """身份约束必须带上主体编号——否则模型写不出「我」是谁。
+
+    实测两次踩同一个坑：
+      - 病患：模型写 patient_id = :patient_id，层一拒（兜底生效）
+      - 医护：模型写 doctor_id = :doctor_id，SQL 解析不了，整条查询失败
+    根因相同：系统没告诉模型「我是谁」。
+    """
+    from backend.llm_nl2sql import _binding_hint
+
+    p = _binding_hint("patient", "P001")
+    assert "P001" in p and "patient_id" in p
+
+    s = _binding_hint("staff", "S001")
+    assert "S001" in s and "doctor_id" in s
+
+    assert _binding_hint("staff", "") == ""
+    assert _binding_hint("patient", "") == ""
+    assert _binding_hint("admin", "X") == ""
+
+
+def test_staff_identity_reaches_decompose(client, isolated_cache, monkeypatch):
+    """医护令牌的工号要一路传到 decompose，不能在中途丢掉。"""
+    from backend import llm_nl2sql
+    seen = {}
+
+    def fake(question, datasource_id, token_type="staff", subject_id=""):
+        seen["token_type"] = token_type
+        seen["subject_id"] = subject_id
+        return [{"id": 0, "description": "计数",
+                 "sql": "SELECT COUNT(DISTINCT patient_id) FROM visits "
+                        "WHERE doctor_id = 'S001'"}]
+
+    monkeypatch.setattr(llm_nl2sql, "llm_available", lambda: True)
+    monkeypatch.setattr(llm_nl2sql, "decompose", fake)
+
+    r = client.post("/api/query/direct", json={
+        "token": {"type": "staff", "subject_id": "S001"},
+        "datasource_id": "regional_health", "question": "我治疗了多少患者"})
+    assert r.status_code == 200
+    assert seen == {"token_type": "staff", "subject_id": "S001"}
+    assert r.json()["admission"]["passed"] is True
+
+
 def test_unparseable_plan_degrades_to_L3_not_500(
         client, isolated_cache, monkeypatch):
     """模型偶尔生成解析不了的"SQL"——实测出现过只有一行注释的。

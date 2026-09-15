@@ -28,6 +28,15 @@ export interface DemoAccount {
   role: UserRole
   displayName: string
   scope: string
+  /**
+   * 令牌绑定的主体。
+   *
+   * - 病患：患者编号（P001）——层一据此校验"只能查本人"
+   * - 医护：医生工号（S001）——让「我的患者」这类第一人称问法能解析出
+   *   "我"是谁；层一不管医护令牌（由医院 RLS 负责，本项目不实现）
+   * - 管理员：不绑定，只做平台管理
+   */
+  subjectId: string | null
 }
 
 /** 演示环境统一密码。登录页会把这三个账号明示出来，不藏着。 */
@@ -40,13 +49,17 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
     role: 'admin',
     displayName: '信息科管理员',
     scope: '全院数据与安全策略',
+    subjectId: null,
   },
   {
+    // 显示名与工号对齐演示库里的真实行（staff.S001 = 医生001 / 心内科），
+    // 否则「我的患者」查出来的数字与登录身份对不上。
     account: 'doctor',
     password: DEMO_PASSWORD,
     role: 'staff',
-    displayName: '张医生 · 心内科',
+    displayName: '医生001 · 心内科',
     scope: '所辖患者群体',
+    subjectId: 'S001',
   },
   {
     account: 'patient',
@@ -54,6 +67,7 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
     role: 'patient',
     displayName: '患者001',
     scope: '本人病历',
+    subjectId: 'P001',
   },
 ]
 
@@ -66,7 +80,6 @@ export interface Session {
 }
 
 function toSession(a: DemoAccount): Session {
-  const isPatient = a.role === 'patient'
   return {
     account: a.account,
     role: a.role,
@@ -74,10 +87,10 @@ function toSession(a: DemoAccount): Session {
     scope: a.scope,
     // 管理员的查询以医护令牌发起——后端 Token.type 只有 staff/patient
     // 两类（设计文档 §1.2）。管理员的「管理」能力体现在页面准入上，
-    // 不体现在数据权限上。
+    // 不体现在数据权限上，故不绑定工号。
     token: {
-      type: isPatient ? 'patient' : 'staff',
-      subject_id: isPatient ? 'P001' : null,
+      type: a.role === 'patient' ? 'patient' : 'staff',
+      subject_id: a.subjectId,
     },
   }
 }
