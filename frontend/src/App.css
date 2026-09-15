@@ -1857,6 +1857,32 @@ a {
   color: var(--on-brand-dim);
 }
 
+/* 指标条的限定词。必须显式标出「这是审计阶段的数字」——原来三个数字
+   独立摆放时，「数据库访问 0」会被读成整个查询没碰数据库。 */
+.metrics-scope {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  color: var(--on-brand);
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 2px;
+  padding: 3px 9px;
+  white-space: nowrap;
+}
+
+/* 指标条下方的说明。与指标条贴近成一组，故用负外边距抵消容器的 gap。 */
+.metrics-caveat {
+  margin-top: -8px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+
+.metrics-caveat strong {
+  color: var(--ink-soft);
+}
+
 /* ═══════════════════════════════════════════════════════════════════
    模块④ 安全事件报告
    ═══════════════════════════════════════════════════════════════════ */

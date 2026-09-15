@@ -171,9 +171,14 @@ function Console() {
             本次查询的安全审计明细已记入<strong>安全报告</strong>，可随时回看。
           </p>
 
+          {/* 指标只统计**审计**那一段。限定词必须显式写出来：原来三个
+              数字独立摆放（「数据库访问 0」），容易被读成「整个查询没碰
+              数据库」——而查询当然访问了主库，不然结果从哪来。对一款以
+              可验证声明为卖点的产品，这种含糊不能留。 */}
           <div className="metrics-bar">
+            <span className="metrics-scope">审计阶段</span>
             <span>
-              审计耗时 <strong>{data.metrics.elapsed_ms} ms</strong>
+              耗时 <strong>{data.metrics.elapsed_ms} ms</strong>
             </span>
             <span>
               LLM 调用 <strong>{data.metrics.llm_calls}</strong>
@@ -181,7 +186,7 @@ function Console() {
             <span>
               数据库访问 <strong>{data.metrics.db_access}</strong>
             </span>
-            <span className="metrics-note">审计阶段零模型调用、零数据库访问</span>
+            <span className="metrics-note">纯静态分析，不调模型、不碰数据库</span>
           </div>
         </>
       )}

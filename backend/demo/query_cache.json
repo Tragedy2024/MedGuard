@@ -17,9 +17,56 @@
       "token_types": [
         "staff"
       ],
-      "hits": 3,
+      "hits": 4,
       "created_at": "2026-09-15T16:10:05",
-      "last_used": "2026-09-15T16:16:31",
+      "last_used": "2026-09-15T16:21:18",
+      "source": "llm"
+    },
+    "我今天诊断了多少患者": {
+      "plan": [
+        {
+          "id": 0,
+          "description": "Get the visit IDs of visits that occurred today.",
+          "sql": "SELECT `visit_id`\nFROM `visits`\nWHERE `visit_date` = DATE('now')"
+        },
+        {
+          "id": 1,
+          "description": "Count the number of distinct patients who have diagnosis records in today's visits.",
+          "sql": "SELECT COUNT(DISTINCT T1.`patient_id`)\nFROM `clinical_records` AS T1\nINNER JOIN `visits` AS T2\nON T1.`visit_id` = T2.`visit_id`\nWHERE T1.`record_type` = 'diagnosis'\n  AND T2.`visit_date` = DATE('now')"
+        }
+      ],
+      "token_types": [
+        "staff"
+      ],
+      "hits": 0,
+      "created_at": "2026-09-15T16:18:53",
+      "last_used": "2026-09-15T16:18:53",
+      "source": "llm"
+    },
+    "我治疗了哪些患者": {
+      "plan": [
+        {
+          "id": 0,
+          "description": "找出“我”对应的医生工号（假设当前医生工号为 `:doctor_id`）。",
+          "sql": "-- 无需额外查询，直接使用当前医生工号 :doctor_id"
+        },
+        {
+          "id": 1,
+          "description": "找出该医生治疗过的所有患者编号。",
+          "sql": "SELECT DISTINCT T1.`patient_id`\n  FROM visits AS T1\n  WHERE T1.`doctor_id` = :doctor_id"
+        },
+        {
+          "id": 2,
+          "description": "获取这些患者的姓名。",
+          "sql": "SELECT DISTINCT T2.`name`\n  FROM visits AS T1\n  INNER JOIN patients AS T2\n  ON T1.`patient_id` = T2.`patient_id`\n  WHERE T1.`doctor_id` = :doctor_id"
+        }
+      ],
+      "token_types": [
+        "staff"
+      ],
+      "hits": 8,
+      "created_at": "2026-09-15T16:21:51",
+      "last_used": "2026-09-15T16:22:04",
       "source": "llm"
     }
   }

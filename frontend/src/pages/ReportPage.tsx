@@ -119,57 +119,67 @@ function ReportBody({ detail }: { detail: ReportDetail }) {
         <DegradationBadge degradation={d.degradation} />
       </div>
 
-      <AdmissionPanel admission={d.admission} />
-
       {denied ? (
-        <div className="deny-note">
-          查询在执行前被拒绝——未访问数据库，未产生结果集。
-        </div>
+        <>
+          {/* 被拒绝时，拒答文案本身就是答案 */}
+          <AdmissionPanel admission={d.admission} />
+          <div className="deny-note">
+            查询在执行前被拒绝——未访问数据库，未产生结果集。
+          </div>
+        </>
       ) : (
-        <div className="panels">
-          <section className="panel">
-            <h4>分解方案</h4>
-            <PlanPanel plan={d.plan} events={d.events} />
-          </section>
+        <>
+          {/* 答案优先：与控制台同一套信息层级 */}
+          {d.result && (
+            <section className="panel panel-result">
+              <h4>查询结果</h4>
+              <ResultTable result={d.result} />
+            </section>
+          )}
 
-          <section className="panel">
-            <h4>
-              安全事件 <span className="count">{d.events.length}</span>
-            </h4>
-            {d.events.length === 0 ? (
-              <p className="hint">未发现中间结果暴露。</p>
-            ) : (
-              d.events.map((e, i) => <EventCard key={i} event={e} />)
-            )}
+          {d.degradation.message_cn && (
+            <div className="degradation-message">{d.degradation.message_cn}</div>
+          )}
 
-            {d.rewrite.applied > 0 && (
-              <details className="tech-detail tech-detail-block">
-                <summary>技术详情 · 改写日志（{d.rewrite.applied} 处）</summary>
-                <ul className="rewrite-log">
-                  {d.rewrite.log.map((line, i) => (
-                    <li key={i}>{line}</li>
-                  ))}
-                </ul>
-              </details>
-            )}
-          </section>
-        </div>
-      )}
+          <h4 className="section-label">安全说明</h4>
 
-      {!denied && d.degradation.message_cn && (
-        <div className="degradation-message">{d.degradation.message_cn}</div>
-      )}
+          <AdmissionPanel admission={d.admission} />
 
-      {d.result && (
-        <section className="panel">
-          <h4>查询结果</h4>
-          <ResultTable result={d.result} />
-        </section>
+          <div className="panels">
+            <section className="panel">
+              <h4>分解方案</h4>
+              <PlanPanel plan={d.plan} events={d.events} />
+            </section>
+
+            <section className="panel">
+              <h4>
+                安全事件 <span className="count">{d.events.length}</span>
+              </h4>
+              {d.events.length === 0 ? (
+                <p className="hint">未发现中间结果暴露。</p>
+              ) : (
+                d.events.map((e, i) => <EventCard key={i} event={e} />)
+              )}
+
+              {d.rewrite.applied > 0 && (
+                <details className="tech-detail tech-detail-block">
+                  <summary>技术详情 · 改写日志（{d.rewrite.applied} 处）</summary>
+                  <ul className="rewrite-log">
+                    {d.rewrite.log.map((line, i) => (
+                      <li key={i}>{line}</li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </section>
+          </div>
+        </>
       )}
 
       <div className="metrics-bar">
+        <span className="metrics-scope">审计阶段</span>
         <span>
-          审计耗时 <strong>{d.metrics.elapsed_ms} ms</strong>
+          耗时 <strong>{d.metrics.elapsed_ms} ms</strong>
         </span>
         <span>
           LLM 调用 <strong>{d.metrics.llm_calls}</strong>
@@ -178,9 +188,14 @@ function ReportBody({ detail }: { detail: ReportDetail }) {
           数据库访问 <strong>{d.metrics.db_access}</strong>
         </span>
         <a className="metrics-export" href={exportReportUrl(detail.id)} download>
-          导出这次查询的完整记录
+          导出完整记录
         </a>
       </div>
+      <p className="metrics-caveat">
+        以上三项只统计<strong>安全审计</strong>那一段：医盾是纯静态分析，
+        不调模型、不碰数据库。查询本身仍需访问主库取数——那是执行环节，
+        不计入本指标。
+      </p>
     </>
   )
 }
