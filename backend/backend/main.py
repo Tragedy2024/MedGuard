@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.routers import datasources, policies, query, reports
+from backend.schemas import HealthInfo
 
 
 def _bootstrap_demo_data() -> None:
@@ -60,7 +61,7 @@ app.include_router(query.router)
 app.include_router(reports.router)
 
 
-@app.get("/api/health")
+@app.get("/api/health", response_model=HealthInfo)
 def health():
     """健康检查：算法层可用性 + 各路由挂载状态。"""
     from backend.deps import algo_available, list_policy_ids

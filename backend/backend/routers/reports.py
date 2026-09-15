@@ -11,6 +11,7 @@ from fastapi.responses import Response
 
 from backend import config
 from backend.db import get_report, list_reports
+from backend.schemas import DetectionMetrics, ReportDetail, ReportSummary
 
 router = APIRouter(prefix="/api", tags=["reports"])
 
@@ -23,19 +24,19 @@ _DETECTION = {
 }
 
 
-@router.get("/metrics/detection")
+@router.get("/metrics/detection", response_model=DetectionMetrics)
 def detection_metrics():
     return _DETECTION
 
 
-@router.get("/reports")
+@router.get("/reports", response_model=list[ReportSummary])
 def reports(limit: int = 20):
     if not os.path.exists(config.METADATA_DB):
         return []
     return list_reports(config.METADATA_DB, limit)
 
 
-@router.get("/reports/{report_id}")
+@router.get("/reports/{report_id}", response_model=ReportDetail)
 def report_detail(report_id: int):
     if not os.path.exists(config.METADATA_DB):
         raise HTTPException(status_code=404, detail="报告不存在")

@@ -13,6 +13,8 @@ from pydantic import BaseModel, Field
 
 from backend import config
 from backend.deps import list_policy_ids, load_policy
+from backend.schemas import (Policy, PolicyList, PolicyUpdateResult,
+                             PolicyValidation)
 
 router = APIRouter(prefix="/api/policies", tags=["policies"])
 
@@ -61,13 +63,13 @@ def _review_status(labels: Dict[str, Dict[str, str]]) -> Dict[str, Dict[str, str
         con.close()
 
 
-@router.get("")
+@router.get("", response_model=PolicyList)
 def list_policies():
     """所有已定案策略的 id 列表（供数据源页展示）。"""
     return {"datasource_ids": list_policy_ids()}
 
 
-@router.get("/{datasource_id}")
+@router.get("/{datasource_id}", response_model=Policy)
 def get_policy(datasource_id: str):
     data = _read_policy_yaml(datasource_id)
 
@@ -81,7 +83,7 @@ def get_policy(datasource_id: str):
     }
 
 
-@router.put("/{datasource_id}")
+@router.put("/{datasource_id}", response_model=PolicyUpdateResult)
 def update_policy(datasource_id: str, body: PolicyUpdate):
     """更新策略。只改 YAML 中明确提交的键，其余保留。"""
     data = _read_policy_yaml(datasource_id)
@@ -98,7 +100,7 @@ def update_policy(datasource_id: str, body: PolicyUpdate):
     return {"saved": True, "datasource_id": datasource_id}
 
 
-@router.get("/{datasource_id}/validate")
+@router.get("/{datasource_id}/validate", response_model=PolicyValidation)
 def validate_policy(datasource_id: str):
     """校验策略可被算法层正确加载（健康检查/接入新数据源时用）。"""
     try:

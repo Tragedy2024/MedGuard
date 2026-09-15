@@ -9,7 +9,8 @@ import sqlite3
 from fastapi import APIRouter, HTTPException
 
 from backend import config
-from backend.schemas import DatasourceInfo
+from backend.schemas import (DatasourceInfo, DatasourceSchema,
+                             DemoDatasourceResult)
 
 router = APIRouter(prefix="/api/datasources", tags=["datasources"])
 
@@ -53,7 +54,7 @@ def list_datasources():
     return _discover_datasources()
 
 
-@router.post("/demo")
+@router.post("/demo", response_model=DemoDatasourceResult)
 def create_demo():
     """一键载入演示数据（建 5 表 + 灌虚构数据 + 初始化平台元数据库）。"""
     from demo.seed import build_database
@@ -64,7 +65,7 @@ def create_demo():
     return {"id": config.DEMO_DATASOURCE_ID, "created": True}
 
 
-@router.get("/{datasource_id}/schema")
+@router.get("/{datasource_id}/schema", response_model=DatasourceSchema)
 def get_schema(datasource_id: str):
     if datasource_id != config.DEMO_DATASOURCE_ID:
         raise HTTPException(status_code=404, detail="数据源不存在")
