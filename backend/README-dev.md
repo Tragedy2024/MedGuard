@@ -21,7 +21,7 @@ curl http://localhost:8000/api/datasources          # 应返回 regional_health
 curl http://localhost:8000/api/metrics/detection    # 检测效能（论文实测数字）
 ```
 
-跑测试：`python -m pytest tests/ -v`（85 项，含演示数据校验）。
+跑测试：`python -m pytest tests/ -v`（123 项，含演示数据校验）。
 
 ## 给前端同学的对接材料
 
@@ -74,7 +74,7 @@ python -c "from demo.seed import build_database; from backend import config; imp
 python -m pytest tests/ -v
 ```
 
-85 项测试覆盖：层一准入（纯函数）、演示库 seed 锚点、SSA 策略完整性
+123 项测试覆盖：层一准入（纯函数）、演示库 seed 锚点、SSA 策略完整性
 （防 fail-open 缺口）、算法层适配（含最终答案 AVG 误伤还原）、
 四个路由契约、**演示数据校验**（9 条预设查询全部按预期触发——阻塞性）。
 
@@ -95,7 +95,7 @@ MedGuard/
 │   ├── seed.py             # 建 5 表 + 一眼假数据（random.Random(42)）
 │   ├── ssa/regional_health.yaml  # 手写策略（含跨域规则）
 │   └── queries.json        # 预设查询库（医护 4 + 病患 5）
-├── tests/                  # 85 项
+├── tests/                  # 123 项
 ├── scripts/                # 启动脚本
 └── data/                   # 运行时生成（gitignore）
 ```
