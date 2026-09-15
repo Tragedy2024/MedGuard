@@ -1770,6 +1770,25 @@ a {
   margin-top: 18px;
 }
 
+/* 查询结果面板：答案优先，做成页面的视觉重心——白底 + 品牌描边，
+   与下方"安全说明"的浅底面板明确区分。 */
+.panel-result {
+  background: var(--paper-raised);
+  border-color: var(--brand-rule);
+}
+
+/* 「安全说明」分节标记：把「答案」与「为什么是这个答案」在视觉上切开 */
+.section-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  padding-bottom: 9px;
+  border-bottom: 1px solid var(--rule-strong);
+}
+
 .count {
   font-family: var(--font-mono);
   background: var(--layer2-bg);

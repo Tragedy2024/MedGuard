@@ -94,66 +94,74 @@ function Console() {
             <DegradationBadge degradation={data.degradation} />
           </div>
 
-          <AdmissionPanel admission={data.admission} />
-
           {denied ? (
-            <div className="deny-note">
-              查询在执行前被拒绝——未访问数据库，未产生结果集。
-            </div>
+            <>
+              {/* 被拒绝时，拒答文案本身就是答案 */}
+              <AdmissionPanel admission={data.admission} />
+              <div className="deny-note">
+                查询在执行前被拒绝——未访问数据库，未产生结果集。
+              </div>
+            </>
           ) : (
-            <div className="panels">
-              <section className="panel">
-                <h4>分解方案</h4>
-                <PlanPanel plan={data.plan} events={data.events} />
-              </section>
+            <>
+              {/* 答案优先：用户来是要结果的，安全过程是"为什么是这个结果" */}
+              {data.result && (
+                <section className="panel panel-result">
+                  <h4>查询结果</h4>
+                  <ResultTable result={data.result} />
+                </section>
+              )}
 
-              <section className="panel">
-                <h4>
-                  安全事件 <span className="count">{data.events.length}</span>
-                </h4>
-                {data.events.length === 0 ? (
-                  <p className="hint">未发现中间结果暴露。</p>
-                ) : (
-                  data.events.map((e, i) => <EventCard key={i} event={e} />)
-                )}
+              {data.degradation.message_cn && (
+                <div className="degradation-message">
+                  {data.degradation.message_cn}
+                  {data.degradation.message &&
+                    data.degradation.message !== data.degradation.message_cn && (
+                      <details className="tech-detail">
+                        <summary>技术详情</summary>
+                        <pre>{data.degradation.message}</pre>
+                      </details>
+                    )}
+                </div>
+              )}
 
-                {/* 改写日志是算法层原文（英文 + 物理列名），对医护与病患
-                    只是噪音；改动内容已由上方事件卡与左栏方案用中文表达。
-                    故整段折叠进「技术详情」，技术观众仍可核对。 */}
-                {data.rewrite.applied > 0 && (
-                  <details className="tech-detail tech-detail-block">
-                    <summary>技术详情 · 改写日志（{data.rewrite.applied} 处）</summary>
-                    <ul className="rewrite-log">
-                      {data.rewrite.log.map((line, i) => (
-                        <li key={i}>{line}</li>
-                      ))}
-                    </ul>
-                  </details>
-                )}
-              </section>
-            </div>
-          )}
+              {/* 其后才是安全说明：准入判定 + 审计过程 */}
+              <h4 className="section-label">安全说明</h4>
 
-          {/* 层一拒绝时准入面板已经给出拒答文案（L3 的 message_cn 就是它），
-              再重复一遍只是噪音。 */}
-          {!denied && data.degradation.message_cn && (
-            <div className="degradation-message">
-              {data.degradation.message_cn}
-              {data.degradation.message &&
-                data.degradation.message !== data.degradation.message_cn && (
-                  <details className="tech-detail">
-                    <summary>技术详情</summary>
-                    <pre>{data.degradation.message}</pre>
-                  </details>
-                )}
-            </div>
-          )}
+              <AdmissionPanel admission={data.admission} />
 
-          {data.result && (
-            <section className="panel">
-              <h4>查询结果</h4>
-              <ResultTable result={data.result} />
-            </section>
+              <div className="panels">
+                <section className="panel">
+                  <h4>分解方案</h4>
+                  <PlanPanel plan={data.plan} events={data.events} />
+                </section>
+
+                <section className="panel">
+                  <h4>
+                    安全事件 <span className="count">{data.events.length}</span>
+                  </h4>
+                  {data.events.length === 0 ? (
+                    <p className="hint">未发现中间结果暴露。</p>
+                  ) : (
+                    data.events.map((e, i) => <EventCard key={i} event={e} />)
+                  )}
+
+                  {/* 改写日志是算法层原文（英文 + 物理列名），对医护与病患
+                      只是噪音；改动内容已由上方事件卡与左栏方案用中文表达。
+                      故整段折叠进「技术详情」，技术观众仍可核对。 */}
+                  {data.rewrite.applied > 0 && (
+                    <details className="tech-detail tech-detail-block">
+                      <summary>技术详情 · 改写日志（{data.rewrite.applied} 处）</summary>
+                      <ul className="rewrite-log">
+                        {data.rewrite.log.map((line, i) => (
+                          <li key={i}>{line}</li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+                </section>
+              </div>
+            </>
           )}
 
           <div className="metrics-bar">
