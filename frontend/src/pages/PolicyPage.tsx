@@ -109,6 +109,7 @@ export function PolicyPage() {
             )}
             <span className="schema-count">{Object.keys(cols).length} 列</span>
           </summary>
+          <div className="table-scroll">
           <table className="policy-table">
             <thead>
               <tr>
@@ -150,6 +151,7 @@ export function PolicyPage() {
               ))}
             </tbody>
           </table>
+          </div>
         </details>
       ))}
 

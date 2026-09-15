@@ -80,9 +80,26 @@ function Shell() {
           />
           <Route path="/console" element={<ConsolePage />} />
           <Route path="/reports" element={<ReportPage />} />
-          <Route path="*" element={<Forbidden />} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
+    </div>
+  )
+}
+
+/** 未知地址。
+ *
+ * 与「无权访问」是两回事：那个是权限问题（页面存在但你进不去），
+ * 这个是地址本身不存在。混为一谈会让用户以为是权限被收走了，
+ * 然后去找管理员——排查方向完全是错的。
+ */
+function NotFound() {
+  return (
+    <div className="page">
+      <h2>页面不存在</h2>
+      <p className="hint">
+        地址可能有误，或该页面已被移除。请从上方导航选择要前往的模块。
+      </p>
     </div>
   )
 }

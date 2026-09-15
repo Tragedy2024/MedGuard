@@ -77,6 +77,8 @@ const SHOTS = [
   },
 
   { name: '07-reports', path: '/reports', as: 'admin' },
+  // 未知地址应是「页面不存在」，而不是误报成权限问题
+  { name: '08-not-found', path: '/no-such-page', as: 'admin' },
 ]
 
 async function signIn(page, account) {

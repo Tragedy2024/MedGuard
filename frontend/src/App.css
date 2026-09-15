@@ -306,6 +306,26 @@ a {
   color: var(--brand-deep);
   padding-bottom: 12px;
   border-bottom: 2px solid var(--brand-rule);
+  text-wrap: balance;
+}
+
+/* 段落避免末行孤字。标题用 balance，正文用 pretty——后者只修最后一行，
+   不重排整段，长文本更稳。 */
+.hint,
+.admission-refusal,
+.deny-note,
+.degradation-message,
+.domain-note {
+  text-wrap: pretty;
+}
+
+/* 数据表窄屏改为横向滚动，而不是撑破页面 */
+.table-scroll {
+  overflow-x: auto;
+}
+
+.table-scroll > table {
+  min-width: 620px;
 }
 
 .page > h3 {
@@ -335,7 +355,6 @@ a {
 .card {
   background: var(--paper-raised);
   border: 1px solid var(--line);
-  border-left: 3px solid var(--brand-rule);
   border-radius: 3px;
   padding: 18px 20px;
 }
@@ -548,7 +567,6 @@ a {
 .schema-table {
   background: var(--paper-raised);
   border: 1px solid var(--line);
-  border-left: 3px solid var(--brand-rule);
   border-radius: 3px;
 }
 
@@ -649,8 +667,7 @@ a {
   flex-direction: column;
   gap: 4px;
   background: var(--layer2-bg);
-  border: 1px solid var(--layer2-rule);
-  border-left: 3px solid var(--layer2);
+  border: 1px solid var(--layer2);
   border-radius: 3px;
   color: var(--layer2);
   padding: 12px 16px;
@@ -1229,7 +1246,6 @@ a {
 .admission-deny {
   background: var(--layer1-bg);
   border-color: var(--layer1-rule);
-  border-left-width: 3px;
 }
 
 .admission-head {
@@ -1285,21 +1301,14 @@ a {
 
 /* ── 安全事件卡 ──────────────────────────────────────────────── */
 
+/* 严重度由 .event-sev 徽章承载色彩，卡片本身不再用单边色条——
+   那是"AI 生成界面最易辨认的特征"（impeccable 检测器）。 */
 .event-card {
   background: var(--paper-raised);
   border: 1px solid var(--line);
-  border-left: 3px solid var(--layer2);
   border-radius: 3px;
   padding: 12px 15px;
   margin-bottom: 10px;
-}
-
-.event-card.sev-must_degrade {
-  border-left-color: var(--layer1);
-}
-
-.event-card.sev-rewritable {
-  border-left-color: var(--layer2);
 }
 
 .event-head {
@@ -1556,8 +1565,12 @@ a {
   margin-bottom: 10px;
 }
 
-.plan-item.has-violation {
-  border-left: 3px solid var(--layer2);
+/* 有违规时抬高头部序号块的颜色与字重来示意，"N 项违规"已明确计数，
+   不需要再加一条侧边色条。 */
+.plan-item.has-violation .plan-id {
+  background: var(--layer2-bg);
+  color: var(--layer2);
+  font-weight: 500;
 }
 
 .plan-head {
@@ -1847,7 +1860,6 @@ a {
 .metric {
   background: var(--paper-raised);
   border: 1px solid var(--line);
-  border-left: 3px solid var(--brand-rule);
   border-radius: 3px;
   padding: 18px 16px;
   text-align: center;

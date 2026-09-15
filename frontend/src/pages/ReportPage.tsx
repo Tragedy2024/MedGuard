@@ -63,6 +63,7 @@ export function ReportPage() {
         {reports.length === 0 ? (
           <p className="hint">暂无记录。到查询控制台提一次问试试。</p>
         ) : (
+          <div className="table-scroll">
           <table className="report-table">
             <thead>
               <tr>
@@ -100,6 +101,7 @@ export function ReportPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </section>
     </div>
