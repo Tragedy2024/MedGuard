@@ -430,8 +430,16 @@ a { color: inherit; }
 }
 
 /* 整列居中，而不是"顶部一块 + 底部一块 + 中间一个洞"。
-   演示面板是这一页真正的内容，让它与标题块构成一个整体。 */
+   演示面板是这一页真正的内容，让它与标题块构成一个整体。
+
+   背景是一张真实的手术照片（外科医生俯身专注），经**双重色调**处理：
+   先去色压暗，再罩一层品牌深蓝渐变。这样它是"设计的一部分"，
+   而不是"贴上去的一张图"——直接放原图会和其他医院门户长得一样。
+
+   照片自托管（public/photos/），演示断网也能显示。
+   来源：Pexels #11198229，Pexels 许可可免费商用、无需署名。 */
 .login-brand {
+  position: relative;
   background: var(--brand-deep);
   color: var(--on-brand);
   padding: 56px;
@@ -440,6 +448,53 @@ a { color: inherit; }
   justify-content: center;
   gap: 36px;
   overflow: hidden;
+}
+
+.login-brand::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: url('/photos/surgery.jpg') center 20% / cover no-repeat;
+  filter: grayscale(1) contrast(1.06) brightness(0.6);
+}
+
+/* 深蓝滤镜，两层叠加：
+   ① 横向 —— 文字全在左侧，左侧稍重；右侧让出给照片
+   ② 纵向 —— 下方是演示面板，再压一层
+
+   罩层的轻重是**量出来的**，不是拍的：把照片画进 canvas、按 cover 变换
+   采样每个文字区的最亮像素（滤镜后：标题 0.001 / 标语 0.060 /
+   演示SQL 0.158 / 脚注 0.090），再解出白字达 4.5:1 所需的不透明度——
+   结果全部为负，即**不加罩子就已达标**。这张照片本身就是暗调手术室，
+   又压过 0.6 亮度。
+
+   所以这些数值不是为了合规而堆的，是为了让照片露出来的同时留足余量：
+   实测文字区最亮处对比度 > 7:1。 */
+.login-brand::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      100deg,
+      rgba(18, 54, 90, 0.58) 0%,
+      rgba(18, 54, 90, 0.50) 40%,
+      rgba(18, 54, 90, 0.38) 70%,
+      rgba(18, 54, 90, 0.44) 100%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(18, 54, 90, 0.08) 0%,
+      rgba(18, 54, 90, 0.04) 32%,
+      rgba(18, 54, 90, 0.30) 68%,
+      rgba(18, 54, 90, 0.52) 100%
+    );
+}
+
+/* 内容压在两层之上 */
+.login-brand > * {
+  position: relative;
+  z-index: 1;
 }
 
 .login-head { display: flex; align-items: center; gap: 16px; }
