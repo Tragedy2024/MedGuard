@@ -1739,3 +1739,111 @@ a {
   font-size: 11.5px;
   color: var(--on-brand-dim);
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   模块④ 安全事件报告
+   ═══════════════════════════════════════════════════════════════════ */
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+@media (max-width: 720px) {
+  .metrics-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 指标数字用品牌蓝而非语义绿——检测效能不是「安全等级」，
+   绿色专表 L0 通过，挪用会稀释那套语义。 */
+.metric {
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--brand-rule);
+  border-radius: 3px;
+  padding: 18px 16px;
+  text-align: center;
+}
+
+.metric-value {
+  font-family: var(--font-mono);
+  font-size: 32px;
+  font-weight: 500;
+  line-height: 1.1;
+  color: var(--brand-deep);
+  font-feature-settings: 'tnum' 1;
+}
+
+.metric-name {
+  font-size: 13px;
+  color: var(--ink-soft);
+  margin: 6px 0 8px;
+}
+
+.metric-detail {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+/* ── 历史记录表 ──────────────────────────────────────────────── */
+
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+
+.report-table th,
+.report-table td {
+  text-align: left;
+  padding: 10px 13px;
+  border-bottom: 1px solid var(--rule-soft);
+  vertical-align: middle;
+}
+
+.report-table th {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  border-bottom: 1px solid var(--line);
+}
+
+.report-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.report-table tbody tr:hover {
+  background: var(--brand-bg);
+}
+
+.report-time {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.report-count {
+  font-family: var(--font-mono);
+  color: var(--ink-soft);
+}
+
+.report-export {
+  font-size: 12.5px;
+  color: var(--brand);
+  text-decoration: none;
+  border-bottom: 1px solid var(--brand-rule);
+  padding-bottom: 1px;
+  transition: border-color 0.15s var(--ease);
+}
+
+.report-export:hover {
+  border-bottom-color: var(--brand);
+}
