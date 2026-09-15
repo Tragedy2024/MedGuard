@@ -101,8 +101,6 @@ curl http://localhost:8000/api/health          # {"status":"ok","algo_engine":"a
 curl http://localhost:8000/api/datasources     # 应返回 regional_health
 ```
 
-接口文档：<http://localhost:8000/docs>
-
 ### 前端
 
 ```bash
