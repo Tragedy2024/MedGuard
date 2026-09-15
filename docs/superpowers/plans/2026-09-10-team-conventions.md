@@ -300,7 +300,7 @@ MedGuard/
 - **算法层只经由 `backend/deps.py` 访问**。其他文件不得直接 `import security_auditor` / `ssa.loader`。这样算法层的耦合点收敛在一处，将来替换或升级只改一个文件。
 - 中文映射集中在 `backend/labels.py`（违规类型、严重度、降级等级）。**不在路由里硬编码中文**。
 - 路由函数不写业务逻辑，只做参数校验 + 调用 + 返回。
-- **策略 YAML 可以加产品层字段**（如 `column_reasons`）。`load_ssa` 只读 `column_labels` 与 `cross_domain_rules`，未知键静默忽略——**加产品层字段是零算法改动的**。但**不能改这两个键的结构**，那会真影响算法。
+- **策略 YAML 可以加产品层字段**（如 `column_reasons`、`table_aliases`、`column_aliases`）。`load_ssa` 只读 `column_labels` 与 `cross_domain_rules`，未知键静默忽略——**加产品层字段是零算法改动的**。但**不能改这两个键的结构**，那会真影响算法。
 
 ### 5.3 前端约定
 
