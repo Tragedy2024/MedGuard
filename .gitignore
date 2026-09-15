@@ -23,6 +23,9 @@ build/
 **/data/*.db
 **/data/*.db-journal
 
+# 视觉核查输出（npm run visual）
+.visual-out/
+
 # IDE
 .idea/
 .vscode/
