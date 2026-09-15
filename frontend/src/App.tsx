@@ -48,6 +48,11 @@ function Shell() {
 
   return (
     <div className="app">
+      {/* 键盘用户按 Tab 的第一站：跳过页眉与导航，直达内容 */}
+      <a className="skip-link" href="#main">
+        跳到主要内容
+      </a>
+
       <header className="app-header">
         <div className="brand">
           <h1>医患信息数据服务云平台</h1>
@@ -64,7 +69,7 @@ function Shell() {
         ))}
       </nav>
 
-      <main className="app-main">
+      <main className="app-main" id="main">
         <Routes>
           {/* 同一个入口，两种视图：管理员看库表结构，临床用户与病患
               看业务化的「可查范围」。 */}

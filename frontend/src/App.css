@@ -35,10 +35,13 @@
   --paper-raised: #ffffff;
   --paper-sunken: #eef2f6;
 
+  /* 灰阶层次：ink(15.6:1) > ink-soft(7.0) > muted(5.8) > ink-faint(4.9)
+     四个层级全部 >=4.5:1 —— 小字也是正文级文本，没有"次要所以可以低对比"
+     这回事。原值 ink-faint 2.89:1 / muted 4.28:1 均不达标。 */
   --ink: #16202b;
-  --muted: #6b7885;          /* 计划书沿用名 */
+  --muted: #57636f;          /* 计划书沿用名 */
   --ink-soft: #4a5763;
-  --ink-faint: #8a95a1;
+  --ink-faint: #626e7b;
 
   --line: #e1e7ed;           /* 计划书沿用名：发丝线 */
   --rule-soft: #edf1f5;
@@ -415,13 +418,29 @@ a {
   animation: rise 0.45s var(--ease) 0.12s both;
 }
 
+/* 减少动效：**去掉位移与入场，保留颜色与透明度反馈**。
+   全局 0.01ms 一刀切会把有用状态反馈一起杀掉——用户要的是不晕，
+   不是要一个点下去没反应的界面。颜色/透明度过渡不引起前庭反应。 */
 @media (prefers-reduced-motion: reduce) {
+  .app-header,
+  .app-nav,
+  .app-main {
+    animation: none;
+  }
+
   *,
   *::before,
   *::after {
+    transition-property: color, background-color, border-color, box-shadow, opacity !important;
+    transition-duration: 0.12s !important;
     animation-duration: 0.01ms !important;
-    animation-delay: 0ms !important;
-    transition-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+
+  .schema-table > summary::before,
+  .app-nav a::after {
+    transition: none !important;
   }
 }
 
@@ -717,6 +736,7 @@ a {
 
 .policy-table select {
   appearance: none;
+  min-height: 28px;   /* WCAG 2.5.8 触摸目标 */
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--ink-soft);
@@ -913,6 +933,64 @@ a {
   outline: none;
   border-color: var(--brand);
   box-shadow: 0 0 0 3px var(--brand-bg);
+}
+
+.field input[aria-invalid='true'] {
+  border-color: var(--layer1);
+}
+
+.field input[aria-invalid='true']:focus {
+  box-shadow: 0 0 0 3px var(--layer1-bg);
+}
+
+/* 行内错误：紧贴出错字段，而不是只在表单顶部给一句笼统提示。
+   配合 aria-describedby 让屏幕阅读器把错误与字段关联起来。 */
+.field-error {
+  font-size: 12px;
+  color: var(--layer1);
+  line-height: 1.5;
+}
+
+/* ── 跳到主要内容（键盘用户）────────────────────────────────── */
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  padding: 10px 18px;
+  background: var(--brand);
+  color: var(--on-brand);
+  font-size: 13px;
+  text-decoration: none;
+  border-radius: 0 0 3px 0;
+}
+
+.skip-link:focus {
+  left: 0;
+}
+
+/* ── 按下反馈 ──────────────────────────────────────────────────
+   让点击有物理感。位移仅 1px，不触发重排。 */
+
+.session-signout:active,
+.empty-state button:active,
+.preset-bar button:active,
+.sticky-actions button:active,
+.login-submit:active,
+.demo-accounts button:active {
+  transform: translateY(1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-signout:active,
+  .empty-state button:active,
+  .preset-bar button:active,
+  .sticky-actions button:active,
+  .login-submit:active,
+  .demo-accounts button:active {
+    transform: none;
+  }
 }
 
 .login-submit {
@@ -1279,9 +1357,16 @@ a {
   margin-top: 9px;
 }
 
+/* 触摸目标：WCAG 2.2 AA（2.5.8）要求 24 CSS px，这是 Web 标准；
+   44px 是 iOS/Android 原生指南，不适用于本站。
+   原来的 17px 连 AA 都不到，而这是"展开核对技术细节"的唯一入口。 */
 .tech-detail > summary {
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 0;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 10.5px;
   letter-spacing: 0.08em;
   color: var(--ink-faint);
   cursor: pointer;

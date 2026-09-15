@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { runQuery } from '../api/query'
 import type { QueryResponse } from '../api/types'
 import { AliasProvider } from '../store/aliases'
@@ -24,7 +24,19 @@ function Console() {
   const { session } = useAuth()
   const [data, setData] = useState<QueryResponse | null>(null)
   const [running, setRunning] = useState(false)
+  const [showBusy, setShowBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // 审计通常只要 1–9ms。立刻显示加载态会闪一下，比不显示更糟——
+  // 只有真正慢下来（>150ms）才给反馈。
+  useEffect(() => {
+    if (!running) {
+      setShowBusy(false)
+      return
+    }
+    const t = setTimeout(() => setShowBusy(true), 150)
+    return () => clearTimeout(t)
+  }, [running])
 
   if (!session) return null
   const { token } = session
@@ -64,8 +76,16 @@ function Console() {
         ))}
       </div>
 
-      {running && <div className="loading">审计中…</div>}
-      {error && <div className="alert-error">{error}</div>}
+      {showBusy && (
+        <div className="loading" role="status" aria-live="polite">
+          审计中…
+        </div>
+      )}
+      {error && (
+        <div className="alert-error" role="alert">
+          {error}
+        </div>
+      )}
 
       {data && (
         <>

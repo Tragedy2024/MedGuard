@@ -1,23 +1,37 @@
 import { useState, type FormEvent } from 'react'
 import { DEMO_ACCOUNTS, DEMO_PASSWORD, useAuth } from '../store/auth'
 
+type FieldErrors = { account?: string; password?: string }
+
 export function LoginPage() {
   const { signIn } = useAuth()
   const [account, setAccount] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [formError, setFormError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
-    const s = signIn(account, password)
-    if (!s) {
-      setError('账号或密码不正确。')
+
+    // 行内校验：空字段的错误贴在该字段下方，而不是只在顶部给一句笼统提示。
+    // 只在提交时校验——每次失焦就弹错会让人没法正常输入。
+    const errs: FieldErrors = {}
+    if (!account.trim()) errs.account = '请输入账号'
+    if (!password) errs.password = '请输入密码'
+    setFieldErrors(errs)
+    if (errs.account || errs.password) return
+
+    if (!signIn(account, password)) {
+      setFormError('账号或密码不正确。')
       return
     }
-    setError(null)
+    setFormError(null)
     // 不在这里 navigate——App 会因 session 出现而自动渲染应用外壳，
     // 避免登录页与主应用同时挂载造成闪烁。
   }
+
+  const clearField = (k: keyof FieldErrors) =>
+    setFieldErrors((f) => ({ ...f, [k]: undefined }))
 
   return (
     <div className="login">
@@ -35,30 +49,60 @@ export function LoginPage() {
         <form className="login-form" onSubmit={submit}>
           <h2>登录</h2>
 
-          <label className="field">
-            <span className="field-label">账号</span>
+          <div className="field">
+            <label className="field-label" htmlFor="login-account">
+              账号
+            </label>
             <input
+              id="login-account"
               type="text"
               value={account}
               autoComplete="username"
               autoFocus
-              onChange={(e) => setAccount(e.target.value)}
+              aria-invalid={fieldErrors.account ? true : undefined}
+              aria-describedby={fieldErrors.account ? 'login-account-error' : undefined}
+              onChange={(e) => {
+                setAccount(e.target.value)
+                clearField('account')
+              }}
               placeholder="请输入账号"
             />
-          </label>
+            {fieldErrors.account && (
+              <p className="field-error" id="login-account-error">
+                {fieldErrors.account}
+              </p>
+            )}
+          </div>
 
-          <label className="field">
-            <span className="field-label">密码</span>
+          <div className="field">
+            <label className="field-label" htmlFor="login-password">
+              密码
+            </label>
             <input
+              id="login-password"
               type="password"
               value={password}
               autoComplete="current-password"
-              onChange={(e) => setPassword(e.target.value)}
+              aria-invalid={fieldErrors.password ? true : undefined}
+              aria-describedby={fieldErrors.password ? 'login-password-error' : undefined}
+              onChange={(e) => {
+                setPassword(e.target.value)
+                clearField('password')
+              }}
               placeholder="请输入密码"
             />
-          </label>
+            {fieldErrors.password && (
+              <p className="field-error" id="login-password-error">
+                {fieldErrors.password}
+              </p>
+            )}
+          </div>
 
-          {error && <div className="alert-error">{error}</div>}
+          {formError && (
+            <div className="alert-error" role="alert">
+              {formError}
+            </div>
+          )}
 
           <button type="submit" className="login-submit">
             登录
@@ -77,7 +121,8 @@ export function LoginPage() {
                   onClick={() => {
                     setAccount(a.account)
                     setPassword(DEMO_PASSWORD)
-                    setError(null)
+                    setFormError(null)
+                    setFieldErrors({})
                   }}
                 >
                   <code>{a.account}</code>
