@@ -24,7 +24,12 @@ build/
 **/data/*.db-journal
 
 # 视觉核查输出（npm run visual）
+# 两个都写：v2 开发期用的是 -v2 后缀，当时只加了 .visual-out/，
+# 结果每次跑视觉核查都把 13 张 PNG（约 2MB/张）提交一次，历史里堆了
+# 31.7MB 截图、并间接导致 .git 膨胀到 341MB。用通配避免再犯。
 .visual-out/
+.visual-out-*/
+
 
 # IDE
 .idea/
