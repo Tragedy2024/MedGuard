@@ -1,10 +1,20 @@
+/**
+ * 数据源——**管理员视图**。
+ *
+ * 只有管理员能看到物理库表结构。医护与病患走 ScopePage 的业务视图。
+ *
+ * 表名与列名同时给出物理名（等宽）与业务别名（中文）：管理员两边都要看
+ * 得到——物理名是与接口/数据库核对的锚点，别名是临床用户实际看到的字。
+ */
 import { useEffect, useState } from 'react'
 import { createDemoDatasource, fetchDatasources, fetchSchema } from '../api/datasources'
-import type { DatasourceInfo, SchemaTable } from '../api/types'
+import { fetchPolicy } from '../api/policies'
+import type { DatasourceInfo, Policy, SchemaTable } from '../api/types'
 
 export function DataSourcePage() {
   const [sources, setSources] = useState<DatasourceInfo[]>([])
   const [tables, setTables] = useState<SchemaTable[]>([])
+  const [policy, setPolicy] = useState<Policy | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -14,8 +24,10 @@ export function DataSourcePage() {
       const list = await fetchDatasources()
       setSources(list)
       if (list.length > 0) {
-        const { tables } = await fetchSchema(list[0].id)
-        setTables(tables)
+        const id = list[0].id
+        const [schema, pol] = await Promise.all([fetchSchema(id), fetchPolicy(id)])
+        setTables(schema.tables)
+        setPolicy(pol)
       }
     } catch (e) {
       setError(String(e))
@@ -86,18 +98,25 @@ export function DataSourcePage() {
 
           <h3>库表结构</h3>
           <p className="hint">
-            共 {tables.length} 张表。表名与列名以等宽字体呈现，便于与接口返回逐字核对。
+            共 {tables.length} 张表。等宽字体为物理表名/列名，其后的中文是
+            <strong>医护与病患实际看到的业务名称</strong>。
           </p>
           {tables.map((t) => (
             <details key={t.name} className="schema-table" open>
               <summary>
                 <code>{t.name}</code>
+                {policy?.table_aliases[t.name] && (
+                  <span className="schema-alias">{policy.table_aliases[t.name]}</span>
+                )}
                 <span className="schema-count">{t.columns.length} 列</span>
               </summary>
               <ul className="schema-columns">
                 {t.columns.map((c) => (
                   <li key={c.name}>
                     <code>{c.name}</code>
+                    <span className="col-alias">
+                      {policy?.column_aliases[t.name]?.[c.name] ?? '—'}
+                    </span>
                     <span className="col-type">{c.type}</span>
                     {c.pk && <span className="col-pk">PK</span>}
                   </li>

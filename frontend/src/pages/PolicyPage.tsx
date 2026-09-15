@@ -104,6 +104,9 @@ export function PolicyPage() {
         <details key={table} className="schema-table" open>
           <summary>
             <code>{table}</code>
+            {policy.table_aliases[table] && (
+              <span className="schema-alias">{policy.table_aliases[table]}</span>
+            )}
             <span className="schema-count">{Object.keys(cols).length} 列</span>
           </summary>
           <table className="policy-table">
@@ -120,6 +123,9 @@ export function PolicyPage() {
                 <tr key={col} className={isUnlabeled(table, col) ? 'row-unlabeled' : ''}>
                   <td>
                     <code>{col}</code>
+                    <span className="col-alias">
+                      {policy.column_aliases[table]?.[col] ?? '—'}
+                    </span>
                   </td>
                   <td>
                     <EclTag label={label} />

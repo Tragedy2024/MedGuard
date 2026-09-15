@@ -110,6 +110,13 @@ export interface Policy {
    * `unlabeled` 的列会被医盾**静默放行**（SSA 未标注列默认 free）。
    */
   review_status: Record<string, Record<string, 'labeled' | 'unlabeled'>>
+  /**
+   * 面向医护/病患的中文名。物理表名列名不应直接出现在界面上——
+   * 那会让产品退回成开发者工具（会议记录 §1.1 已否决的形态）。
+   * 来源：策略 YAML 的产品层字段，零算法改动（团队规范 §5.2）。
+   */
+  table_aliases: Record<string, string>
+  column_aliases: Record<string, Record<string, string>>
 }
 
 export interface ReportSummary {

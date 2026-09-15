@@ -3,6 +3,7 @@ import { AuthProvider, useAuth, type UserRole } from './store/auth'
 import { SessionBar } from './components/SessionBar'
 import { LoginPage } from './pages/LoginPage'
 import { DataSourcePage } from './pages/DataSourcePage'
+import { ScopePage } from './pages/ScopePage'
 import { PolicyPage } from './pages/PolicyPage'
 import { ConsolePage } from './pages/ConsolePage'
 import { ReportPage } from './pages/ReportPage'
@@ -65,7 +66,9 @@ function Shell() {
 
       <main className="app-main">
         <Routes>
-          <Route path="/" element={<DataSourcePage />} />
+          {/* 同一个入口，两种视图：管理员看库表结构，临床用户与病患
+              看业务化的「可查范围」。 */}
+          <Route path="/" element={isAdmin ? <DataSourcePage /> : <ScopePage />} />
           <Route
             path="/policy"
             element={isAdmin ? <PolicyPage /> : <Forbidden />}
