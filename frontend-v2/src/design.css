@@ -1282,3 +1282,114 @@ a { color: inherit; }
 
 .alert-warn { display: flex; flex-direction: column; gap: 5px; }
 .loading { padding: 6px 0; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   第二轮打磨（taste-skill 审计后）
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ① 颗粒质感 —— 旧版有，重做时我漏掉了。
+   纯平矢量面在阅片室那种仪器语汇里显得"塑料"；一层极轻的噪点把它
+   拉回"有材质的面板"。全局固定、不吃事件、几乎看不见但去掉就能感觉出来。 */
+.app::before,
+.login::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.028;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* 只给主区升一层，**不要**写 `.app > *`——那会把页眉(20)与导航(19)
+   一起压成 1，后出现的 .app-main 就会盖住粘性导航（实测：大标题直接
+   压在导航条上，四个导航项只剩两个可见）。 */
+.app-main { position: relative; z-index: 1; }
+.login > * { position: relative; z-index: 1; }
+
+/* ② 阅读宽度 —— 提示文字铺满 1320px 容器约 100 字符，远超舒适区间。
+   限到约 62 字符（中文按 1 字符≈2ch 折算，约 31 个汉字一行）。 */
+.hint,
+.degradation-message,
+.admission-refusal,
+.deny-note,
+.metrics-caveat,
+.domain-note {
+  max-width: 62ch;
+}
+
+/* ③ 标签去单调 —— 原来所有场标都是「等宽 + 大写 + 字距」同一套。
+   中文没有大小写，读起来就是同一种小灰字重复。拆成两类：
+     · 场标（section-label / panel h4）：保留等宽字距，是"仪器刻度"
+     · 字段标签（kv dt / field-label）：改用正文体 + 常规字距，
+       与小号的等宽数值形成对比，而不是和场标混淆 */
+.kv dt,
+.field-label {
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  color: var(--muted);
+}
+
+/* ④ 按下反馈补全 —— 原来只覆盖 3 个元素。 */
+.ask-bar button:active:not(:disabled),
+.preset-bar button:active:not(:disabled),
+.login-submit:active,
+.demo-accounts button:active,
+.report-list button:active,
+.sticky-actions button:active:not(:disabled),
+.schema-table > summary:active,
+.policy-table select:active { transform: translateY(1px); }
+
+/* ⑤ 层次：卡片离开地面一点点。阴影**带品牌色相**而不是黑，与冷蓝地面同源。 */
+.card,
+.panel,
+.metric,
+.schema-table,
+.report-list button {
+  box-shadow: 0 1px 2px rgba(18, 54, 90, 0.045);
+}
+
+.panel-result,
+.report-list button.active {
+  box-shadow: 0 2px 8px rgba(18, 54, 90, 0.10);
+}
+
+/* ⑥ 圆角分级：内层紧、外层松。全站 2px 时，嵌套看起来像同一层。 */
+.ecl, .col-pk, .plan-id, .count, .table-chip, .metrics-scope { border-radius: 2px; }
+.card, .panel, .metric, .schema-table, .admission, .event-card, .plan-item { border-radius: 3px; }
+.empty-state, .login-mark, .brand-mark { border-radius: 4px; }
+
+/* ⑦ 视口高度用 dvh —— iOS Safari 的 100vh 会在地址栏收放时跳。 */
+html, body, #root { min-height: 100dvh; }
+
+/* ⑧ 平滑滚动（锚点跳转时不生硬） */
+html { scroll-behavior: smooth; }
+
+/* ⑨ 孤行：正文段落统一交给浏览器处理末行 */
+.hint, .domain-note, .metrics-caveat, .rewrite-log li { text-wrap: pretty; }
+
+/* ⑩ 三张等宽卡片是最泛的 AI 布局。效能指标只有三个，改成
+    **主次分明**：禁止列检出是这套引擎最核心的能力，给它更大的权重。 */
+.metrics-grid { grid-template-columns: 1.4fr 1fr 1fr; }
+.metrics-grid > .metric:first-child { text-align: left; padding-left: 26px; }
+.metrics-grid > .metric:first-child .metric-value { font-size: 56px; }
+
+@media (max-width: 760px) {
+  .metrics-grid { grid-template-columns: 1fr; }
+  .metrics-grid > .metric:first-child .metric-value { font-size: 44px; }
+}
+
+/* ⑪ 减少动效下同样关闭新加的位移动画 */
+@media (prefers-reduced-motion: reduce) {
+  .ask-bar button:active:not(:disabled),
+  .preset-bar button:active:not(:disabled),
+  .login-submit:active,
+  .demo-accounts button:active,
+  .report-list button:active,
+  .sticky-actions button:active:not(:disabled),
+  .schema-table > summary:active { transform: none; }
+  html { scroll-behavior: auto; }
+}
