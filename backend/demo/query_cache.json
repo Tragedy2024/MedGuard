@@ -21,22 +21,17 @@
       "plan": [
         {
           "id": 0,
-          "description": "Get all blood glucose test records for patient P001 with their visit dates.",
-          "sql": "SELECT T2.`result_value`, T1.`visit_date`\nFROM `clinical_records` AS T2\nINNER JOIN `visits` AS T1\n  ON T2.`visit_id` = T1.`visit_id`\nWHERE T2.`patient_id` = 'P001'\n  AND T2.`test_name` = '血糖';"
-        },
-        {
-          "id": 1,
-          "description": "Return the blood glucose result from the most recent visit.",
-          "sql": "SELECT T2.`result_value`\nFROM `clinical_records` AS T2\nINNER JOIN `visits` AS T1\n  ON T2.`visit_id` = T1.`visit_id`\nWHERE T2.`patient_id` = 'P001'\n  AND T2.`test_name` = '血糖'\nORDER BY T1.`visit_date` DESC\nLIMIT 1;"
+          "description": "最终：我的血糖结果",
+          "sql": "SELECT test_name, result_value, unit FROM clinical_records WHERE patient_id = '{subject_id}' AND record_type = 'lab' AND test_name = '血糖'"
         }
       ],
       "token_types": [
         "patient"
       ],
-      "hits": 0,
+      "hits": 1,
       "created_at": "2026-09-15T16:34:00",
-      "last_used": "2026-09-15T16:34:00",
-      "source": "llm"
+      "last_used": "2026-09-15T17:51:43",
+      "source": "preset"
     },
     "全院各科室的门诊量分别是多少": {
       "plan": [
@@ -59,21 +54,148 @@
       "last_used": "2026-09-15T17:44:01",
       "source": "llm"
     },
-    "一个绝对没有收录过的古怪问法zzz": {
+    "统计各科室接诊量": {
       "plan": [
         {
           "id": 0,
-          "description": "判断该问题是否能映射到数据库 schema 中的表、列或指标。  \n结果：不能。问题「一个绝对没有收录过的古怪问法zzz」没有指定任何目标字段、过滤条件、聚合指标、排序或业务实体。Evidence 中关于医生工号 `'S001'` 的规则只在问题涉及「我 / 我的患者 / 我治疗/接诊」时生效，但本问题未涉及这些条件。",
-          "sql": "-- 无法生成有效的 SQLite 查询：该问题缺少可解析的数据查询意图。"
+          "description": "中间：按科室聚合就诊量",
+          "sql": "SELECT department, COUNT(*) AS visit_count FROM visits GROUP BY department"
+        },
+        {
+          "id": 1,
+          "description": "最终：输出科室接诊量",
+          "sql": "SELECT department, COUNT(*) AS visit_count FROM visits GROUP BY department"
         }
       ],
       "token_types": [
         "staff"
       ],
       "hits": 0,
-      "created_at": "2026-09-15T17:40:20",
-      "last_used": "2026-09-15T17:40:20",
-      "source": "llm"
+      "created_at": "2026-09-15T17:48:59",
+      "last_used": "2026-09-15T17:48:59",
+      "source": "preset"
+    },
+    "糖尿病患者产生了多少费用": {
+      "plan": [
+        {
+          "id": 0,
+          "description": "中间：关联临床记录与费用（跨域个人级 JOIN）",
+          "sql": "SELECT c.patient_id, c.diagnosis_name, b.amount FROM clinical_records c JOIN billing b ON c.visit_id = b.visit_id WHERE c.record_type = 'diagnosis'"
+        },
+        {
+          "id": 1,
+          "description": "最终：按诊断汇总费用",
+          "sql": "SELECT SUM(amount) FROM billing"
+        }
+      ],
+      "token_types": [
+        "staff"
+      ],
+      "hits": 1,
+      "created_at": "2026-09-15T17:49:15",
+      "last_used": "2026-09-15T17:51:43",
+      "source": "preset"
+    },
+    "按诊断结果分类统计患者数": {
+      "plan": [
+        {
+          "id": 0,
+          "description": "中间：按诊断分类（派生表达式引用诊断列）",
+          "sql": "SELECT CASE WHEN diagnosis_name LIKE '%糖尿病%' THEN '糖尿病' ELSE '其他' END AS grp, patient_id FROM clinical_records WHERE record_type = 'diagnosis'"
+        },
+        {
+          "id": 1,
+          "description": "最终：统计各类患者数",
+          "sql": "SELECT COUNT(DISTINCT patient_id) FROM clinical_records"
+        }
+      ],
+      "token_types": [
+        "staff"
+      ],
+      "hits": 0,
+      "created_at": "2026-09-15T17:49:30",
+      "last_used": "2026-09-15T17:49:30",
+      "source": "preset"
+    },
+    "导出患者基本信息核对表": {
+      "plan": [
+        {
+          "id": 0,
+          "description": "最终：导出患者信息（含禁止列）",
+          "sql": "SELECT patient_id, name, id_card FROM patients"
+        }
+      ],
+      "token_types": [
+        "staff"
+      ],
+      "hits": 0,
+      "created_at": "2026-09-15T17:49:49",
+      "last_used": "2026-09-15T17:49:49",
+      "source": "preset"
+    },
+    "医生给我开的药怎么吃": {
+      "plan": [
+        {
+          "id": 0,
+          "description": "最终：我的用药说明",
+          "sql": "SELECT drug_name, dosage, frequency, route FROM clinical_records WHERE patient_id = '{subject_id}' AND record_type = 'medication'"
+        }
+      ],
+      "token_types": [
+        "patient"
+      ],
+      "hits": 0,
+      "created_at": "2026-09-15T17:51:12",
+      "last_used": "2026-09-15T17:51:12",
+      "source": "preset"
+    },
+    "我的影像报告怎么说": {
+      "plan": [
+        {
+          "id": 0,
+          "description": "最终：我的影像结论",
+          "sql": "SELECT modality, body_part, impression FROM clinical_records WHERE patient_id = '{subject_id}' AND record_type = 'imaging'"
+        }
+      ],
+      "token_types": [
+        "patient"
+      ],
+      "hits": 0,
+      "created_at": "2026-09-15T17:51:12",
+      "last_used": "2026-09-15T17:51:12",
+      "source": "preset"
+    },
+    "心内科有哪些医生": {
+      "plan": [
+        {
+          "id": 0,
+          "description": "最终：心内科医生列表",
+          "sql": "SELECT name, title, specialty FROM staff WHERE department = '心内科'"
+        }
+      ],
+      "token_types": [
+        "patient"
+      ],
+      "hits": 0,
+      "created_at": "2026-09-15T17:51:12",
+      "last_used": "2026-09-15T17:51:12",
+      "source": "preset"
+    },
+    "得这个病的有多少人": {
+      "plan": [
+        {
+          "id": 0,
+          "description": "统计患者数（涉及其他患者）",
+          "sql": "SELECT COUNT(*) FROM patients"
+        }
+      ],
+      "token_types": [
+        "patient"
+      ],
+      "hits": 0,
+      "created_at": "2026-09-15T17:51:12",
+      "last_used": "2026-09-15T17:51:12",
+      "source": "preset"
     }
   }
 }

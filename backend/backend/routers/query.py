@@ -42,11 +42,9 @@ def run_query(req: QueryRequest):
     if req.token.type not in spec["token_types"]:
         raise HTTPException(status_code=403, detail="该令牌无权使用此查询")
 
-    # 填占位符
-    subject = req.token.subject_id or ""
+    # 占位符替换在 _pipeline 里做（两条入口共用）
     plan = [
-        {"id": sq["id"], "description": sq["description"],
-         "sql": sq["sql"].replace("{subject_id}", subject)}
+        {"id": sq["id"], "description": sq["description"], "sql": sq["sql"]}
         for sq in spec["plan"]
     ]
 
@@ -63,6 +61,15 @@ def _pipeline(plan: list, question: str, token: Token,
     审计与拦截完全一致。这是自由提问不削弱安全演示的原因。
     """
     subject = token.subject_id or ""
+
+    # 占位符替换放在这里，两条入口共用。
+    # 自由提问的计划也可能带 {subject_id}——它的内容来自预置库（自由问法与
+    # 常用问题是同一句话，两边应当拿到同一份计划）。不在这里替换，就会把
+    # 占位符原样送进 SQL。
+    plan = [
+        {**sq, "sql": (sq.get("sql") or "").replace("{subject_id}", subject)}
+        for sq in plan
+    ]
 
     # 【层一】准入 —— 只对病患令牌执行（医护令牌的权限范围由医院
     # RLS 式策略管理，不在本项目实现；其查询一律放行交层二审计）。
