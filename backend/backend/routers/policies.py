@@ -80,6 +80,8 @@ def get_policy(datasource_id: str):
         "column_reasons": data.get("column_reasons", {}) or {},
         "cross_domain_rules": data.get("cross_domain_rules", []) or [],
         "review_status": _review_status(labels),
+        "table_aliases": data.get("table_aliases", {}) or {},
+        "column_aliases": data.get("column_aliases", {}) or {},
     }
 
 

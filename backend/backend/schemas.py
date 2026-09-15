@@ -145,6 +145,11 @@ class Policy(BaseModel):
     column_reasons: Dict[str, Dict[str, str]] = Field(default_factory=dict)
     cross_domain_rules: List[CrossDomainRule] = Field(default_factory=list)
     review_status: Dict[str, Dict[str, str]] = Field(default_factory=dict)
+    """面向医护/病患的中文名。物理表名与列名不应直接出现在界面上——
+    那会让产品退回成开发者工具（会议记录 §1.1 已否决的形态）。
+    缺失时前端回落到物理名，但 tests 会拦住缺失。"""
+    table_aliases: Dict[str, str] = Field(default_factory=dict)
+    column_aliases: Dict[str, Dict[str, str]] = Field(default_factory=dict)
 
 
 class PolicyList(BaseModel):

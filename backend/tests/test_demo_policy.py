@@ -84,3 +84,65 @@ def test_every_demo_column_is_labeled():
         os.unlink(path)
 
     assert unlabeled == [], f"以下列未标注（将被静默放行）：{unlabeled}"
+
+
+def _yaml_data() -> dict:
+    """直接读策略 YAML——别名是产品层字段，不进 SSA 对象。"""
+    import yaml
+
+    path = os.path.join(config.SSA_DIR, f"{config.DEMO_DATASOURCE_ID}.yaml")
+    with open(path, encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
+
+
+def test_policy_yaml_loads_with_product_layer_fields():
+    """YAML 含 table_aliases / column_aliases 时，算法层仍能正常加载。
+
+    规范 §5.2：load_ssa 只读 column_labels 与 cross_domain_rules，未知键
+    静默忽略——本测试是「加产品层字段零算法改动」这条承诺的可验证形式。
+    列数若变化，说明别名被误当成标注读进去了。
+    """
+    ssa = _labels()
+    total = sum(len(cols) for cols in ssa.column_labels.values())
+    assert ssa.db_id == "regional_health"
+    assert total == 46, f"预期 46 列标注，实际 {total}（别名是否被误读为标注？）"
+
+
+def test_every_demo_column_has_alias():
+    """演示库的每一张表、每一列都必须有中文别名。
+
+    与 ECL 标注的失败后果不同，但同样硬：本产品的用户是医护与病患，
+    不是数据库管理员。界面上直接出现 `frequency` / `clinical_records`
+    这类物理名，产品就退回成「开发者工具」——正是会议记录 §1.1 已否决
+    的形态。漏别名的后果是产品定位崩塌，所以同样用测试拦住，而不是
+    靠前端回落到物理名悄悄兜底。
+    """
+    import sqlite3
+    import tempfile
+
+    from demo.seed import build_database
+
+    data = _yaml_data()
+    table_aliases = data.get("table_aliases") or {}
+    column_aliases = data.get("column_aliases") or {}
+
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    build_database(path)
+    con = sqlite3.connect(path)
+    missing = []
+    try:
+        tables = [r[0] for r in con.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' "
+            "AND name NOT LIKE 'sqlite_%'")]
+        for t in tables:
+            if not table_aliases.get(t):
+                missing.append(f"表 {t}")
+            for c in (r[1] for r in con.execute(f"PRAGMA table_info({t})")):
+                if not (column_aliases.get(t) or {}).get(c):
+                    missing.append(f"{t}.{c}")
+    finally:
+        con.close()
+        os.unlink(path)
+
+    assert missing == [], f"以下表/列缺少中文别名（界面会显示物理名）：{missing}"

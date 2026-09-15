@@ -72,6 +72,64 @@ column_reasons:
     impression: 影像结论属个人健康信息
   billing:
     amount: 费用金额属个人财务信息
+table_aliases:
+  patients: 患者
+  staff: 医护人员
+  visits: 就诊记录
+  clinical_records: 临床记录
+  billing: 费用结算
+column_aliases:
+  patients:
+    patient_id: 患者编号
+    name: 姓名
+    phone: 联系电话
+    birth_date: 出生日期
+    address: 住址
+    id_card: 身份证号
+    gender: 性别
+    blood_type: 血型
+  staff:
+    staff_id: 工号
+    name: 姓名
+    phone: 联系电话
+    title: 职称
+    department: 科室
+    specialty: 专长
+  visits:
+    visit_id: 就诊编号
+    patient_id: 患者编号
+    doctor_id: 医生工号
+    department: 科室
+    visit_type: 就诊类型
+    visit_date: 就诊日期
+  clinical_records:
+    record_id: 记录编号
+    visit_id: 就诊编号
+    patient_id: 患者编号
+    record_type: 记录类型
+    icd_code: ICD 编码
+    diagnosis_name: 诊断名称
+    severity: 病情程度
+    drug_name: 药品名称
+    dosage: 用量
+    frequency: 用药频次
+    route: 给药途径
+    test_name: 检验项目
+    result_value: 检验结果
+    unit: 单位
+    ref_range: 参考范围
+    modality: 检查方式
+    body_part: 检查部位
+    findings: 影像所见
+    impression: 影像结论
+  billing:
+    bill_id: 账单编号
+    visit_id: 就诊编号
+    patient_id: 患者编号
+    amount: 费用金额
+    insurance_type: 医保类型
+    item_name: 收费项目
+    bill_date: 账单日期
 cross_domain_rules:
 - table_pair:
   - clinical_records
