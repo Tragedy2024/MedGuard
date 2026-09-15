@@ -1,5 +1,5 @@
 /* 最小 reset。脚手架自带的 Vite 默认样式带居中布局与深色模式变量，
-   会与 App.css 打架，故整体替换；设计系统全部在 App.css。 */
+   会与 design.css 打架，故整体替换；设计系统全部在 design.css。 */
 
 *,
 *::before,

@@ -7,7 +7,7 @@ import { ScopePage } from './pages/ScopePage'
 import { PolicyPage } from './pages/PolicyPage'
 import { ConsolePage } from './pages/ConsolePage'
 import { ReportPage } from './pages/ReportPage'
-import './App.css'
+import './design.css'
 
 const ALL: UserRole[] = ['admin', 'staff', 'patient']
 
@@ -55,6 +55,7 @@ function Shell() {
 
       <header className="app-header">
         <div className="brand">
+          <span className="brand-mark" aria-hidden="true">盾</span>
           <h1>医患信息数据服务云平台</h1>
           <span className="engine-tag">安全引擎 · 医盾</span>
         </div>

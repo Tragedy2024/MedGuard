@@ -3,6 +3,13 @@ import { DEMO_ACCOUNTS, DEMO_PASSWORD, useAuth } from '../store/auth'
 
 type FieldErrors = { account?: string; password?: string }
 
+/**
+ * 登录页。
+ *
+ * 左栏不放装饰图，放**产品机制本身**：一次查询如何在执行前被两层检查
+ * 处理掉。这是访客在这一页唯一需要理解的东西——他们看到的不是一张图，
+ * 是这台机器在工作。
+ */
 export function LoginPage() {
   const { signIn } = useAuth()
   const [account, setAccount] = useState('')
@@ -36,13 +43,47 @@ export function LoginPage() {
   return (
     <div className="login">
       <aside className="login-brand">
-        <div className="login-mark">医盾</div>
-        <h1>医患信息数据服务云平台</h1>
+        <div className="login-head">
+          <span className="login-mark" aria-hidden="true">盾</span>
+          <div className="login-head-text">
+            <h1>医患信息数据服务云平台</h1>
+            <p className="login-engine">安全引擎 · 医盾</p>
+          </div>
+        </div>
+
         <p className="login-tagline">
-          让不会写 SQL 的医护人员和病患，<br />
+          让不会写 SQL 的医护人员和病患，
+          <br />
           用大白话查到权威准确的医院数据。
         </p>
-        <p className="login-note">安全引擎 · 医盾｜零 LLM 审计、零数据库访问</p>
+
+        {/* 机制演示：一次查询的审计过程。纯装饰，故 aria-hidden——
+            屏幕阅读器用户不需要听一段动画。 */}
+        <div className="demo" aria-hidden="true">
+          <div className="demo-row">
+            <span className="demo-tag demo-tag-1">层一 · 准入</span>
+            <span className="demo-verdict demo-verdict-pass">放行 · 绑定本人</span>
+          </div>
+
+          <pre className="demo-sql">
+            <span className="demo-kw">SELECT</span> test_name, result_value
+            <span className="demo-struck">, patient_id</span>
+            {'\n'}
+            <span className="demo-kw">FROM</span> clinical_records
+          </pre>
+
+          <div className="demo-row">
+            <span className="demo-tag demo-tag-2">层二 · 审计</span>
+            <span className="demo-verdict demo-verdict-cut">移除 1 处不必要的列</span>
+          </div>
+
+          <div className="demo-metrics">
+            <span>LLM 调用 <strong>0</strong></span>
+            <span>数据库访问 <strong>0</strong></span>
+          </div>
+        </div>
+
+        <p className="login-footnote">审计在查询执行之前完成 · 零模型调用 · 零数据库访问</p>
       </aside>
 
       <main className="login-panel">
