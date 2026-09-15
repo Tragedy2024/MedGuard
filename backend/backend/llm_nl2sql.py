@@ -131,7 +131,27 @@ def build_schema_text(datasource_id: str) -> Tuple[str, str]:
         con.close()
 
 
-def decompose(question: str, datasource_id: str) -> List[Dict[str, Any]]:
+def _patient_binding(subject_id: str) -> str:
+    """病患令牌的绑定约束，塞进 MAC-SQL 模板的 evidence 槽位。
+
+    **不给这段约束，模型会写出 `patient_id = :patient_id` 这类参数占位符**——
+    它既不能被执行（sqlite3 会当成未绑定参数），更要命的是**没有绑定到本人**，
+    等于绕过了层一准入的前提。所以这是安全约束，不是提示词优化。
+    """
+    return (
+        f"当前查询者是病患令牌，只能访问患者 {subject_id} 本人的数据。"
+        f"凡涉及患者个人的过滤条件，必须直接使用字面量 '{subject_id}'"
+        f"（例如 patient_id = '{subject_id}'），"
+        f"不要使用 :param 之类的参数占位符，也不要用其他患者编号。"
+    )
+
+
+def decompose(
+    question: str,
+    datasource_id: str,
+    token_type: str = "staff",
+    subject_id: str = "",
+) -> List[Dict[str, Any]]:
     """自然语言 → 多步计划 `[{id, description, sql}, ...]`。
 
     失败一律抛 `NL2SQLError`，附带可读原因——调用方据此决定回落或报错，
@@ -160,7 +180,10 @@ def decompose(question: str, datasource_id: str) -> List[Dict[str, Any]]:
         "idx": 0,
         "db_id": datasource_id,
         "query": question.strip(),
-        "evidence": "",
+        "evidence": (
+            _patient_binding(subject_id)
+            if token_type == "patient" and subject_id else ""
+        ),
         "desc_str": desc_str,
         "fk_str": fk_str,
         "difficulty": "",
@@ -173,11 +196,15 @@ def decompose(question: str, datasource_id: str) -> List[Dict[str, Any]]:
     except Exception as exc:  # noqa: BLE001 - 网络/鉴权/模型异常统一转义
         raise NL2SQLError(f"模型调用失败：{exc}") from exc
 
-    tasks = parse_qa_pairs(msg.get("qa_pairs") or "")
+    raw = msg.get("qa_pairs") or ""
+    tasks = parse_qa_pairs(raw)
     if not tasks:
+        # 把原文片段带出来——否则"没解析出子问题"这句话无法排查。
+        # 实测模型偶尔不按格式作答，没有原文就只能猜。
+        snippet = " ".join(raw.split())[:240]
         raise NL2SQLError(
-            "模型输出里没有解析出子问题。可能原因：模型未按 "
-            "「Sub question N + SQL 块」格式作答，或返回的是推理过程。"
+            f"模型输出里没有解析出子问题（原文 {len(raw)} 字符）"
+            f"{'，开头是：' + snippet if snippet else '，且输出为空'}。"
         )
 
     return [

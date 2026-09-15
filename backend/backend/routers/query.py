@@ -178,7 +178,11 @@ def run_direct_query(req: DirectQueryRequest):
                        "无法翻译新问法。请换一个已收录的问法。",
             )
         try:
-            plan = llm_nl2sql.decompose(question, req.datasource_id)
+            plan = llm_nl2sql.decompose(
+                question, req.datasource_id,
+                token_type=req.token.type,
+                subject_id=req.token.subject_id or "",
+            )
         except llm_nl2sql.NL2SQLError as exc:
             raise HTTPException(status_code=502,
                                 detail=f"翻译失败：{exc}") from exc

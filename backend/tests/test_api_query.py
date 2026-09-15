@@ -181,6 +181,50 @@ def test_direct_cache_hit_still_runs_layer1(client, isolated_cache):
     assert body["degradation"]["level"] == "L3"
 
 
+def test_direct_rejects_plan_with_parameter_placeholder(
+        client, isolated_cache, monkeypatch):
+    """模型偶尔写出 :patient_id 这类参数占位符——层一必须拦住。
+
+    实测真实出现过：模型不知道本站用字面量绑定本人，写了 sqlite 命名参数。
+    那种 SQL 既执行不了，更要命的是**等于没有绑定本人**。层一只认字面量
+    （admission.py 里 isinstance(val, exp.Literal) 那一行），故会被拒。
+    这是可执行的安全回归测试，不是理论担忧。
+    """
+    from backend import llm_nl2sql
+    monkeypatch.setattr(llm_nl2sql, "llm_available", lambda: True)
+    monkeypatch.setattr(llm_nl2sql, "decompose", lambda *_a, **_k: [{
+        "id": 0, "description": "参数化查询",
+        "sql": "SELECT result_value FROM clinical_records "
+               "WHERE patient_id = :patient_id"}])
+
+    r = client.post("/api/query/direct", json={
+        "token": PATIENT, "datasource_id": "regional_health",
+        "question": "我上次的血糖是多少"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["admission"]["passed"] is False
+    assert body["result"] is None
+    assert body["degradation"]["level"] == "L3"
+
+
+def test_direct_accepts_plan_with_literal_binding(
+        client, isolated_cache, monkeypatch):
+    """用字面量绑定本人则应放行——否则上面那条测试可能只是"永远拒绝"。"""
+    from backend import llm_nl2sql
+    monkeypatch.setattr(llm_nl2sql, "llm_available", lambda: True)
+    monkeypatch.setattr(llm_nl2sql, "decompose", lambda *_a, **_k: [{
+        "id": 0, "description": "本人血糖",
+        "sql": "SELECT result_value FROM clinical_records "
+               "WHERE patient_id = 'P001' AND test_name = '血糖'"}])
+
+    r = client.post("/api/query/direct", json={
+        "token": PATIENT, "datasource_id": "regional_health",
+        "question": "我上次的血糖是多少"})
+    body = r.json()
+    assert body["admission"]["passed"] is True
+    assert body["admission"]["bound_to_subject"] is True
+
+
 def test_direct_uncached_without_key_gives_actionable_503(
         client, isolated_cache, monkeypatch):
     """未收录且无模型 → 明确说明原因，而不是 500 或假装成功。"""
