@@ -1,12 +1,10 @@
-import { useEffect, useState } from 'react'
-import { runQuery } from '../api/query'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { runDirectQuery, runQuery } from '../api/query'
 import type { QueryResponse } from '../api/types'
 import { AliasProvider } from '../store/aliases'
 import { useAuth } from '../store/auth'
 import { presetsFor } from '../store/presets'
 import { AdmissionPanel } from '../components/AdmissionPanel'
-import { PlanPanel } from '../components/PlanPanel'
-import { EventCard } from '../components/EventCard'
 import { DegradationBadge } from '../components/DegradationBadge'
 import { ResultTable } from '../components/ResultTable'
 
@@ -20,42 +18,65 @@ export function ConsolePage() {
   )
 }
 
+/** 提问后多久还没回来，就提示"可能在翻译新问法"。
+ *  首次提问要调模型，实测约 70 秒——不说明的话用户会以为卡死了。 */
+const SLOW_HINT_MS = 5000
+/** 快查询（1–9ms）不该闪一下加载态，那比不显示更糟。 */
+const BUSY_DELAY_MS = 150
+
 function Console() {
   const { session } = useAuth()
+  const [text, setText] = useState('')
   const [data, setData] = useState<QueryResponse | null>(null)
   const [running, setRunning] = useState(false)
   const [showBusy, setShowBusy] = useState(false)
+  const [slow, setSlow] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
-  // 审计通常只要 1–9ms。立刻显示加载态会闪一下，比不显示更糟——
-  // 只有真正慢下来（>150ms）才给反馈。
   useEffect(() => {
     if (!running) {
       setShowBusy(false)
+      setSlow(false)
       return
     }
-    const t = setTimeout(() => setShowBusy(true), 150)
-    return () => clearTimeout(t)
+    const a = setTimeout(() => setShowBusy(true), BUSY_DELAY_MS)
+    const b = setTimeout(() => setSlow(true), SLOW_HINT_MS)
+    return () => {
+      clearTimeout(a)
+      clearTimeout(b)
+    }
   }, [running])
 
   if (!session) return null
   const { token } = session
   const presets = presetsFor(token.type)
 
-  const ask = async (questionId: string) => {
+  const send = async (fn: () => Promise<QueryResponse>) => {
     setRunning(true)
     setError(null)
     setData(null)
     try {
-      setData(
-        await runQuery({ token, datasource_id: DATASOURCE, question_id: questionId }),
-      )
+      setData(await fn())
     } catch (e) {
       setError(String(e))
     } finally {
       setRunning(false)
     }
   }
+
+  const askFreeText = (e: FormEvent) => {
+    e.preventDefault()
+    const q = text.trim()
+    if (!q) {
+      inputRef.current?.focus()
+      return
+    }
+    void send(() => runDirectQuery({ token, datasource_id: DATASOURCE, question: q }))
+  }
+
+  const askPreset = (questionId: string) =>
+    send(() => runQuery({ token, datasource_id: DATASOURCE, question_id: questionId }))
 
   const denied = data !== null && !data.admission.passed
 
@@ -64,13 +85,29 @@ function Console() {
       <h2>查询控制台</h2>
 
       <p className="hint">
-        选择一个问题发起查询。全过程<strong>零大模型调用、零数据库访问</strong>，
-        由医盾引擎静态审计后再执行。
+        用大白话提问即可。全过程<strong>零大模型调用、零数据库访问</strong>完成安全审计，
+        审计通过后才执行查询。
       </p>
 
+      <form className="ask-bar" onSubmit={askFreeText}>
+        <input
+          ref={inputRef}
+          type="text"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="例如：糖尿病患者产生了多少费用"
+          aria-label="提问"
+          disabled={running}
+        />
+        <button type="submit" disabled={running || !text.trim()}>
+          提问
+        </button>
+      </form>
+
       <div className="preset-bar">
+        <span className="preset-label">常用问题</span>
         {presets.map((p) => (
-          <button key={p.id} onClick={() => ask(p.id)} disabled={running}>
+          <button key={p.id} onClick={() => askPreset(p.id)} disabled={running}>
             {p.question}
           </button>
         ))}
@@ -78,7 +115,9 @@ function Console() {
 
       {showBusy && (
         <div className="loading" role="status" aria-live="polite">
-          审计中…
+          {slow
+            ? '正在翻译这个新问法……首次提问约需一分钟，之后就快了。'
+            : '处理中…'}
         </div>
       )}
       {error && (
@@ -104,7 +143,6 @@ function Console() {
             </>
           ) : (
             <>
-              {/* 答案优先：用户来是要结果的，安全过程是"为什么是这个结果" */}
               {data.result && (
                 <section className="panel panel-result">
                   <h4>查询结果</h4>
@@ -124,45 +162,14 @@ function Console() {
                     )}
                 </div>
               )}
-
-              {/* 其后才是安全说明：准入判定 + 审计过程 */}
-              <h4 className="section-label">安全说明</h4>
-
-              <AdmissionPanel admission={data.admission} />
-
-              <div className="panels">
-                <section className="panel">
-                  <h4>分解方案</h4>
-                  <PlanPanel plan={data.plan} events={data.events} />
-                </section>
-
-                <section className="panel">
-                  <h4>
-                    安全事件 <span className="count">{data.events.length}</span>
-                  </h4>
-                  {data.events.length === 0 ? (
-                    <p className="hint">未发现中间结果暴露。</p>
-                  ) : (
-                    data.events.map((e, i) => <EventCard key={i} event={e} />)
-                  )}
-
-                  {/* 改写日志是算法层原文（英文 + 物理列名），对医护与病患
-                      只是噪音；改动内容已由上方事件卡与左栏方案用中文表达。
-                      故整段折叠进「技术详情」，技术观众仍可核对。 */}
-                  {data.rewrite.applied > 0 && (
-                    <details className="tech-detail tech-detail-block">
-                      <summary>技术详情 · 改写日志（{data.rewrite.applied} 处）</summary>
-                      <ul className="rewrite-log">
-                        {data.rewrite.log.map((line, i) => (
-                          <li key={i}>{line}</li>
-                        ))}
-                      </ul>
-                    </details>
-                  )}
-                </section>
-              </div>
             </>
           )}
+
+          {/* 审计明细（准入判定 / 分解方案 / 安全事件 / SQL 改写）不在这里——
+              它们的去处是「安全报告」页，那里可以逐条回看每一次查询的完整证据。 */}
+          <p className="hint console-footnote">
+            本次查询的安全审计明细已记入<strong>安全报告</strong>，可随时回看。
+          </p>
 
           <div className="metrics-bar">
             <span>

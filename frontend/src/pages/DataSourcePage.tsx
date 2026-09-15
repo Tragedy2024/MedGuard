@@ -9,14 +9,24 @@
 import { useEffect, useState } from 'react'
 import { createDemoDatasource, fetchDatasources, fetchSchema } from '../api/datasources'
 import { fetchPolicy } from '../api/policies'
-import type { DatasourceInfo, Policy, SchemaTable } from '../api/types'
+import { fetchDetectionMetrics } from '../api/reports'
+import type {
+  DatasourceInfo, DetectionMetrics, Policy, SchemaTable,
+} from '../api/types'
 
 export function DataSourcePage() {
   const [sources, setSources] = useState<DatasourceInfo[]>([])
   const [tables, setTables] = useState<SchemaTable[]>([])
   const [policy, setPolicy] = useState<Policy | null>(null)
+  const [metrics, setMetrics] = useState<DetectionMetrics | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetchDetectionMetrics().then(setMetrics).catch(() => {
+      // 效能数字来自静态实测，拿不到不该挡住数据源页
+    })
+  }, [])
 
   const load = async () => {
     try {
@@ -124,8 +134,46 @@ export function DataSourcePage() {
               </ul>
             </details>
           ))}
+
+          {/* 检测效能放在管理员的数据源页：它是**平台能力声明**（给评委、
+              监管、验收看），不是单次查询的东西，也不该出现在临床用户
+              和病患能看到的页面上——那些数字对他们没有意义。 */}
+          {metrics && (
+            <>
+              <h3>引擎检测效能</h3>
+              <div className="metrics-grid">
+                <Metric value={metrics.precision.value} name="精确率"
+                        detail={metrics.precision.detail} />
+                <Metric value={metrics.recall.value} name="召回率"
+                        detail={metrics.recall.detail} />
+                <Metric value={metrics.blocked_detection.value} name="禁止列检出"
+                        detail={metrics.blocked_detection.detail} />
+              </div>
+              <p className="hint">
+                数据来源：<code>{metrics.source}</code>——论文仓库受控注入实验实测，
+                非本产品自测。
+              </p>
+            </>
+          )}
         </>
       )}
+    </div>
+  )
+}
+
+/** 效能指标卡。数值来自后端实测，前端只做百分数呈现，不改口径。 */
+function Metric({
+  value, name, detail,
+}: {
+  value: number
+  name: string
+  detail: string
+}) {
+  return (
+    <div className="metric">
+      <div className="metric-value">{(value * 100).toFixed(0)}%</div>
+      <div className="metric-name">{name}</div>
+      <div className="metric-detail">{detail}</div>
     </div>
   )
 }

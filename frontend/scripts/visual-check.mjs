@@ -48,35 +48,61 @@ const SHOTS = [
   // 路由守卫：医生直接敲 /policy 应被挡住，而不是渲染出策略页
   { name: '05-forbidden', path: '/policy', as: 'doctor' },
 
-  // 控制台三条关键路径：层二跨域拦截 / 展开 SQL / 层一拒绝
+  // 控制台现在只呈现问题与结果；审计明细搬到安全报告页
   {
-    name: '06-console-audit',
+    name: '06-console-result',
     path: '/console',
     as: 'doctor',
-    height: 1500,
+    height: 1000,
     act: (p) => p.getByRole('button', { name: '糖尿病患者产生了多少费用' }).click(),
   },
   {
-    name: '06b-console-sql-expanded',
+    // 自由提问：用预热过的问法（缓存命中，瞬时）。未命中的话要等模型
+    // 翻译约 70 秒，截图脚本不该卡在那里。
+    name: '06b-console-freetext',
     path: '/console',
     as: 'doctor',
-    height: 1400,
+    height: 1000,
     act: async (p) => {
-      await p.getByRole('button', { name: '糖尿病患者产生了多少费用' }).click()
-      await p.waitForTimeout(500)
-      await p.locator('.sql-diff > summary').first().click()
-      await p.waitForTimeout(250)
+      await p.fill('.ask-bar input', '全院各科室的门诊量分别是多少')
+      await p.click('.ask-bar button')
+      await p.waitForTimeout(900)
     },
   },
   {
     name: '06c-console-denied',
     path: '/console',
     as: 'patient',
-    height: 1100,
+    height: 900,
     act: (p) => p.getByRole('button', { name: '得这个病的有多少人' }).click(),
   },
 
-  { name: '07-reports', path: '/reports', as: 'admin' },
+  // 安全报告：左列表 + 右详情（首次进入自动选中最新一条）
+  { name: '07-reports', path: '/reports', as: 'admin', height: 1600 },
+  {
+    name: '07b-reports-detail-sql',
+    path: '/reports',
+    as: 'admin',
+    height: 1900,
+    act: async (p) => {
+      // 选一条**有分析内容**的记录——最新一条可能是 L3 拒绝（无分解方案），
+      // 那样展开 SQL 会扑空，截不到东西。
+      await p.waitForTimeout(700)
+      const item = p
+        .locator('.report-list button')
+        .filter({ hasText: '糖尿病患者产生了多少费用' })
+        .first()
+      if (await item.count()) {
+        await item.click()
+        await p.waitForTimeout(600)
+      }
+      const sql = p.locator('.sql-diff > summary').first()
+      if (await sql.count()) {
+        await sql.click()
+        await p.waitForTimeout(300)
+      }
+    },
+  },
   // 未知地址应是「页面不存在」，而不是误报成权限问题
   { name: '08-not-found', path: '/no-such-page', as: 'admin' },
 ]

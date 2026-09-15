@@ -131,6 +131,17 @@ export interface ReportSummary {
   event_count: number
 }
 
+/**
+ * 报告详情 = 摘要字段 + 完整查询快照。
+ *
+ * `payload` 就是那次查询的 QueryResponse 原样存档——安全报告页展示的
+ * 分析内容（准入判定、分解方案、安全事件、SQL 改写）全部来自这里，
+ * 与查询控制台当初返回的是同一份数据。
+ */
+export interface ReportDetail extends ReportSummary {
+  payload: QueryResponse
+}
+
 export interface DetectionMetrics {
   precision: { value: number; detail: string }
   recall: { value: number; detail: string }

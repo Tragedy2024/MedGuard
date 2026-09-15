@@ -1963,3 +1963,163 @@ a {
 .report-export:hover {
   border-bottom-color: var(--brand);
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   自由提问栏（查询控制台）
+   ═══════════════════════════════════════════════════════════════════ */
+
+.ask-bar {
+  display: flex;
+  gap: 10px;
+}
+
+.ask-bar input {
+  flex: 1;
+  min-width: 0;
+  padding: 11px 14px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 3px;
+  font-size: 14.5px;
+  background: var(--paper-raised);
+  color: var(--ink);
+  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+}
+
+.ask-bar input:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-bg);
+}
+
+.ask-bar input:disabled {
+  background: var(--paper-sunken);
+  color: var(--ink-faint);
+}
+
+.ask-bar button {
+  padding: 0 26px;
+  border: 1px solid var(--brand);
+  border-radius: 3px;
+  background: var(--brand);
+  color: var(--on-brand);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+
+.ask-bar button:hover:not(:disabled) {
+  background: var(--brand-deep);
+  border-color: var(--brand-deep);
+}
+
+.ask-bar button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.ask-bar button:disabled {
+  background: transparent;
+  border-color: var(--rule-strong);
+  color: var(--ink-faint);
+  cursor: default;
+}
+
+.console-footnote {
+  margin-top: 2px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   安全报告：左列表 + 右详情
+   ═══════════════════════════════════════════════════════════════════ */
+
+.report-split {
+  display: grid;
+  grid-template-columns: minmax(250px, 310px) 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 1080px) {
+  .report-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+.report-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 72vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.report-list button {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--paper-raised);
+  cursor: pointer;
+  transition: border-color 0.15s var(--ease), background-color 0.15s var(--ease);
+}
+
+.report-list button:hover {
+  border-color: var(--brand-rule);
+  background: var(--brand-bg);
+}
+
+.report-list button.active {
+  border-color: var(--brand);
+  background: var(--brand-bg);
+}
+
+.report-list button:active {
+  transform: translateY(1px);
+}
+
+.report-q {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.report-meta {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+
+.report-sub,
+.report-time {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-faint);
+}
+
+.report-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;   /* 允许内部表格横向滚动而不撑破网格 */
+}
+
+.metrics-export {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--on-brand);
+  text-decoration: none;
+  border-bottom: 1px solid var(--on-brand-line);
+  padding-bottom: 1px;
+  transition: border-color 0.15s var(--ease);
+}
+
+.metrics-export:hover {
+  border-bottom-color: var(--on-brand);
+}
