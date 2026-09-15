@@ -12,6 +12,17 @@ sqlglot>=26.0.0
 # 策略 YAML
 PyYAML>=6.0
 
+# 自然语言 → SQL（MAC-SQL 体系，已内置在 vendor/nl2sql/src/core/）
+# 注意：上游 MAC-SQL 的 core/agents.py 还 import 了 pandas 与 tiktoken，
+# 但两者都是死导入，已在本仓库移除以免拖入约 32MB 依赖。
+# 详见 vendor/nl2sql/VENDOR-PATCHES.md。
+openai>=1.0
+func_timeout>=4.3
+tqdm>=4.0
+
+# .env 读取（OPENAI_API_KEY 等）
+python-dotenv>=1.0
+
 # 测试
 pytest>=8.0
 httpx>=0.27
