@@ -173,61 +173,63 @@ a {
   white-space: nowrap;
 }
 
-/* ── 令牌切换器（演示主控件）───────────────────── */
+/* ── 会话栏 ──────────────────────────────────────
+   取代了早先的令牌切换器：身份不能再随手切，必须重新登录。
+   角色标签刻意**不做三色区分**——红/琥珀/绿按约定只属于安全等级，
+   用它们标角色会稀释那套语义。靠文字本身区分即可。 */
 
-.token-switcher {
+.session-bar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   flex-shrink: 0;
 }
 
-.token-label {
+.session-id {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.role-tag {
   font-family: var(--font-mono);
   font-size: 10px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--on-brand-dim);
-}
-
-.token-buttons {
-  display: flex;
-  border: 1px solid var(--on-brand-line);
-  border-radius: 3px;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.06);
-}
-
-.token-buttons button {
-  padding: 7px 18px;
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-  font-size: 13px;
   font-weight: 500;
+  letter-spacing: 0.08em;
+  padding: 3px 8px;
+  border: 1px solid var(--on-brand-line);
+  border-radius: 2px;
   color: var(--on-brand-dim);
-  transition: background-color 0.15s var(--ease), color 0.15s var(--ease);
+  white-space: nowrap;
 }
 
-.token-buttons button + button {
-  border-left: 1px solid var(--on-brand-line);
-}
-
-.token-buttons button:hover:not(.active) {
-  background: rgba(255, 255, 255, 0.12);
+.session-name {
+  font-size: 13.5px;
+  font-weight: 500;
   color: var(--on-brand);
+  white-space: nowrap;
 }
 
-.token-buttons button.active {
-  background: var(--on-brand);
-  color: var(--brand);
-}
-
-.token-subject {
+.session-scope {
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--on-brand-dim);
-  min-width: 84px;
+}
+
+.session-signout {
+  font-size: 12px;
+  padding: 5px 12px;
+  border: 1px solid var(--on-brand-line);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--on-brand-dim);
+  cursor: pointer;
+  transition: background-color 0.15s var(--ease), color 0.15s var(--ease);
+}
+
+.session-signout:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--on-brand);
 }
 
 /* ── 导航 ─────────────────────────────────────── */
@@ -799,4 +801,200 @@ a {
   border-color: var(--rule-strong);
   color: var(--ink-faint);
   cursor: default;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   登录页
+   ═══════════════════════════════════════════════════════════════════ */
+
+.login {
+  min-height: 100%;
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(400px, 480px);
+}
+
+.login-brand {
+  background: var(--brand);
+  color: var(--on-brand);
+  padding: 56px 48px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 16px;
+}
+
+.login-mark {
+  font-family: var(--font-display);
+  font-size: 36px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+}
+
+.login-brand h1 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 21px;
+  line-height: 1.55;
+  color: var(--on-brand);
+}
+
+.login-tagline {
+  font-size: 14px;
+  line-height: 1.95;
+  color: var(--on-brand-dim);
+}
+
+.login-note {
+  margin-top: 40px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--on-brand-dim);
+  border-top: 1px solid var(--on-brand-line);
+  padding-top: 16px;
+}
+
+.login-panel {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 30px;
+  padding: 48px 44px;
+  background: var(--paper-raised);
+}
+
+.login-form,
+.demo-accounts {
+  width: 100%;
+  max-width: 340px;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.login-form h2 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 24px;
+  color: var(--brand-deep);
+  margin-bottom: 2px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.field input {
+  padding: 10px 12px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 3px;
+  font-size: 14px;
+  background: var(--paper-raised);
+  color: var(--ink);
+  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+}
+
+.field input:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-bg);
+}
+
+.login-submit {
+  margin-top: 6px;
+  padding: 11px 20px;
+  border: 1px solid var(--brand);
+  border-radius: 3px;
+  background: var(--brand);
+  color: var(--on-brand);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+
+.login-submit:hover {
+  background: var(--brand-deep);
+  border-color: var(--brand-deep);
+}
+
+/* ── 演示账号快捷填入 ────────────────────────────────────────── */
+
+.demo-accounts {
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+}
+
+.demo-accounts-head {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.demo-accounts ul {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.demo-accounts button {
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 11px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--paper);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s var(--ease), background-color 0.15s var(--ease);
+}
+
+.demo-accounts button:hover {
+  border-color: var(--brand);
+  background: var(--brand-bg);
+}
+
+.demo-role {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+
+.demo-scope {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+@media (max-width: 820px) {
+  .login {
+    grid-template-columns: 1fr;
+  }
+  .login-brand {
+    padding: 36px 24px;
+  }
+  .login-note {
+    margin-top: 20px;
+  }
+  .login-panel {
+    padding: 32px 24px;
+  }
 }
