@@ -104,8 +104,13 @@ def _pipeline(plan: list, question: str, token: Token,
     # 组装。注意：改写后计划可能与原始计划条数不同——
     #   Rule A 消除死子查询（变少）、Rule C 跨域拆分（一条变两条 0_a/0_b）。
     # 以 audited_plan 为准展示；sql_before 回填原始 SQL（拆分产物回填源查询）。
+    # L3 拒绝时不展示计划。算法层对 L3 一律返回空 audited_plan（FINAL_
+    # IMPLEMENTATION_NOTES：Every L3 result returns an empty audited_plan,
+    # so rejected SQL cannot be accidentally executed）。回落填回原始计划
+    # 会把这条保证作废：被拒的语句又重新出现在响应里，而且那计划本身
+    # 可能就解析不了（实测有过只有一行注释的），展示出来只是乱码。
     display = outcome.audited_plan
-    if not display:
+    if not display and outcome.degradation_level != "L3":
         display = [{"id": sq["id"], "description": sq["description"],
                     "sql": sq["sql"]} for sq in plan]
     original_by_id = {str(sq["id"]): sq for sq in plan}
@@ -138,7 +143,9 @@ def _pipeline(plan: list, question: str, token: Token,
             level=outcome.degradation_level,
             label=DEGRADATION_LABELS.get(outcome.degradation_level, ""),
             message=outcome.degradation_message,
-            message_cn=DEGRADATION_MESSAGES.get(outcome.degradation_level, "")),
+            # 算法层给了更准确的中文就用它（如解析失败），否则按等级取默认
+            message_cn=(outcome.degradation_message_cn
+                        or DEGRADATION_MESSAGES.get(outcome.degradation_level, ""))),
         # metrics 只报**审计**开销：llm_calls 与 db_access 恒为 0，这是
         # 「零 LLM、零查库」安全声明的可验证形式。翻译环节若调了模型不算
         # 在这里——指标条文案写的是「审计阶段零模型调用」，范围已限定。

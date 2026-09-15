@@ -225,6 +225,38 @@ def test_direct_accepts_plan_with_literal_binding(
     assert body["admission"]["bound_to_subject"] is True
 
 
+def test_unparseable_plan_degrades_to_L3_not_500(
+        client, isolated_cache, monkeypatch):
+    """模型偶尔生成解析不了的"SQL"——实测出现过只有一行注释的。
+
+    真实案例：问「我治疗了哪些患者」，模型给出
+        sql = "-- 过滤出当前医生，直接使用 :doctor_id"
+    sqlglot 解析不出任何表达式，算法层抛 AuditParseError。算法自己的语义是
+    「解析失败 → L3 + 空计划」，所以产品层要把异常转成那个形状。
+
+    这里钉住三件事：不是 500、是 L3、**计划为空**（空计划保证被拒的 SQL
+    不会被下游误执行）。
+    """
+    from backend import llm_nl2sql
+    monkeypatch.setattr(llm_nl2sql, "llm_available", lambda: True)
+    monkeypatch.setattr(llm_nl2sql, "decompose", lambda *_a, **_k: [{
+        "id": 0, "description": "只有注释的子查询",
+        "sql": "-- 过滤出当前医生，直接使用 :doctor_id"}])
+
+    r = client.post("/api/query/direct", json={
+        "token": STAFF, "datasource_id": "regional_health",
+        "question": "我治疗了哪些患者"})
+    assert r.status_code == 200, "不该是 500"
+    body = r.json()
+    assert body["degradation"]["level"] == "L3"
+    assert body["plan"] == []
+    assert body["result"] is None
+    # 文案要说清是「处理不了」，不能复用 L3 默认那句「涉及其他患者信息」——
+    # 那会让用户以为自己触发了隐私规则而反复换问法试探。
+    assert "无法处理" in body["degradation"]["message_cn"]
+    assert "其他患者" not in body["degradation"]["message_cn"]
+
+
 def test_direct_uncached_without_key_gives_actionable_503(
         client, isolated_cache, monkeypatch):
     """未收录且无模型 → 明确说明原因，而不是 500 或假装成功。"""

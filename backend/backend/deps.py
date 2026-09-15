@@ -20,7 +20,8 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Set
 
 from backend import config
-from backend.labels import (SEVERITY_LABELS, VIOLATION_LABELS)
+from backend.labels import (PARSE_FAILED_MESSAGE, SEVERITY_LABELS,
+                            VIOLATION_LABELS)
 
 
 def _ensure_algo_on_path() -> None:
@@ -40,12 +41,15 @@ _ensure_algo_on_path()
 
 try:
     from ssa.loader import load_ssa, SSALabels  # noqa: E402
-    from auditor.base import SecurityAuditor  # noqa: E402
+    from auditor.base import AuditParseError, SecurityAuditor  # noqa: E402
     from security_auditor import run_security_auditor_pipeline  # noqa: E402
     ALGO_AVAILABLE = True
 except ImportError as exc:  # pragma: no cover - 环境缺失时给可读错误
     ALGO_AVAILABLE = False
     _ALGO_IMPORT_ERROR = exc
+
+    class AuditParseError(Exception):  # noqa: D101 - 环境缺失时的占位
+        pass
 
     def _unavailable(*args, **kwargs):  # 占位：调用时抛清晰错误
         raise RuntimeError(
@@ -69,6 +73,9 @@ class AuditOutcome:
     rewrites_applied: int = 0
     degradation_level: str = "L0"
     degradation_message: str = ""
+    """产品层中文说明。留空则由路由按等级取默认文案；非默认情形
+    （如解析失败）在此给出更准确的措辞，避免复用会误导人的文案。"""
+    degradation_message_cn: str = ""
 
 
 def _restore_final_projection(audited_sql: str, original_sql: str,
@@ -201,39 +208,56 @@ def audit_plan(plan: List[Dict[str, Any]], datasource_id: str) -> AuditOutcome:
             degradation_message="No SSA available for this datasource",
         )
 
-    # ① 违规详情（事件卡片用）
-    auditor = SecurityAuditor(ssa)
-    audit_results = auditor.audit_all(
-        [{"id": sq["id"], "sql": sq["sql"]} for sq in plan]
-    )
+    # 算法层遇到无法解析的子查询时**抛 AuditParseError**，而它自己的语义是
+    # 「解析失败 → L3 + 空计划」（FINAL_IMPLEMENTATION_NOTES：Parse failures
+    # yield L3；Every L3 result returns an empty audited_plan）。所以这里把
+    # 异常转成它本应返回的那个形状——空计划是关键，它保证被拒的 SQL 不会
+    # 被下游误执行。
+    #
+    # 实测触发场景：模型生成的子查询只有一行注释
+    # （如 `-- 过滤出当前医生，直接使用 :doctor_id`），sqlglot 解析不出表达式。
+    # 不接住的话用户看到的是 500，而不是一条可读的拒绝。
+    try:
+        # ① 违规详情（事件卡片用）
+        auditor = SecurityAuditor(ssa)
+        audit_results = auditor.audit_all(
+            [{"id": sq["id"], "sql": sq["sql"]} for sq in plan]
+        )
 
-    violations = []
-    for ar in audit_results:
-        for v in ar.violations:
-            violations.append({
-                "sub_query_id": (
-                    v.sub_query_id if v.sub_query_id is not None
-                    else str(v.sub_query_index)
-                ),
-                "type": v.type.value,
-                "type_label": VIOLATION_LABELS.get(v.type.value, v.type.value),
-                "column": v.column,
-                "severity": v.severity.value,
-                "severity_label": SEVERITY_LABELS.get(
-                    v.severity.value, v.severity.value),
-                "detail": v.detail,
-            })
+        violations = []
+        for ar in audit_results:
+            for v in ar.violations:
+                violations.append({
+                    "sub_query_id": (
+                        v.sub_query_id if v.sub_query_id is not None
+                        else str(v.sub_query_index)
+                    ),
+                    "type": v.type.value,
+                    "type_label": VIOLATION_LABELS.get(v.type.value, v.type.value),
+                    "column": v.column,
+                    "severity": v.severity.value,
+                    "severity_label": SEVERITY_LABELS.get(
+                        v.severity.value, v.severity.value),
+                    "detail": v.detail,
+                })
 
-    # ② 改写与降级
-    out = run_security_auditor_pipeline(
-        decomposition_plan=plan,
-        db_id=datasource_id,
-        ssa_dir=config.SSA_DIR,
-    )
-    report = out.get("audit_report", {}) or {}
+        # ② 改写与降级
+        out = run_security_auditor_pipeline(
+            decomposition_plan=plan,
+            db_id=datasource_id,
+            ssa_dir=config.SSA_DIR,
+        )
+        report = out.get("audit_report", {}) or {}
 
-    # ③ 适配：最终子查询的 AVG 误伤还原（算法层不改，语义见函数注释）
-    audited_plan = _restore_final_plan(plan, out.get("audited_plan", []), ssa)
+        # ③ 适配：最终子查询的 AVG 误伤还原（算法层不改，语义见函数注释）
+        audited_plan = _restore_final_plan(plan, out.get("audited_plan", []), ssa)
+    except AuditParseError as exc:
+        return AuditOutcome(
+            audited_plan=[],
+            degradation_level="L3",
+            degradation_message=f"cannot parse sub-query: {exc}",
+            degradation_message_cn=PARSE_FAILED_MESSAGE,
+        )
 
     return AuditOutcome(
         violations=violations,
