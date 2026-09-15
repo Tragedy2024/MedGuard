@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { exportReportUrl, fetchReport, fetchReports } from '../api/reports'
 import type { ReportDetail, ReportSummary, TokenType } from '../api/types'
+import { beijingTime } from '../lib/time'
 import { AliasProvider } from '../store/aliases'
 import { AdmissionPanel } from '../components/AdmissionPanel'
 import { DegradationBadge } from '../components/DegradationBadge'
@@ -93,7 +94,7 @@ function Reports() {
                   <span className="report-sub">{TOKEN_TEXT[r.token_type] ?? r.token_type}</span>
                   <span className="report-sub">{r.event_count} 事件</span>
                 </span>
-                <span className="report-time">{r.created_at}</span>
+                <span className="report-time">{beijingTime(r.created_at)}</span>
               </button>
             ))}
           </aside>

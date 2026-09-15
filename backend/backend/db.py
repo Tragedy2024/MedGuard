@@ -47,6 +47,25 @@ def save_report(db_path: str, record: Dict[str, Any]) -> int:
     return rid
 
 
+def _iso_utc(created_at: str) -> str:
+    """把 SQLite 的时间戳补成明确的 ISO-8601 UTC（`...T...Z`）。
+
+    `datetime('now')` 返回的是 **UTC**，格式 `YYYY-MM-DD HH:MM:SS`，**没有
+    时区标记**。这样一串字符是歧义的：前端只能猜，猜错就是 8 小时偏差
+    （实测界面上显示 06:56，实际是 14:56）。
+
+    所以在这里补上 T 与 Z，让"这是 UTC"成为数据的一部分而不是约定。
+    展示成北京时间是前端的事——**存 UTC、显示本地**，反过来做会让这个
+    字段将来谁读都得先考古。
+    """
+    if not created_at:
+        return created_at
+    s = created_at.strip()
+    if "T" in s or s.endswith("Z"):
+        return s            # 已经是 ISO 形状，不动
+    return s.replace(" ", "T") + "Z"
+
+
 def list_reports(db_path: str, limit: int = 20) -> List[Dict[str, Any]]:
     con = _connect(db_path)
     rows = con.execute(
@@ -54,7 +73,12 @@ def list_reports(db_path: str, limit: int = 20) -> List[Dict[str, Any]]:
         " created_at FROM reports ORDER BY id DESC LIMIT ?",
         (limit,)).fetchall()
     con.close()
-    return [dict(r) for r in rows]
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["created_at"] = _iso_utc(d.get("created_at", ""))
+        out.append(d)
+    return out
 
 
 def get_report(db_path: str, report_id: int) -> Optional[Dict[str, Any]]:
@@ -65,5 +89,6 @@ def get_report(db_path: str, report_id: int) -> Optional[Dict[str, Any]]:
     if row is None:
         return None
     rec = dict(row)
+    rec["created_at"] = _iso_utc(rec.get("created_at", ""))
     rec["payload"] = json.loads(rec["payload"])
     return rec
