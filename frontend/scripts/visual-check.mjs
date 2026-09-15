@@ -17,9 +17,17 @@ const VIEWPORT = { width: 1440, height: 900 }
 
 mkdirSync(OUT, { recursive: true })
 
-/** @type {{name: string, path: string, act?: (p: import('playwright').Page) => Promise<void>}[]} */
+/**
+ * @type {{
+ *   name: string
+ *   path: string
+ *   act?: (p: import('playwright').Page) => Promise<void>
+ *   height?: number                  // 内容较长的页面（如展开的库表结构）调高
+ *   mock?: Record<string, unknown>   // 按 pathname 精确 mock 接口响应
+ * }[]}
+ */
 const SHOTS = [
-  { name: '01-home-staff', path: '/' },
+  { name: '01-home-staff', path: '/', height: 1500 },
   {
     name: '02-home-patient',
     path: '/',
@@ -28,6 +36,8 @@ const SHOTS = [
   { name: '03-policy', path: '/policy' },
   { name: '04-console', path: '/console' },
   { name: '05-reports', path: '/reports' },
+  // 空态：未载入演示数据。用一个空数组顶掉真实响应即可，无需清库。
+  { name: '06-home-empty', path: '/', mock: { '/api/datasources': [] } },
 ]
 
 const browser = await chromium.launch({ channel: 'chrome' })
@@ -36,10 +46,19 @@ const errors = []
 
 for (const shot of SHOTS) {
   const page = await ctx.newPage()
+  if (shot.height) await page.setViewportSize({ ...VIEWPORT, height: shot.height })
   page.on('console', (m) => {
     if (m.type() === 'error') errors.push(`[${shot.name}] console: ${m.text()}`)
   })
   page.on('pageerror', (e) => errors.push(`[${shot.name}] pageerror: ${e.message}`))
+
+  // 精确匹配 pathname，避免 /api/datasources 的规则误伤 /api/datasources/{id}/schema
+  for (const [pathname, body] of Object.entries(shot.mock ?? {})) {
+    await page.route(
+      (url) => url.pathname === pathname,
+      (route) => route.fulfill({ json: body }),
+    )
+  }
 
   await page.goto(BASE + shot.path, { waitUntil: 'networkidle' })
   if (shot.act) await shot.act(page)

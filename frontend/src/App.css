@@ -444,3 +444,175 @@ a {
     padding: 20px;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   模块① 数据源页
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── ECL 标签 ─────────────────────────────────────────────────────
+   ECL 本身就是安全等级，故直接复用安全语义三色，与层级判定同源。 */
+
+.ecl {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 2px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.ecl-free {
+  background: var(--pass-bg);
+  border-color: var(--pass-rule);
+  color: var(--pass);
+}
+
+.ecl-controlled {
+  background: var(--layer2-bg);
+  border-color: var(--layer2-rule);
+  color: var(--layer2);
+}
+
+.ecl-blocked {
+  background: var(--layer1-bg);
+  border-color: var(--layer1-rule);
+  color: var(--layer1);
+}
+
+/* ── 数据源卡片 ──────────────────────────────────────────────── */
+
+.card > h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--brand-deep);
+}
+
+.kv {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 14px 24px;
+  margin: 14px 0 0;
+}
+
+.kv dt {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.kv dd {
+  margin: 4px 0 0;
+  font-size: 15px;
+  color: var(--ink);
+}
+
+/* 「策略未标注」是 fail-open 的安全隐患，用层二琥珀标出 */
+.kv-ok {
+  color: var(--ink);
+}
+
+.kv-warn {
+  color: var(--layer2);
+  font-weight: 600;
+}
+
+/* ── 库表结构 ────────────────────────────────────────────────── */
+
+.schema-table {
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--brand-rule);
+  border-radius: 3px;
+}
+
+.schema-table + .schema-table {
+  margin-top: 8px;
+}
+
+.schema-table > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  list-style: none;
+  user-select: none;
+}
+
+.schema-table > summary::-webkit-details-marker {
+  display: none;
+}
+
+.schema-table > summary::before {
+  content: '';
+  width: 0;
+  height: 0;
+  border-left: 5px solid var(--ink-faint);
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  transition: transform 0.18s var(--ease);
+}
+
+.schema-table[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.schema-table > summary:hover code {
+  color: var(--brand);
+}
+
+.schema-count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+.schema-columns {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 0 20px;
+  padding: 4px 16px 14px;
+  margin: 0;
+  border-top: 1px solid var(--rule-soft);
+}
+
+.schema-columns li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 13px;
+  border-bottom: 1px solid var(--rule-soft);
+}
+
+.schema-columns li > code {
+  color: var(--ink);
+}
+
+.col-type {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--ink-faint);
+}
+
+.col-pk {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  background: var(--brand-bg);
+  color: var(--brand);
+  border-radius: 2px;
+  padding: 1px 5px;
+}
