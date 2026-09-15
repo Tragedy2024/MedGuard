@@ -271,10 +271,12 @@ a { color: inherit; }
   padding: 22px 24px;
 }
 
+/* 错误块用整块底色 + 四周描边表达，不用单边色条——那是"AI 生成界面最易
+   辨认的特征"，上一轮刚从旧版删掉 7 处，不该在新系统里复活。
+   红底 + 红字本身已经足够明确。 */
 .alert-error {
   background: var(--layer1-bg);
-  border: 1px solid var(--layer1-rule);
-  border-left: 4px solid var(--layer1);
+  border: 1px solid var(--layer1);
   border-radius: 2px;
   color: var(--layer1);
   padding: 14px 18px;

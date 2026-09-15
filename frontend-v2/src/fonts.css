@@ -1,7 +1,7 @@
 /* 自托管字体（拉丁子集）——不依赖 CDN。竞赛演示多为断网或弱网环境，
    字体加载失败会直接毁掉整个视觉，故随仓库分发。
 
-   中文不走这些文件：CJK 字体动辄数 MB，由 App.css 里的系统字体栈承接
+   中文不走这些文件：CJK 字体动辄数 MB，由 design.css 里的系统字体栈承接
    （PingFang SC / Microsoft YaHei / Noto Sans SC），这是刻意的取舍。
 
    Newsreader 与 IBM Plex Sans 是**可变字体**：Google Fonts 对多权重请求
