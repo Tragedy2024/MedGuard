@@ -1382,6 +1382,52 @@ html { scroll-behavior: smooth; }
   .metrics-grid > .metric:first-child .metric-value { font-size: 44px; }
 }
 
+/* ⑫ 路由转场 —— 来自 ui-ux-pro-max 的 gsap 域：
+   「**Exit animation should always resolve faster than entrance**，
+   这样前进/返回才跟手」，Subtle 档 200–300ms。
+
+   这里只做**进入**：纯 CSS 下没有可靠的退出钩子（那要引入动画库）。
+   所以把时长压到 0.22s——直接达到它想要的"snappy"，而不是假装做了
+   对称转场。`.page` 在路由切换时会重新挂载，故动画恰好只在换页时触发，
+   不会拖慢页内动态内容（那正是我上一轮踩过的坑）。 */
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(7px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.page { animation: page-in 0.22s var(--ease-out) both; }
+
+/* ⑬ 加载态：从"一行灰字"改成**带骨架**（data-dense-dashboard 清单里
+   唯一没做到的一条）。文字保留——它说的是"正在翻译这个新问法"，
+   比任何骨架都更有信息量；骨架只是补上"有东西正在成形"的体感。
+   只在超过 150ms 时才显示，故 1–9ms 的审计不会闪。 */
+.loading {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  padding: 8px 0;
+}
+
+.loading::after {
+  content: '';
+  height: 13px;
+  width: 52%;
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    var(--paper-sunken) 25%,
+    var(--rule-soft) 37%,
+    var(--paper-sunken) 63%
+  );
+  background-size: 400% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  from { background-position: 100% 50%; }
+  to   { background-position: 0% 50%; }
+}
+
 /* ⑪ 减少动效下同样关闭新加的位移动画 */
 @media (prefers-reduced-motion: reduce) {
   .ask-bar button:active:not(:disabled),
@@ -1392,4 +1438,10 @@ html { scroll-behavior: smooth; }
   .sticky-actions button:active:not(:disabled),
   .schema-table > summary:active { transform: none; }
   html { scroll-behavior: auto; }
+}
+
+/* 减少动效：转场与骨架一并停掉，直接给最终态 */
+@media (prefers-reduced-motion: reduce) {
+  .page { animation: none; }
+  .loading::after { animation: none; background: var(--paper-sunken); }
 }
