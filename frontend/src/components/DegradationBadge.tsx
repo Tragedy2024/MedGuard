@@ -1,5 +1,5 @@
 /** 降级徽章。L0 绿 / L1·L2 琥珀 / L3 红——严格对齐安全语义三色。 */
-import type { DegradationInfo } from '../api/types'
+import type { DegradationInfo } from '../api/models'
 
 export function DegradationBadge({ degradation }: { degradation: DegradationInfo }) {
   const tone =

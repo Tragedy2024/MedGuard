@@ -2,7 +2,7 @@
 import type {
   DatasourceInfo, Policy, QueryResponse, ReportSummary,
   DetectionMetrics, SchemaTable, Token,
-} from './types'
+} from './models'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {

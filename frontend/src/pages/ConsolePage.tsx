@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { runDirectQuery, runQuery } from '../api/query'
-import type { QueryResponse } from '../api/types'
+import type { QueryResponse } from '../api/models'
 import { AliasProvider } from '../store/aliases'
 import { useAuth } from '../store/auth'
 import { presetsFor } from '../store/presets'

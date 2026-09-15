@@ -11,7 +11,7 @@
  */
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { fetchPolicy } from '../api/policies'
-import type { Policy } from '../api/types'
+import type { Policy } from '../api/models'
 
 interface AliasCtx {
   policy: Policy | null

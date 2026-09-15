@@ -6,7 +6,7 @@
  *
  * 视觉上必须与层二的琥珀色明确区分：层一是**执行前拒绝**，红。
  */
-import type { AdmissionInfo } from '../api/types'
+import type { AdmissionInfo } from '../api/models'
 import { useAliases } from '../store/aliases'
 
 export function AdmissionPanel({ admission }: { admission: AdmissionInfo }) {

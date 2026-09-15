@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { exportReportUrl, fetchReport, fetchReports } from '../api/reports'
-import type { ReportDetail, ReportSummary, TokenType } from '../api/types'
+import type { ReportDetail, ReportSummary, TokenType } from '../api/models'
 import { beijingTime } from '../lib/time'
 import { AliasProvider } from '../store/aliases'
 import { AdmissionPanel } from '../components/AdmissionPanel'

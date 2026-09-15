@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { fetchPolicy, updatePolicy } from '../api/policies'
-import type { EclLabel, Policy } from '../api/types'
+import type { EclLabel, Policy } from '../api/models'
 import { ECL_TEXT, EclTag } from '../components/EclTag'
 
 const CX = 'regional_health'
@@ -162,7 +162,9 @@ export function PolicyPage() {
       {policy.cross_domain_rules.map((r, i) => (
         <div key={i} className="card">
           <div className="rule-head">
-            <code>{r.table_pair.join(' ⨝ ')}</code>
+            {/* table_pair 在后端是可选字段（刻意的：手工维护的 YAML 少一个
+                字段不该让整页 500），故这里守住空值。 */}
+            <code>{(r.table_pair ?? []).join(' ⨝ ')}</code>
             <span className="rule-join">
               on <code>{r.join_key}</code>
             </span>

@@ -22,7 +22,7 @@ class QueryRequest(BaseModel):
 class AdmissionInfo(BaseModel):
     passed: bool
     reason: Optional[str] = None
-    checked_tables: List[str] = Field(default_factory=list)
+    checked_tables: List[str]
     bound_to_subject: bool = False
 
 
@@ -45,15 +45,17 @@ class SecurityEvent(BaseModel):
 
 
 class RewriteInfo(BaseModel):
-    applied: int = 0
-    log: List[str] = Field(default_factory=list)
+    applied: int
+    log: List[str]
 
 
 class DegradationInfo(BaseModel):
-    level: str
+    # 用 Literal 而不是 str：生成给前端的 TS 类型才能精确到联合类型，
+    # 而且 Pydantic 会真的拒掉非法等级——比让它在界面上以字符串乱窜好。
+    level: Literal["L0", "L1", "L2", "L3"]
     label: str
     """算法层原文（英文）。保留供技术观众核对，界面折叠展示。"""
-    message: str = ""
+    message: str
     """产品层中文说明。面向医护与病患的主文案——算法层英文原文不该
     直接出现在界面上（会议记录 §1.1 已否决的开发者工具形态）。"""
     message_cn: str = ""
@@ -66,24 +68,24 @@ class MetricsInfo(BaseModel):
     可验证形式：审计器不调模型（无提示注入面）、不碰数据库（无困惑代理面）。
     查询本身的执行不计入本指标——`result` 非空即表示执行过。
     """
-    elapsed_ms: int = 0      # 层一 + 层二的审计耗时
-    llm_calls: int = 0       # 恒为 0
-    db_access: int = 0       # 恒为 0
+    elapsed_ms: int          # 层一 + 层二的审计耗时
+    llm_calls: int           # 恒为 0
+    db_access: int           # 恒为 0
 
 
 class ResultSet(BaseModel):
-    columns: List[str] = Field(default_factory=list)
-    rows: List[List[Any]] = Field(default_factory=list)
+    columns: List[str]
+    rows: List[List[Any]]
 
 
 class QueryResponse(BaseModel):
     admission: AdmissionInfo
     question: str
-    plan: List[PlanItem] = Field(default_factory=list)
-    events: List[SecurityEvent] = Field(default_factory=list)
-    rewrite: RewriteInfo = Field(default_factory=RewriteInfo)
+    plan: List[PlanItem]
+    events: List[SecurityEvent]
+    rewrite: RewriteInfo
     degradation: DegradationInfo
-    metrics: MetricsInfo = Field(default_factory=MetricsInfo)
+    metrics: MetricsInfo
     result: Optional[ResultSet] = None
 
 
@@ -98,15 +100,20 @@ class DatasourceInfo(BaseModel):
 class ReportSummary(BaseModel):
     id: int
     question: str
-    token_type: str
+    token_type: Literal["staff", "patient"]
     created_at: str
-    degradation_level: str
+    degradation_level: Literal["L0", "L1", "L2", "L3"]
     event_count: int
 
 
 class ReportDetail(ReportSummary):
-    """报告详情 = 摘要字段 + 完整 QueryResponse 快照。"""
-    payload: Dict[str, Any] = Field(default_factory=dict)
+    """报告详情 = 摘要字段 + 完整 QueryResponse 快照。
+
+    `payload` 声明为 `QueryResponse` 而不是 `Dict[str, Any]`：它本来就是
+    那次查询的完整响应（存库时就是 `resp.model_dump()`）。写成泛型字典会让
+    安全报告页在 TS 里整页退化成 unknown——而那正是承载审计证据的核心页面。
+    """
+    payload: QueryResponse
 
 
 class SchemaColumn(BaseModel):
@@ -117,11 +124,11 @@ class SchemaColumn(BaseModel):
 
 class SchemaTable(BaseModel):
     name: str
-    columns: List[SchemaColumn] = Field(default_factory=list)
+    columns: List[SchemaColumn]
 
 
 class DatasourceSchema(BaseModel):
-    tables: List[SchemaTable] = Field(default_factory=list)
+    tables: List[SchemaTable]
 
 
 class DemoDatasourceResult(BaseModel):
@@ -145,19 +152,22 @@ class CrossDomainRule(BaseModel):
 
 class Policy(BaseModel):
     datasource_id: str
-    column_labels: Dict[str, Dict[str, str]] = Field(default_factory=dict)
-    column_reasons: Dict[str, Dict[str, str]] = Field(default_factory=dict)
-    cross_domain_rules: List[CrossDomainRule] = Field(default_factory=list)
-    review_status: Dict[str, Dict[str, str]] = Field(default_factory=dict)
+    # ECL 三值是**封闭集合**，用 Literal 让生成类型精确到联合类型，
+    # 同时 Pydantic 会拒掉非法标签（策略写坏时 fail-closed，而不是
+    # 让一个不认识的等级悄悄进入审计）。
+    column_labels: Dict[str, Dict[str, Literal["free", "controlled", "blocked"]]]
+    column_reasons: Dict[str, Dict[str, str]]
+    cross_domain_rules: List[CrossDomainRule]
+    review_status: Dict[str, Dict[str, str]]
     """面向医护/病患的中文名。物理表名与列名不应直接出现在界面上——
     那会让产品退回成开发者工具（会议记录 §1.1 已否决的形态）。
     缺失时前端回落到物理名，但 tests 会拦住缺失。"""
-    table_aliases: Dict[str, str] = Field(default_factory=dict)
-    column_aliases: Dict[str, Dict[str, str]] = Field(default_factory=dict)
+    table_aliases: Dict[str, str]
+    column_aliases: Dict[str, Dict[str, str]]
 
 
 class PolicyList(BaseModel):
-    datasource_ids: List[str] = Field(default_factory=list)
+    datasource_ids: List[str]
 
 
 class PolicyUpdateResult(BaseModel):
@@ -195,5 +205,5 @@ class DetectionMetrics(BaseModel):
 class HealthInfo(BaseModel):
     status: str
     algo_engine: str
-    policies: List[str] = Field(default_factory=list)
-    routes: List[str] = Field(default_factory=list)
+    policies: List[str]
+    routes: List[str]

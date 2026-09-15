@@ -6,7 +6,7 @@
  * "patients.name (ECL=controlled) is SELECTed but not consumed by any"），
  * 对医护与病患只是噪音，故折叠进「技术详情」，默认不展开。
  */
-import type { SecurityEvent } from '../api/types'
+import type { SecurityEvent } from '../api/models'
 import { useAliases } from '../store/aliases'
 
 export function EventCard({ event }: { event: SecurityEvent }) {

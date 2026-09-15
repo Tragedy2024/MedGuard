@@ -10,7 +10,7 @@
  */
 import { useEffect, useState } from 'react'
 import { fetchPolicy } from '../api/policies'
-import type { EclLabel, Policy } from '../api/types'
+import type { EclLabel, Policy } from '../api/models'
 import { EclTag } from '../components/EclTag'
 import { useAuth } from '../store/auth'
 

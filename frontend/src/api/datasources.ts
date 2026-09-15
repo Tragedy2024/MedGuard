@@ -1,5 +1,5 @@
 import { apiGet, apiPost } from './client'
-import type { DatasourceInfo, SchemaTable } from './types'
+import type { DatasourceInfo, SchemaTable } from './models'
 
 export const fetchDatasources = () => apiGet<DatasourceInfo[]>('/api/datasources')
 

@@ -4,7 +4,7 @@
  * 取全站的安全语义三色——与层级判定同源，不另起一套配色。
  * 模块②（策略页）与模块③（控制台）复用本组件。
  */
-import type { EclLabel } from '../api/types'
+import type { EclLabel } from '../api/models'
 
 /** ECL 的中文名。下拉框等处也应显示这套文案，不要把 free/controlled/blocked
  *  这类内部字符串暴露给非数据库专业的用户。 */

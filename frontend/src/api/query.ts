@@ -1,5 +1,5 @@
 import { apiPost } from './client'
-import type { QueryResponse, Token } from './types'
+import type { QueryResponse, Token } from './models'
 
 export interface QueryRequest {
   token: Token

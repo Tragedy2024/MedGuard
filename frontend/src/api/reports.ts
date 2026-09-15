@@ -1,5 +1,5 @@
 import { apiGet } from './client'
-import type { DetectionMetrics, ReportDetail, ReportSummary } from './types'
+import type { DetectionMetrics, ReportDetail, ReportSummary } from './models'
 
 export const fetchReports = (limit = 20) =>
   apiGet<ReportSummary[]>(`/api/reports?limit=${limit}`)

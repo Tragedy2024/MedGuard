@@ -1,5 +1,5 @@
 import { apiGet, apiPut } from './client'
-import type { Policy } from './types'
+import type { Policy } from './models'
 
 export const fetchPolicy = (id: string) => apiGet<Policy>(`/api/policies/${id}`)
 

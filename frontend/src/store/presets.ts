@@ -1,4 +1,4 @@
-import type { PresetQuery } from '../api/types'
+import type { PresetQuery } from '../api/models'
 
 /** 与后端 demo/queries.json 的键一一对应。 */
 export const PRESET_QUERIES: PresetQuery[] = [

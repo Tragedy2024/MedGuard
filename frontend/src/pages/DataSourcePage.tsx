@@ -12,7 +12,7 @@ import { fetchPolicy } from '../api/policies'
 import { fetchDetectionMetrics } from '../api/reports'
 import type {
   DatasourceInfo, DetectionMetrics, Policy, SchemaTable,
-} from '../api/types'
+} from '../api/models'
 
 export function DataSourcePage() {
   const [sources, setSources] = useState<DatasourceInfo[]>([])

@@ -18,7 +18,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import type { Token } from '../api/types'
+import type { Token } from '../api/models'
 
 export type UserRole = 'admin' | 'staff' | 'patient'
 

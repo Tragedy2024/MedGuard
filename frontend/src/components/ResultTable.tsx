@@ -5,7 +5,7 @@
  * 这里就地翻译成业务名，并把原始表达式折叠在表头下方——技术观众仍能核对，
  * 医生看到的是中文。
  */
-import type { ResultSet } from '../api/types'
+import type { ResultSet } from '../api/models'
 import { useAliases } from '../store/aliases'
 
 export function ResultTable({ result }: { result: ResultSet | null }) {

@@ -4,7 +4,7 @@
  * 主体走中文业务语言（违规类型 + 业务字段名来自事件），算法返回的英文
  * description 折叠进「技术详情」。理由同 SqlDiff。
  */
-import type { PlanItem, SecurityEvent } from '../api/types'
+import type { PlanItem, SecurityEvent } from '../api/models'
 import { useAliases } from '../store/aliases'
 import { SqlDiff } from './SqlDiff'
 

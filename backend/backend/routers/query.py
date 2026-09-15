@@ -74,7 +74,7 @@ def _pipeline(plan: list, question: str, token: Token,
                                     bound_to_subject=False),
             question=question,
             plan=[], events=[],
-            rewrite=RewriteInfo(),
+            rewrite=RewriteInfo(applied=0, log=[]),
             degradation=DegradationInfo(
                 level="L3", label=DEGRADATION_LABELS["L3"],
                 message=adm.reason or "",
