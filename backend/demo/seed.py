@@ -74,6 +74,7 @@ TABLE_DDL = [
 # 锚点常量（queries.json 与测试依赖）
 ANCHOR_PATIENT = "P001"
 ANCHOR_LAB_TEST = "血糖"
+ANCHOR_LAB_VALUE = "6.3"   # 仅略高于空腹上限：智慧医生演示「偏高（空腹血糖受损）」剧情
 DIABETES_DIAGNOSIS = "2型糖尿病"
 CARDIOLOGY_DEPT = "心内科"
 
@@ -177,6 +178,7 @@ def _seed_visits_and_records(con: sqlite3.Connection) -> None:
                 if visit_no == 1:
                     _insert_record(con, pid, visit_id, "lab",
                                    test_name=ANCHOR_LAB_TEST,
+                                   fixed_value=ANCHOR_LAB_VALUE,
                                    tester=rng)
                     _insert_record(con, pid, visit_id, "medication",
                                    tester=rng)
@@ -209,7 +211,7 @@ def _seed_visits_and_records(con: sqlite3.Connection) -> None:
 
 def _insert_record(con, pid: str, visit_id: str, kind: str, *,
                    tester: random.Random, diagnosis: str = None,
-                   test_name: str = None) -> None:
+                   test_name: str = None, fixed_value: str = None) -> None:
     """插入一条 clinical_record。record_id 用 visit_id 派生，保证唯一。"""
     if kind == "diagnosis":
         name = diagnosis or tester.choice(_DIAGNOSES)
@@ -227,8 +229,8 @@ def _insert_record(con, pid: str, visit_id: str, kind: str, *,
             " record_type, test_name, result_value, unit, ref_range)"
             " VALUES (?, ?, ?, 'lab', ?, ?, ?, ?)",
             (f"{visit_id}-L", visit_id, pid, name,
-             f"{tester.randint(1, 120)}.{tester.randint(0, 9)}",
-             tester.choice(["mmol/L", "g/L", "10^9/L"]),
+             fixed_value or f"{tester.randint(1, 120)}.{tester.randint(0, 9)}",
+             "mmol/L" if name == "血糖" else tester.choice(["mmol/L", "g/L", "10^9/L"]),
              "参考范围: 见报告"))
     elif kind == "medication":
         con.execute(

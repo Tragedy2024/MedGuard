@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.routers import datasources, policies, query, reports
+from backend.routers import datasources, policies, query, reports, smart_doctor
 from backend.schemas import HealthInfo
 
 
@@ -59,6 +59,7 @@ app.include_router(datasources.router)
 app.include_router(policies.router)
 app.include_router(query.router)
 app.include_router(reports.router)
+app.include_router(smart_doctor.router)
 
 
 @app.get("/api/health", response_model=HealthInfo)

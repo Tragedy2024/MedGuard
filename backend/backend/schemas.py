@@ -207,3 +207,51 @@ class HealthInfo(BaseModel):
     algo_engine: str
     policies: List[str]
     routes: List[str]
+
+# ════════════════════════════════════════════════════════════════
+# 智慧医生（面向患者的可信就医助手，见 docs/智慧医生.docx）
+# ════════════════════════════════════════════════════════════════
+
+class SmartDoctorRequest(BaseModel):
+    token: Token
+    datasource_id: str
+    question: str
+
+
+class SmartDoctorDataBlock(BaseModel):
+    """院内数据（来源：医院主库）。经医盾层一准入 + 层二审计后返回。"""
+    source: str
+    columns: List[str] = Field(default_factory=list)
+    rows: List[List[Any]] = Field(default_factory=list)
+    sql_after: str = ""
+    degradation_level: str = "L0"
+
+
+class SmartDoctorInterpretation(BaseModel):
+    """通俗解读（来源：医院审核知识库）。
+
+    items 为逐条说明（如每个检验项/每种药对应一条），字段随意图不同，
+    故用宽松字典——测试会逐键断言，前端按意图渲染。
+    """
+    source: str
+    title: str = ""
+    text: str = ""
+    items: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class SmartDoctorAdvice(BaseModel):
+    """下一步建议（来源：医院审核知识库）。"""
+    source: str
+    text: str = ""
+    actions: List[str] = Field(default_factory=list)
+    urgent: bool = False
+
+
+class SmartDoctorResponse(BaseModel):
+    intent: Literal["lab", "medication", "symptom", "disease", "fallback"]
+    question: str
+    admission: AdmissionInfo
+    degradation: DegradationInfo
+    data: Optional[SmartDoctorDataBlock] = None
+    interpretation: Optional[SmartDoctorInterpretation] = None
+    advice: Optional[SmartDoctorAdvice] = None

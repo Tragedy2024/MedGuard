@@ -14,7 +14,7 @@
 后端（conda 环境 medguard）
 
     cd MedGuard/backend
-    python -m pytest tests/ -q            # 全量，约 4 秒，123 项
+    python -m pytest tests/ -q            # 全量，约 4 秒，153 项
     python -m pytest tests/test_demo_queries.py -v    # 只看演示数据校验（阻塞性）
 
 前端
@@ -60,6 +60,12 @@ test_demo_queries.py            13  演示数据校验 ★阻塞性
 test_query_cache.py             10  问答缓存
                                     归一化、令牌隔离、容量控制（每类令牌限 10）、
                                     损坏自愈、空计划不入库
+test_smart_doctor.py            30  智慧医生（智慧医生.docx）
+                                    意图识别（检验/用药/症状/疾病/兜底）、数值分档解读、
+                                    三块结构（院内数据/通俗解读/建议）、**只读本人（层一）**、
+                                    路由令牌约束（医护 403 / 缺 subject 422）
+                                    **AI 兜底**（有 Key 走模型 / 无 Key 回退引导 /
+                                    调用失败回退 / 脏输出兜底 / JSON 提取健壮性）
 test_llm_nl2sql.py               8  自然语言→计划：**不依赖模型**的纯逻辑
                                     输出格式规整（flash 与 pro 两种写法）、
                                     身份约束（病患/医护）、表结构描述含中文别名与取值
@@ -70,7 +76,7 @@ test_schemas.py                  3  契约模型（字段名即契约）
 test_queries.py                  6  预设查询库（demo/queries.json）
 test_labels.py                   4  中文映射覆盖（防算法层英文原文透出到界面）
 ----------------------------  ----  --------------------------------------------
-合计                           123
+合计                           153
 
 
 --------------------------------------------------------------------------------

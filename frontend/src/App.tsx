@@ -7,6 +7,7 @@ import { ScopePage } from './pages/ScopePage'
 import { PolicyPage } from './pages/PolicyPage'
 import { ConsolePage } from './pages/ConsolePage'
 import { ReportPage } from './pages/ReportPage'
+import { SmartDoctorPage } from './pages/SmartDoctorPage'
 import './design.css'
 
 const ALL: UserRole[] = ['admin', 'staff', 'patient']
@@ -24,12 +25,18 @@ interface NavItem {
  * 不在于能进哪些页面。这正是演示要证明的：同一套界面、同一个问题，
  * 两类令牌给出不同结果。
  *
- * 管理员多出「数据源」与「安全策略」：那是平台配置，不该开放给
- * 临床用户与病患。
+ * 患者多一个「智慧医生」入口：面向患者的可信就医助手（智慧医生.docx），
+ * 且它是患者登录后的默认页。管理员多出「数据源」与「安全策略」：
+ * 那是平台配置，不该开放给临床用户与病患。
  */
 function navItems(role: UserRole): NavItem[] {
   const items: NavItem[] = [
-    { to: '/', label: role === 'admin' ? '数据源' : '可查范围', roles: ALL },
+    {
+      to: '/',
+      label: role === 'admin' ? '数据源' : role === 'patient' ? '智慧医生' : '可查范围',
+      roles: ALL,
+    },
+    { to: '/scope', label: '可查范围', roles: ['patient'] },
     { to: '/policy', label: '安全策略', roles: ['admin'] },
     { to: '/console', label: '查询控制台', roles: ALL },
     { to: '/reports', label: '安全报告', roles: ALL },
@@ -72,9 +79,24 @@ function Shell() {
 
       <main className="app-main" id="main">
         <Routes>
-          {/* 同一个入口，两种视图：管理员看库表结构，临床用户与病患
-              看业务化的「可查范围」。 */}
-          <Route path="/" element={isAdmin ? <DataSourcePage /> : <ScopePage />} />
+          {/* 同一个入口，三种视图：管理员看库表结构，医护看业务化的
+              「可查范围」，患者默认落「智慧医生」（docx 要求）。 */}
+          <Route
+            path="/"
+            element={
+              isAdmin ? (
+                <DataSourcePage />
+              ) : session.role === 'patient' ? (
+                <SmartDoctorPage />
+              ) : (
+                <ScopePage />
+              )
+            }
+          />
+          <Route
+            path="/scope"
+            element={session.role === 'patient' ? <ScopePage /> : <Forbidden />}
+          />
           <Route
             path="/policy"
             element={isAdmin ? <PolicyPage /> : <Forbidden />}

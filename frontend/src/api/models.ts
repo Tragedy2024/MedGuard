@@ -66,3 +66,61 @@ export interface PresetQuery {
   question: string
   tokenTypes: TokenType[]
 }
+
+/* ── 智慧医生（智慧医生.docx）──────────────────────────────────
+   后端 schemas.py 已定义同名模型，但 types.ts 是 openapi 生成物；
+   本机无 Node 无法重新生成，因此此处先以手写接口提供。将来执行
+   `npx openapi-typescript openapi.json -o src/api/types.ts` 后，
+   应改为从 components 派生（与上方各类型一致）。 */
+
+export interface SmartDoctorRequest {
+  token: Token
+  datasource_id: string
+  question: string
+}
+
+export type SmartDoctorIntent =
+  | 'lab'
+  | 'medication'
+  | 'symptom'
+  | 'disease'
+  | 'fallback'
+
+export interface SmartDoctorDataBlock {
+  /** 来源：医院主库（经医盾层一 + 层二审计后返回） */
+  source: string
+  columns: string[]
+  rows: unknown[][]
+  sql_after: string
+  degradation_level: string
+}
+
+export interface SmartDoctorInterpretationItem {
+  [key: string]: unknown
+}
+
+export interface SmartDoctorInterpretation {
+  /** 来源：医院审核知识库 */
+  source: string
+  title: string
+  text: string
+  items: SmartDoctorInterpretationItem[]
+}
+
+export interface SmartDoctorAdvice {
+  /** 来源：医院审核知识库 */
+  source: string
+  text: string
+  actions: string[]
+  urgent: boolean
+}
+
+export interface SmartDoctorResponse {
+  intent: SmartDoctorIntent
+  question: string
+  admission: AdmissionInfo
+  degradation: DegradationInfo
+  data: SmartDoctorDataBlock | null
+  interpretation: SmartDoctorInterpretation | null
+  advice: SmartDoctorAdvice | null
+}
