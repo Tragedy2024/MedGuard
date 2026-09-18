@@ -89,7 +89,12 @@ def test_anchor_patient_has_lab_medication_imaging():
     by_type = {r["record_type"]: r["test_name"] for r in rows}
     assert "medication" in by_type
     assert "imaging" in by_type
-    assert by_type.get("lab") == ANCHOR_LAB_TEST
+    # 断言「存在血糖这条 lab」而不是「最后一条 lab 是血糖」：by_type 是
+    # 字典覆盖，P001 若因随机流多出一条 lab 行，最后写入的会顶掉锚点，
+    # 测试失败却看不出原因（当前能过只是因为 P001 恰好只有 2 次就诊，
+    # 两次都走锚点分支）。
+    lab_names = {r["test_name"] for r in rows if r["record_type"] == "lab"}
+    assert ANCHOR_LAB_TEST in lab_names
 
 
 def test_diabetes_anchors_exist():
