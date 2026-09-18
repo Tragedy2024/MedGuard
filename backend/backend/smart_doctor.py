@@ -32,6 +32,7 @@ import yaml
 from backend import config
 from backend.admission import admission_check_plan
 from backend.deps import audit_plan
+from backend.labels import DEGRADATION_LABELS, DEGRADATION_MESSAGES
 
 # ── 意图类型 ──────────────────────────────────────────────────
 INTENT_LAB = "lab"            # 帮我看懂检查报告 / 我的血糖结果正常吗
@@ -46,6 +47,49 @@ _SOURCE_AI = "AI 智能导诊"
 
 _LOCK = threading.Lock()
 _KB: Optional[Dict[str, Any]] = None
+
+
+# ── 分诊等级（acuity）────────────────────────────────────────
+#
+# 对齐国内「三区四级」（WS/T 390-2012《医院急诊科规范化流程》）：
+#   1 濒危（即刻处置）／2 危重（10 分钟内）／3 急症（30 分钟内）／4 非急症
+# 只有 1、2 级弹急诊横幅。3 级（如需尽快复诊的检验显著异常）不弹——把"人人
+# 弹警告"压下去，真急症信号才不会被稀释。
+#
+# 这套分级**替代**了原先「知识库条目里有没有 urgent_text」的判定。那是个
+# 语义错误：urgent_text 属于 Schmitt-Thompson 体系里的 safety-net 提示
+# （"若同时出现…请立即就医"），本来就该无条件展示，不表示本次回答紧急。
+_ACUITY_URGENT_MAX = 2
+_DEFAULT_ACUITY = 4
+_ACUITY_LABELS = {1: "即刻", 2: "危重", 3: "急症", 4: "非急症"}
+
+
+def _acuity(value: Any) -> int:
+    """归一成 1–4。缺失或非法值按 4（非急症）处理。
+
+    知识库条目**应当**显式声明 acuity；默认值是给"漏写"兜底的，不是设计
+    意图——tests 里有一条用例会遍历 symptoms 断言每条都写了。
+    """
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return _DEFAULT_ACUITY
+    return n if 1 <= n <= 4 else _DEFAULT_ACUITY
+
+
+def _as_bool(value: Any) -> bool:
+    """严格布尔归一。
+
+    模型常把布尔输出成字符串，而 `bool("false")` 是 True——那会让非紧急
+    回答弹出急诊横幅（假警报）。字符串按白名单判真，其余一律 False。
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in ("true", "1", "yes", "y", "是")
+    if isinstance(value, (int, float)):
+        return value != 0
+    return False
 
 
 # ── 知识库加载 ────────────────────────────────────────────────
@@ -203,8 +247,11 @@ def fetch_personal_data(plan: List[dict], subject: str
     """
     adm = admission_check_plan(plan, subject)
     if not adm.passed:
-        return adm.to_dict(), {"level": "L3", "label": "已拒绝",
-                               "message_cn": adm.reason or "", "message": ""}, \
+        # 层一拒绝：这就是"涉及其他患者信息"的正当场合，用 labels.py 的口径。
+        return adm.to_dict(), {"level": "L3",
+                               "label": DEGRADATION_LABELS["L3"],
+                               "message_cn": adm.reason or DEGRADATION_MESSAGES["L3"],
+                               "message": ""}, \
             None, [], plan[0]["sql"]
 
     outcome = audit_plan(plan, config.DEMO_DATASOURCE_ID)
@@ -212,9 +259,17 @@ def fetch_personal_data(plan: List[dict], subject: str
     if not sql_after:
         sql_after = {sq["id"]: sq["sql"] for sq in plan}
 
-    if outcome.degradation_level == "L3":
-        return adm.to_dict(), {"level": "L3", "label": "已拒绝",
-                               "message_cn": outcome.degradation_message,
+    level = outcome.degradation_level
+    # 算法层给了更准确的就用它（解析失败时是 PARSE_FAILED_LABEL/MESSAGE，
+    # 与 L3 默认的"涉及其他患者信息"语义不同，不可混用），否则按等级取
+    # labels.py 的默认——与 routers/query.py 的组装方式保持一致。
+    label = outcome.degradation_label or DEGRADATION_LABELS.get(level, "")
+    message_cn = (outcome.degradation_message_cn
+                  or DEGRADATION_MESSAGES.get(level, ""))
+
+    if level == "L3":
+        return adm.to_dict(), {"level": level, "label": label,
+                               "message_cn": message_cn,
                                "message": outcome.degradation_message}, \
             None, [], sql_after.get(plan[-1]["id"], "")
 
@@ -223,11 +278,32 @@ def fetch_personal_data(plan: List[dict], subject: str
     cols, rows = _execute(final_sql)
 
     # 层二改写后的 SQL 一并返回给前端展示（"医盾拦截了什么"的证据）
-    return adm.to_dict(), {"level": outcome.degradation_level,
-                           "label": outcome.degradation_label or "",
-                           "message_cn": outcome.degradation_message_cn or "",
+    return adm.to_dict(), {"level": level, "label": label,
+                           "message_cn": message_cn,
                            "message": outcome.degradation_message}, \
         cols, rows, final_sql
+
+
+def _unavailable(adm: Dict[str, Any], deg: Dict[str, Any], what: str
+                 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """取不到数据时的解读与建议，按**成因**分别给文案。
+
+    columns 为 None 有三种来源，原先被一股脑当成层一拒绝，于是演示库缺失
+    这类基础设施故障也会被播报成「该查询涉及其他患者信息」——一次普通报错
+    变成了对患者的越权指控，响应体还自相矛盾（passed=true 却说涉及他人）。
+    """
+    if not adm.get("passed"):
+        text = adm.get("reason") or DEGRADATION_MESSAGES["L3"]
+    elif deg.get("level") == "L3":
+        text = deg.get("message_cn") or "该查询未通过安全审计，无法提供。"
+    else:
+        text = f"暂时无法读取您的{what}，请稍后重试或到查询控制台确认。"
+    return (
+        {"source": _SOURCE_KB, "title": f"无法读取您的{what}",
+         "text": text, "items": []},
+        {"source": _SOURCE_KB, "text": "如有疑问请联系医院信息科。",
+         "actions": [], "urgent": False},
+    )
 
 
 # ── 解读与建议（知识库） ──────────────────────────────────────
@@ -240,21 +316,27 @@ def _parse_number(text: str) -> Optional[float]:
 
 
 def interpret_lab(test_name: str, value_text: str) -> Optional[Dict[str, Any]]:
-    """按数值分档解读一个检验结果。返回 {label, text} 或 None（知识缺失）。"""
+    """按数值分档解读一个检验结果。
+
+    返回 {label, text, acuity} 或 None（知识缺失）。acuity 来自命中的档位。
+    """
     kb = load_knowledge()
     entry = (kb.get("lab_tests") or {}).get(test_name)
     if not entry:
         return None
     value = _parse_number(value_text or "")
     if value is None:
-        return {"label": "已出结果", "text": "该结果已出，具体解读请结合临床由医生判读。"}
+        return {"label": "已出结果", "acuity": _DEFAULT_ACUITY,
+                "text": "该结果已出，具体解读请结合临床由医生判读。"}
     # 档位从上到下，第一个「下界与上界同时满足」的生效
     for r in entry.get("ranges") or []:
         lo = r.get("min")
         hi = r.get("max")
         if (lo is None or value >= lo) and (hi is None or value <= hi):
-            return {"label": r.get("label", ""), "text": r.get("text", "")}
-    return {"label": "已出结果", "text": "该结果已出，具体解读请结合临床由医生判读。"}
+            return {"label": r.get("label", ""), "text": r.get("text", ""),
+                    "acuity": _acuity(r.get("acuity"))}
+    return {"label": "已出结果", "acuity": _DEFAULT_ACUITY,
+            "text": "该结果已出，具体解读请结合临床由医生判读。"}
 
 
 # ── AI 兜底（知识库未覆盖的问法） ─────────────────────────────
@@ -330,12 +412,15 @@ def ai_triage(question: str) -> Optional[Dict[str, Any]]:
         snippet = " ".join((raw or "").split())
         if not snippet:
             return None
+        # 解析不了 = 判断不了紧急程度。Schmitt-Thompson / ESI 的一致口径是
+        # "when in doubt, escalate"——宁可多给一次安全网提示，也不把"未知"
+        # 静默当成"不急"。横幅文案本身是「请留意重症信号」，不是诊断结论。
         return {
             "title": "AI 智能导诊",
             "text": snippet[:500],
             "advice": "如症状持续或加重，请及时就医面诊。",
             "actions": ["症状加重及时就医"],
-            "urgent": False,
+            "urgent": True,
         }
 
     def _s(*keys: str, default: str = "") -> str:
@@ -353,7 +438,7 @@ def ai_triage(question: str) -> Optional[Dict[str, Any]]:
         "text": _s("text", default=advice),
         "advice": advice,
         "actions": actions or ["症状持续或加重请及时就医"],
-        "urgent": bool(data.get("urgent")),
+        "urgent": _as_bool(data.get("urgent")),
     }
 
 
@@ -400,17 +485,7 @@ def ask(question: str, subject_id: str) -> Dict[str, Any]:
         base["admission"] = adm
         base["degradation"] = deg
         if cols is None:
-            # 层一拒绝（理论少见：计划自带本人绑定；保留路径以防计划被改）
-            base["interpretation"] = {
-                "source": _SOURCE_KB,
-                "title": "无法读取您的检查数据",
-                "text": adm.get("reason") or "该查询涉及其他患者信息，无法提供。",
-                "items": [],
-            }
-            base["advice"] = {
-                "source": _SOURCE_KB, "text": "如有疑问请联系医院信息科。",
-                "actions": [], "urgent": False,
-            }
+            base["interpretation"], base["advice"] = _unavailable(adm, deg, "检查数据")
             return base
 
         base["data"] = {
@@ -422,11 +497,15 @@ def ask(question: str, subject_id: str) -> Dict[str, Any]:
         }
 
         items = []
+        acuity = _DEFAULT_ACUITY
         if entity is None and rows:
             entity = str(rows[0][0])  # 未指定检验项 → 以最近一条为准
         for row in rows:
             name, val, unit, date = (list(row) + [None, None, None, None])[:4]
             hit = interpret_lab(str(name), str(val or ""))
+            if hit:
+                # 本次回答取所有条目里最高的分诊等级（数字最小者）
+                acuity = min(acuity, hit["acuity"])
             items.append({
                 "test_name": str(name), "result_value": str(val or ""),
                 "unit": str(unit or ""), "visit_date": str(date or ""),
@@ -442,15 +521,18 @@ def ask(question: str, subject_id: str) -> Dict[str, Any]:
         }
         advice_text = (entry or {}).get("advice_common") or []
         actions = list(advice_text) if isinstance(advice_text, list) else []
-        urgent = bool((entry or {}).get("urgent_text"))
+        # urgent_text 属 safety-net 提示：无条件展示。是否弹急诊横幅由本次
+        # 命中的**档位等级**决定，与这条文案的有无无关（原先正是把它当成了
+        # 触发器，于是任何血糖问询——包括正常值和查无记录——都会弹红条）。
         text = "；".join(actions) if actions else ""
-        if urgent:
-            text = (text + "。" if text else "") + (entry or {}).get("urgent_text", "")
+        safety = (entry or {}).get("urgent_text") or ""
+        if safety:
+            text = (text + "。" if text else "") + safety
         base["advice"] = {
             "source": _SOURCE_KB,
             "text": text or "建议将本次结果带给您的主治医生做整体评估。",
             "actions": actions,
-            "urgent": urgent,
+            "urgent": acuity <= _ACUITY_URGENT_MAX,
         }
         if not items:
             base["advice"]["text"] = "未在您的记录中找到相关检验，可到查询控制台确认或在下次化验后查看。"
@@ -463,13 +545,7 @@ def ask(question: str, subject_id: str) -> Dict[str, Any]:
         base["admission"] = adm
         base["degradation"] = deg
         if cols is None:
-            base["interpretation"] = {
-                "source": _SOURCE_KB, "title": "无法读取您的用药记录",
-                "text": adm.get("reason") or "该查询涉及其他患者信息，无法提供。",
-                "items": [],
-            }
-            base["advice"] = {"source": _SOURCE_KB, "text": "如有疑问请联系医院信息科。",
-                              "actions": [], "urgent": False}
+            base["interpretation"], base["advice"] = _unavailable(adm, deg, "用药记录")
             return base
 
         base["data"] = {
@@ -531,10 +607,10 @@ def ask(question: str, subject_id: str) -> Dict[str, Any]:
             base["advice"] = {
                 "source": _SOURCE_KB,
                 "text": f"建议优先咨询{hit.get('department', '相应科室')}。"
-                        f"（紧急程度参考：{hit.get('severe', '轻度')}）",
+                        f"（分诊等级：{_ACUITY_LABELS[_acuity(hit.get('acuity'))]}）",
                 "actions": [f"请咨询{hit.get('department', '相应科室')}",
                             "症状加重或持续不缓解请及时就医"],
-                "urgent": hit.get("severe") in ("高度", "中度"),
+                "urgent": _acuity(hit.get("acuity")) <= _ACUITY_URGENT_MAX,
             }
         else:
             # 知识库未覆盖的症状（如「我膝盖疼」「我拉肚子」）→ AI 兜底
