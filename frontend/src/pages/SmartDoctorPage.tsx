@@ -27,7 +27,16 @@ const DATASOURCE = 'regional_health'
  *   聚焦输入框并提示示例，由患者**自己**描述症状或疾病——不能替患者
  *   编一个症状（"我不舒服"点下去就直接报心血管内科是假演示）。
  */
-const TASKS = [
+interface Task {
+  key: string
+  label: string
+  /** 可直接发送的问法；与 prompt 二选一 */
+  question?: string
+  /** 需患者自己描述时的示例提示；与 question 二选一 */
+  prompt?: string
+}
+
+const TASKS: Task[] = [
   {
     key: 'triage',
     label: '我不舒服，不知道挂什么科',
@@ -99,13 +108,13 @@ function SmartDoctor() {
 
   /** 任务按钮：可直答的任务直接问；需要患者提供信息的任务 →
    *  聚焦输入框并提示示例，由患者自己描述。 */
-  const onTask = (t: (typeof TASKS)[number]) => {
-    if (t.prompt) {
-      setTaskHint(t.prompt)
-      inputRef.current?.focus()
+  const onTask = (t: Task) => {
+    if (t.question) {
+      void ask(t.question)
       return
     }
-    void ask(t.question)
+    setTaskHint(t.prompt ?? '')
+    inputRef.current?.focus()
   }
 
   const submit = (e: FormEvent) => {
