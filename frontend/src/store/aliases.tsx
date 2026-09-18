@@ -82,11 +82,25 @@ export function AliasProvider({
           // 裸列名按词边界替换，避免误伤（如 id 命中 patient_id）。
           // **不排除前导点号**：SQL 里列常是限定形式（test_name 前的
           // 限定符），排除点号会导致一条都匹配不上。
-          const re = new RegExp(`(?<!\\w)${col}(?!\\w)`)
-          if (re.test(out)) {
-            out = out.replace(re, cn)
+          // 必须带 g：同一列名在 SELECT 与 WHERE/ORDER BY 里会各出现一次，
+          // 只换第一处会让物理名残留到界面上。
+          const re = new RegExp(`(?<!\\w)${col}(?!\\w)`, 'g')
+          const next = out.replace(re, cn)
+          if (next !== out) {
+            out = next
             hit = true
           }
+        }
+      }
+      // 表名同样要替换：SQL 里露出 clinical_records / visits 这类物理名会让
+      // 产品退回成开发者工具（frontend/PRODUCT.md 硬约束：界面上只用中文
+      // 业务别名）。上面那轮只管列名，管不到这里。
+      for (const [table, cn] of Object.entries(policy.table_aliases ?? {})) {
+        const re = new RegExp(`(?<!\\w)${table}(?!\\w)`, 'g')
+        const next = out.replace(re, cn)
+        if (next !== out) {
+          out = next
+          hit = true
         }
       }
       return hit ? out : null

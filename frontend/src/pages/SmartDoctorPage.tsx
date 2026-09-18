@@ -15,6 +15,7 @@ import type { SmartDoctorResponse } from '../api/models'
 import { AliasProvider, useAliases } from '../store/aliases'
 import { useAuth } from '../store/auth'
 import { errorText } from '../api/client'
+import { DegradationBadge } from '../components/DegradationBadge'
 
 const DATASOURCE = 'regional_health'
 
@@ -53,6 +54,7 @@ const TASKS: Task[] = [
 
 const SOURCE_DATA = '医院主库'
 const SOURCE_KB = '医院审核知识库'
+const SOURCE_AI = 'AI 智能导诊'
 
 interface Message {
   role: 'user' | 'doctor'
@@ -201,8 +203,12 @@ function SmartDoctor() {
               <>
                 <p className="hint">
                   <span className="sd-source-tag">{SOURCE_DATA}</span>
-                  共 {lastResp.data.rows.length} 条本人记录（层一准入 + 层二审计通过）
+                  共 {lastResp.data.rows.length} 条本人记录
                 </p>
+                <DegradationBadge degradation={lastResp.degradation} />
+                {lastResp.degradation.message_cn && (
+                  <p className="hint">{lastResp.degradation.message_cn}</p>
+                )}
                 <p className="hint">
                   列名：{lastResp.data.columns.map((c) => aliasOf(c)).join('、')}
                 </p>
@@ -238,6 +244,12 @@ function SmartDoctor() {
                 <span className="sd-source-tag">{SOURCE_KB}</span>
                 <span className="sd-source-desc">
                   医院审核定稿的医学知识，不随时间与模型变动。
+                </span>
+              </li>
+              <li>
+                <span className="sd-source-tag">{SOURCE_AI}</span>
+                <span className="sd-source-desc">
+                  知识库未覆盖的问法由大模型作答，未经人工审核，仅供参考。
                 </span>
               </li>
             </ul>
@@ -328,7 +340,7 @@ function AnswerView({
         <div className="sd-block">
           <div className="sd-block-head">
             <span className="sd-block-title">{resp.interpretation.title}</span>
-            <span className="sd-source-tag">{SOURCE_KB}</span>
+            <span className="sd-source-tag">{resp.interpretation.source}</span>
           </div>
           {resp.interpretation.text && <p className="sd-text">{resp.interpretation.text}</p>}
           {resp.interpretation.items.length > 0 && (
@@ -348,7 +360,7 @@ function AnswerView({
         <div className="sd-block">
           <div className="sd-block-head">
             <span className="sd-block-title">下一步建议</span>
-            <span className="sd-source-tag">{SOURCE_KB}</span>
+            <span className="sd-source-tag">{resp.advice.source}</span>
           </div>
           {resp.advice.urgent && (
             <div className="sd-urgent">⚠ 请留意紧急情况：出现文中描述的重症信号请立即就医</div>
