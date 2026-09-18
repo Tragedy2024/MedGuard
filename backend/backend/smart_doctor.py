@@ -123,10 +123,49 @@ _DISEASE_SIGNALS = ("想了解", "是什么病", "这种病", "这个病", "了�
 
 
 def _find_entity(question: str, table: Dict[str, Any]) -> Optional[str]:
-    """在知识库某表里找命中的键（如 lab_tests 里的「血糖」）。"""
-    for key in table:
-        if key and key in question:
-            return key
+    """在知识库某表里找命中的键（如 lab_tests 里的「血糖」）。
+
+    取**最长命中**而非首个命中：键之间存在包含关系（「血脂」是「高血脂」
+    的子串），按字典顺序取首个会让「高血脂」被短键抢走。
+    """
+    hits = [k for k in table if k and k in question]
+    return max(hits, key=len) if hits else None
+
+
+def _find_entities(question: str, table: Dict[str, Any]) -> List[str]:
+    """问题里命中的**全部**键，长的在前；被更长命中包住的短键丢掉。
+
+    「我的血脂和血糖结果正常吗」原先只查血糖（YAML 顺序在前），血脂完全
+    不查也不提，患者拿到的是误导性的安心答复。
+    """
+    hits = [k for k in table if k and k in question]
+    return [k for k in sorted(hits, key=len, reverse=True)
+            if not any(k != other and k in other for other in hits)]
+
+
+def _find_disease(question: str, diseases: Dict[str, Any]
+                  ) -> Optional[Tuple[str, str]]:
+    """找命中的疾病，返回 (命中的关键词, 疾病名)；取最长命中。"""
+    hits: List[Tuple[str, str]] = []
+    for dname, d in diseases.items():
+        for k in (d.get("keywords") or []):
+            if k and k in question:
+                hits.append((k, dname))
+        if dname in question:
+            hits.append((dname, dname))
+    return max(hits, key=lambda h: len(h[0])) if hits else None
+
+
+def _symptom_key_matched(keyword: str, symptoms: List[Dict[str, Any]]) -> bool:
+    """keyword 是否同时是某个症状条目的 keys（歧义判定）。"""
+    return any(keyword in (s.get("keys") or []) for s in symptoms)
+
+
+def _disease_of_keyword(keyword: str, diseases: Dict[str, Any]) -> Optional[str]:
+    """哪个疾病把 keyword 也当成自己的关键词（生成歧义引导句用）。"""
+    for dname, d in diseases.items():
+        if keyword in (d.get("keywords") or []):
+            return dname
     return None
 
 
@@ -134,7 +173,8 @@ def parse_intent(question: str) -> Tuple[str, Optional[str]]:
     """返回 (intent, entity)。entity 为命中的具体检验项/药名/症状关键词/疾病名。
 
     优先级（写成显式顺序，避免歧义）：
-      挂科意图 > 用药意图 > 报告解读意图 > 疾病了解意图 > 症状 ? > fallback
+      挂科意图 > 用药意图 > 疾病意图词 > 报告解读（避开被疾病词包住的假命中）
+      > 疾病了解（命中词同时是症状词时转症状导诊） > 症状 > fallback
     """
     kb = load_knowledge()
     lab_tests = kb.get("lab_tests") or {}
@@ -157,22 +197,36 @@ def parse_intent(question: str) -> Tuple[str, Optional[str]]:
     if any(s in question for s in _MED_SIGNALS):
         return INTENT_MEDICATION, None
 
-    # 2) 检查报告（命中检验项名，或出现"报告/结果/正常吗"等信号）
-    test = _find_entity(question, lab_tests)
-    if test:
-        return INTENT_LAB, test
+    disease_hit = _find_disease(question, diseases)
+
+    # 2) 出现「想了解 / 是什么病 / 科普」这类**疾病意图词**时，疾病优先。
+    #    否则「我想了解高血脂」会被 lab_tests 的「血脂」抢走。
+    if disease_hit and any(s in question for s in _DISEASE_SIGNALS):
+        return INTENT_DISEASE, disease_hit[1]
+
+    # 3) 检查报告（命中检验项名，或出现"报告/结果/正常吗"等信号）
+    tests = _find_entities(question, lab_tests)
+    if tests:
+        # 命中的检验项若被更长的疾病关键词包住，是假命中：患者问的是
+        # 「高血脂」这个病，不是去查 test_name='血脂' 的记录——那样只会
+        # 得到「未找到检验记录」，而疾病词条永远取不到。
+        if not (disease_hit and any(t in disease_hit[0] for t in tests)):
+            return INTENT_LAB, tests[0]
     if any(s in question for s in _LAB_SIGNALS):
         return INTENT_LAB, None
 
-    # 3) 疾病了解
-    for dname, d in diseases.items():
-        for k in (d.get("keywords") or []):
-            if k and k in question:
-                return INTENT_DISEASE, (k if k != dname else dname)
+    # 4) 疾病了解。命中的词若**同时是症状词**（胃痛/咳嗽/感冒…）→ 判为歧义：
+    #    患者说"我胃痛"多半是在描述自己的症状，而不是在打听「胃炎」这个病，
+    #    故走症状导诊；ask() 会再补一句转向疾病科普的引导。
+    if disease_hit:
+        keyword, dname = disease_hit
+        if _symptom_key_matched(keyword, symptoms):
+            return INTENT_SYMPTOM, keyword
+        return INTENT_DISEASE, dname
     if any(s in question for s in _DISEASE_SIGNALS):
         return INTENT_DISEASE, None
 
-    # 4) 症状
+    # 5) 症状
     for sym in symptoms:
         for k in (sym.get("keys") or []):
             if k and k in question:
@@ -185,11 +239,20 @@ def parse_intent(question: str) -> Tuple[str, Optional[str]]:
 
 # ── 医盾管线取数（只读本人） ──────────────────────────────────
 
-def _build_lab_plan(subject: str, test_name: Optional[str], limit: int = 3) -> List[dict]:
-    where = (f"AND c.test_name = '{test_name}'" if test_name else "")
+def _build_lab_plan(subject: str, test_names: List[str], limit: int = 3) -> List[dict]:
+    """构造读取本人检验结果的计划。test_names 为空表示不限检验项。
+
+    test_names 取自知识库的键（可信 YAML），不是用户原文，故直接拼入 SQL
+    与原先一致；值本身不含引号，且层一仍会做 AST 绑定校验。
+    """
+    label = "、".join(test_names)
+    where = ""
+    if test_names:
+        quoted = ", ".join(f"'{t}'" for t in test_names)
+        where = f"AND c.test_name IN ({quoted})"
     return [{
         "id": 0,
-        "description": f"读取本人最近检验结果{('（' + test_name + '）') if test_name else ''}",
+        "description": f"读取本人最近检验结果{('（' + label + '）') if label else ''}",
         "sql": (
             "SELECT c.test_name, c.result_value, c.unit, v.visit_date "
             "FROM clinical_records c JOIN visits v ON c.visit_id = v.visit_id "
@@ -480,7 +543,12 @@ def ask(question: str, subject_id: str) -> Dict[str, Any]:
 
     # ── 检查报告解读 ──
     if intent == INTENT_LAB:
-        plan = _build_lab_plan(subject, entity)
+        # parse_intent 只给**主**检验项；这里取全部命中项，问题里提到几个
+        # 就查几个（"我的血脂和血糖结果正常吗"不能只回血糖）。
+        tests = _find_entities(question, kb.get("lab_tests") or {})
+        if tests:
+            entity = tests[0]
+        plan = _build_lab_plan(subject, tests)
         adm, deg, cols, rows, final_sql = fetch_personal_data(plan, subject)
         base["admission"] = adm
         base["degradation"] = deg
@@ -604,10 +672,15 @@ def ask(question: str, subject_id: str) -> Dict[str, Any]:
                 "text": hit.get("text", ""),
                 "items": [],
             }
+            # 歧义引导：命中的症状词同时也是某个疾病的关键词时，患者可能
+            # 其实是想了解那个病（"我胃痛" vs "我想了解胃炎"）。
+            ambiguous = _disease_of_keyword(entity or "", kb.get("diseases") or {})
+            guide = (f" 如果您是想了解「{ambiguous}」这个疾病，"
+                     f"可以说「我想了解{ambiguous}」。" if ambiguous else "")
             base["advice"] = {
                 "source": _SOURCE_KB,
                 "text": f"建议优先咨询{hit.get('department', '相应科室')}。"
-                        f"（分诊等级：{_ACUITY_LABELS[_acuity(hit.get('acuity'))]}）",
+                        f"（分诊等级：{_ACUITY_LABELS[_acuity(hit.get('acuity'))]}）" + guide,
                 "actions": [f"请咨询{hit.get('department', '相应科室')}",
                             "症状加重或持续不缓解请及时就医"],
                 "urgent": _acuity(hit.get("acuity")) <= _ACUITY_URGENT_MAX,
