@@ -15,12 +15,15 @@ def client(tmp_path, monkeypatch):
     from backend.db import init_db
     init_db(str(tmp_path / "medguard.db"))
     c = TestClient(app)
-    c.post("/api/datasources/demo")
+    load_demo(c)
     return c
 
 
-STAFF = {"type": "staff", "subject_id": None}
-PATIENT = {"type": "patient", "subject_id": "P001"}
+# 端点一律验签（见 tests/helpers.py），裸字典令牌会 401。
+from tests.helpers import load_demo, scope, sign
+
+STAFF = sign("staff")
+PATIENT = sign("patient", "P001")
 
 
 def test_patient_own_lab_is_allowed(client):
@@ -139,7 +142,7 @@ def test_direct_cache_hit_never_calls_llm(client, isolated_cache, monkeypatch):
           "sql": "SELECT test_name, result_value, unit FROM clinical_records "
                  "WHERE patient_id = 'P001' AND record_type = 'lab' "
                  "AND test_name = '血糖'"}],
-        "patient",
+        "patient", "P001",
     )
 
     r = client.post("/api/query/direct", json={
@@ -167,7 +170,7 @@ def test_direct_cache_hit_still_runs_layer1(client, isolated_cache):
           "sql": "SELECT COUNT(*) FROM patients WHERE patient_id IN "
                  "(SELECT patient_id FROM clinical_records "
                  "WHERE diagnosis_name = '2型糖尿病')"}],
-        "patient",
+        "patient", "P001",
     )
 
     r = client.post("/api/query/direct", json={
@@ -262,7 +265,7 @@ def test_staff_identity_reaches_decompose(client, isolated_cache, monkeypatch):
     monkeypatch.setattr(llm_nl2sql, "decompose", fake)
 
     r = client.post("/api/query/direct", json={
-        "token": {"type": "staff", "subject_id": "S001"},
+        "token": sign("staff", "S001"),
         "datasource_id": "regional_health", "question": "我治疗了多少患者"})
     assert r.status_code == 200
     assert seen == {"token_type": "staff", "subject_id": "S001"}

@@ -68,65 +68,30 @@ export interface PresetQuery {
 }
 
 /* ── 智慧医生（智慧医生.docx）──────────────────────────────────
-   后端 schemas.py 已定义同名模型，但 types.ts 是 openapi 生成物；
-   本次未重新生成，因此此处先以手写接口提供。将来执行
-   `npx openapi-typescript openapi.json -o src/api/types.ts` 后，
-   应改为从 components 派生（与上方各类型一致）。
+   与上方各类型一致，**从契约派生**。
 
-   注意两点：
-   - 原注释写的「本机无 Node 无法重新生成」不成立：Node 装在 D:\nodejs，
-     只是不在 PATH 里，跑 npx 前把它加进 PATH 即可。
-   - openapi.json 本身也还没更新（仍是 13 条 path、无 SmartDoctor
-     schema），所以重生成前要先从后端导出最新契约，两者是一起做的一件事。 */
+   这几条曾经是手写的：当时 openapi.json 停在智慧医生上线前的版本，
+   生成的 types.ts 里根本没有这些 schema，只能手写顶上。2026-09-18
+   契约补齐后改回派生——手写的那份会随着后端加字段慢慢失真，而派生
+   让"后端一改前端就编译失败"这条保证重新生效。 */
 
-export interface SmartDoctorRequest {
-  token: Token
-  datasource_id: string
-  question: string
-}
+export type SmartDoctorRequest = Schemas['SmartDoctorRequest']
+export type SmartDoctorDataBlock = Schemas['SmartDoctorDataBlock']
+export type SmartDoctorInterpretation = Schemas['SmartDoctorInterpretation']
+export type SmartDoctorInterpretationItem =
+  NonNullable<SmartDoctorInterpretation['items']>[number]
+export type SmartDoctorAdvice = Schemas['SmartDoctorAdvice']
+export type SmartDoctorResponse = Schemas['SmartDoctorResponse']
 
-export type SmartDoctorIntent =
-  | 'lab'
-  | 'medication'
-  | 'symptom'
-  | 'disease'
-  | 'fallback'
+/** 智慧医生的意图。从响应模型派生，后端加一种意图这里就报错。 */
+export type SmartDoctorIntent = SmartDoctorResponse['intent']
 
-export interface SmartDoctorDataBlock {
-  /** 来源：医院主库（经医盾层一 + 层二审计后返回） */
-  source: string
-  columns: string[]
-  rows: unknown[][]
-  sql_after: string
-  degradation_level: string
-}
+/* ── 账号（/api/auth）────────────────────────────────────────── */
 
-export interface SmartDoctorInterpretationItem {
-  [key: string]: unknown
-}
+export type LoginRequest = Schemas['LoginRequest']
+export type LoginResponse = Schemas['LoginResponse']
+export type RegisterRequest = Schemas['RegisterRequest']
+export type UserInfo = Schemas['UserInfo']
 
-export interface SmartDoctorInterpretation {
-  /** 来源：医院审核知识库 */
-  source: string
-  title: string
-  text: string
-  items: SmartDoctorInterpretationItem[]
-}
-
-export interface SmartDoctorAdvice {
-  /** 来源：医院审核知识库 */
-  source: string
-  text: string
-  actions: string[]
-  urgent: boolean
-}
-
-export interface SmartDoctorResponse {
-  intent: SmartDoctorIntent
-  question: string
-  admission: AdmissionInfo
-  degradation: DegradationInfo
-  data: SmartDoctorDataBlock | null
-  interpretation: SmartDoctorInterpretation | null
-  advice: SmartDoctorAdvice | null
-}
+/** 账号角色。名单只有一个来源：UserInfo.role。 */
+export type UserRole = UserInfo['role']

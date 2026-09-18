@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { exportReportUrl, fetchReport, fetchReports } from '../api/reports'
-import type { ReportDetail, ReportSummary, TokenType } from '../api/models'
+import type { ReportDetail, ReportSummary, Token, TokenType } from '../api/models'
 import { beijingTime } from '../lib/time'
 import { AliasProvider } from '../store/aliases'
+import { useAuth } from '../store/auth'
 import { AdmissionPanel } from '../components/AdmissionPanel'
 import { DegradationBadge } from '../components/DegradationBadge'
 import { EventCard } from '../components/EventCard'
@@ -30,28 +31,37 @@ export function ReportPage() {
  * 左侧流水、右侧详情，一屏内完成「选记录 → 看证据」，演示时不用跳页。
  */
 function Reports() {
+  const { session } = useAuth()
+  const token = session?.token
   const [reports, setReports] = useState<ReportSummary[]>([])
   const [detail, setDetail] = useState<ReportDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  // 安全报告按令牌身份隔离：列表、详情、导出三处都要带上发起人身份，
+  // 后端据此过滤。漏传会 422——身份不是可选项。
+  const select = async (id: number) => {
+    if (!token) return
+    try {
+      setDetail(await fetchReport(token, id))
+    } catch (e) {
+      setError(errorText(e))
+    }
+  }
+
   useEffect(() => {
-    fetchReports()
+    if (!token) return
+    fetchReports(token)
       .then((list) => {
         setReports(list)
         if (list.length > 0) void select(list[0].id)
       })
       .catch((e) => setError(errorText(e)))
-    // 只在挂载时拉一次列表
+    // 只在挂载时拉一次列表（令牌在登录期内不变；换账号会重新登录并重挂载）
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [token])
 
-  const select = async (id: number) => {
-    try {
-      setDetail(await fetchReport(id))
-    } catch (e) {
-      setError(errorText(e))
-    }
-  }
+  // 未登录时 App 外壳渲染的是登录页，这里只是把类型收窄。
+  if (!session) return null
 
   if (error) {
     return (
@@ -101,7 +111,11 @@ function Reports() {
           </aside>
 
           <section className="report-detail" aria-live="polite">
-            {detail ? <ReportBody detail={detail} /> : <p className="hint">加载中…</p>}
+            {detail ? (
+              <ReportBody detail={detail} token={session.token} />
+            ) : (
+              <p className="hint">加载中…</p>
+            )}
           </section>
         </div>
       )}
@@ -110,7 +124,7 @@ function Reports() {
 }
 
 /** 一次查询的完整证据。组件与控制台同源——同一份 payload，同一套展示。 */
-function ReportBody({ detail }: { detail: ReportDetail }) {
+function ReportBody({ detail, token }: { detail: ReportDetail; token: Token }) {
   const d = detail.payload
   const denied = !d.admission.passed
 
@@ -189,7 +203,7 @@ function ReportBody({ detail }: { detail: ReportDetail }) {
         <span>
           数据库访问 <strong>{d.metrics.db_access}</strong>
         </span>
-        <a className="metrics-export" href={exportReportUrl(detail.id)} download>
+        <a className="metrics-export" href={exportReportUrl(token, detail.id)} download>
           导出完整记录
         </a>
       </div>

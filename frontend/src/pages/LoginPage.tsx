@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { errorText } from '../api/client'
 import { DEMO_ACCOUNTS, DEMO_PASSWORD, useAuth } from '../store/auth'
 
 type FieldErrors = { account?: string; password?: string }
@@ -18,8 +19,9 @@ export function LoginPage() {
   const [password, setPassword] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
+  const [pending, setPending] = useState(false)
 
-  const submit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault()
 
     // 行内校验：空字段的错误贴在该字段下方，而不是只在顶部给一句笼统提示。
@@ -30,17 +32,24 @@ export function LoginPage() {
     setFieldErrors(errs)
     if (errs.account || errs.password) return
 
-    if (!signIn(account, password)) {
-      setFormError('账号或密码不正确。')
-      return
-    }
+    setPending(true)
     setFormError(null)
-    // 登录成功统一回到该角色的首页（'/'）。
-    // 不这样做的后果：上一个账号停留的受限地址会跟着新账号——例如
-    // admin 在 /policy（安全策略）退出，患者登录后仍停留在 /policy，
-    // 而该路由只对管理员开放，患者会撞上「无权访问」。直接敲地址
-    // 的越权拦截仍然保留（那是故意的纵深防御），这里只修登录场景。
-    navigate('/', { replace: true })
+    try {
+      // 登录由**后端**判定（口令是 PBKDF2 哈希，账号在 users 表里）。
+      // 失败文案直接用后端那句——它刻意把"账号不存在"和"口令错误"合并成
+      // 同一句，分开报错等于送人一个账号枚举接口。
+      await signIn(account, password)
+      // 登录成功统一回到该角色的首页（'/'）。
+      // 不这样做的后果：上一个账号停留的受限地址会跟着新账号——例如
+      // admin 在 /policy（安全策略）退出，患者登录后仍停留在 /policy，
+      // 而该路由只对管理员开放，患者会撞上「无权访问」。直接敲地址
+      // 的越权拦截仍然保留（那是故意的纵深防御），这里只修登录场景。
+      navigate('/', { replace: true })
+    } catch (err) {
+      setFormError(errorText(err))
+    } finally {
+      setPending(false)
+    }
   }
 
   const clearField = (k: keyof FieldErrors) =>
@@ -60,7 +69,17 @@ export function LoginPage() {
         <p className="login-tagline">
           让不会写 SQL 的医护人员和病患，
           <br />
-          用大白话查到权威准确的医院数据。
+          用大白话查到权威准确的医院数据；
+          <br />
+          也让患者看懂检查报告、
+          <br />
+          找对要挂的科室——
+          <br />
+          背后是同一条底线：只读本人，
+          <br />
+          解读与建议出自医院审核知识库，
+          <br />
+          与「AI 智能导诊」分开标注。
         </p>
 
         {/* 机制演示：一次查询的审计过程。纯装饰，故 aria-hidden——
@@ -151,8 +170,8 @@ export function LoginPage() {
             </div>
           )}
 
-          <button type="submit" className="login-submit">
-            登录
+          <button type="submit" className="login-submit" disabled={pending}>
+            {pending ? '登录中……' : '登录'}
           </button>
         </form>
 

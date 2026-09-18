@@ -19,6 +19,19 @@ METADATA_DB = os.environ.get("MEDGUARD_METADATA_DB",
 BUSINESS_DB = os.environ.get("MEDGUARD_BUSINESS_DB",
                              os.path.join(DATA_DIR, "regional_health.db"))
 
+# 前端构建产物目录（`cd frontend && npm run build` 的输出）。
+#
+# 存在时由后端**一并托管**，让演示只需一个进程、一个端口。这不只是为了
+# 少开一个终端：前后端同源意味着浏览器根本不产生跨域预检——换端口、用
+# 局域网 IP 给另一台机器访问、前面加一层反代，都不会撞 CORS。演示现场
+# 少一个会翻车的环节。
+#
+# 目录不存在（纯后端开发、还没构建过）时静默跳过，前端仍走 Vite 的 proxy。
+FRONTEND_DIST = os.environ.get(
+    "MEDGUARD_FRONTEND_DIST",
+    os.path.normpath(os.path.join(_PROJECT_ROOT, "..", "frontend", "dist")),
+)
+
 # 演示库（seed 与策略的静态资源）
 DEMO_DIR = os.path.join(_PROJECT_ROOT, "demo")
 SSA_DIR = os.path.join(DEMO_DIR, "ssa")

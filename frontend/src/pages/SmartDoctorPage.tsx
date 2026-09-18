@@ -128,6 +128,12 @@ function SmartDoctor() {
 
   const lastResp = messages.filter((m) => m.role === 'doctor').at(-1)?.resp
   const denied = lastResp !== undefined && !lastResp.admission.passed
+  // 契约里 rows / columns / actions 是**可选**字段（后端用 default_factory
+  // 声明，OpenAPI 就不把它们标成必填）。统一在这里兜底，免得每处调用都写
+  // 一遍 `?? []`，也免得漏掉一处就白屏。
+  const lastRows = lastResp?.data?.rows ?? []
+  const lastColumns = lastResp?.data?.columns ?? []
+  const lastActions = lastResp?.advice?.actions ?? []
 
   return (
     <div className="page smart-doctor">
@@ -199,18 +205,18 @@ function SmartDoctor() {
         <aside className="sd-side">
           <section className="sd-card">
             <h4>本次使用的数据</h4>
-            {lastResp?.data && lastResp.data.rows.length > 0 ? (
+            {lastResp?.data && lastRows.length > 0 ? (
               <>
                 <p className="hint">
                   <span className="sd-source-tag">{SOURCE_DATA}</span>
-                  共 {lastResp.data.rows.length} 条本人记录
+                  共 {lastRows.length} 条本人记录
                 </p>
                 <DegradationBadge degradation={lastResp.degradation} />
                 {lastResp.degradation.message_cn && (
                   <p className="hint">{lastResp.degradation.message_cn}</p>
                 )}
                 <p className="hint">
-                  列名：{lastResp.data.columns.map((c) => aliasOf(c)).join('、')}
+                  列名：{lastColumns.map((c) => aliasOf(c)).join('、')}
                 </p>
               </>
             ) : (
@@ -220,9 +226,9 @@ function SmartDoctor() {
 
           <section className="sd-card">
             <h4>建议操作</h4>
-            {lastResp?.advice && lastResp.advice.actions.length > 0 ? (
+            {lastActions.length > 0 ? (
               <ul className="sd-actions">
-                {lastResp.advice.actions.map((a, i) => (
+                {lastActions.map((a, i) => (
                   <li key={i}>{a}</li>
                 ))}
               </ul>
@@ -299,10 +305,16 @@ function AnswerView({
     )
   }
 
+  // 契约里这几个数组是可选字段（后端 default_factory），统一兜底。
+  const rows = resp.data?.rows ?? []
+  const columns = resp.data?.columns ?? []
+  const items = resp.interpretation?.items ?? []
+  const actions = resp.advice?.actions ?? []
+
   return (
     <div className="sd-answer">
       {/* 块一：院内数据 */}
-      {resp.data && resp.data.rows.length > 0 && (
+      {resp.data && rows.length > 0 && (
         <div className="sd-block">
           <div className="sd-block-head">
             <span className="sd-block-title">您的院内数据</span>
@@ -311,13 +323,13 @@ function AnswerView({
           <table className="result-table sd-table">
             <thead>
               <tr>
-                {resp.data.columns.map((c) => (
+                {columns.map((c) => (
                   <th key={c}>{aliasOf(c)}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {resp.data.rows.map((row, i) => (
+              {rows.map((row, i) => (
                 <tr key={i}>
                   {row.map((cell, j) => (
                     <td key={j}>{String(cell)}</td>
@@ -343,9 +355,9 @@ function AnswerView({
             <span className="sd-source-tag">{resp.interpretation.source}</span>
           </div>
           {resp.interpretation.text && <p className="sd-text">{resp.interpretation.text}</p>}
-          {resp.interpretation.items.length > 0 && (
+          {items.length > 0 && (
             <ul className="sd-items">
-              {resp.interpretation.items.map((it, i) => (
+              {items.map((it, i) => (
                 <li key={i} className="sd-item">
                   <InterpretationRow item={it} aliasOf={aliasOf} />
                 </li>
@@ -366,9 +378,9 @@ function AnswerView({
             <div className="sd-urgent">⚠ 请留意紧急情况：出现文中描述的重症信号请立即就医</div>
           )}
           {resp.advice.text && <p className="sd-text">{resp.advice.text}</p>}
-          {resp.advice.actions.length > 0 && (
+          {actions.length > 0 && (
             <ul className="sd-actions">
-              {resp.advice.actions.map((a, i) => (
+              {actions.map((a, i) => (
                 <li key={i}>{a}</li>
               ))}
             </ul>

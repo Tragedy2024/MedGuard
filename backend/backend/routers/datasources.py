@@ -10,7 +10,8 @@ from fastapi import APIRouter, HTTPException
 
 from backend import config
 from backend.schemas import (DatasourceInfo, DatasourceSchema,
-                             DemoDatasourceResult)
+                             DemoDatasourceResult, DemoLoadRequest)
+from backend.security import require_admin
 
 router = APIRouter(prefix="/api/datasources", tags=["datasources"])
 
@@ -55,8 +56,14 @@ def list_datasources():
 
 
 @router.post("/demo", response_model=DemoDatasourceResult)
-def create_demo():
-    """一键载入演示数据（建 5 表 + 灌虚构数据 + 初始化平台元数据库）。"""
+def create_demo(body: DemoLoadRequest):
+    """一键载入演示数据（建 5 表 + 灌虚构数据 + 初始化平台元数据库）。
+
+    **必须管理员**：它会**先删掉再重建**业务库（`build_database` 里有
+    `os.remove`），所有既有数据没了。管理员在页面上点一下没问题，
+    但匿名或局域网里的任何人都能触发就不是"演示便利"而是数据销毁了。
+    """
+    require_admin(body.token)
     from demo.seed import build_database
     from backend.db import init_db
     os.makedirs(config.DATA_DIR, exist_ok=True)

@@ -8,6 +8,7 @@ import { PolicyPage } from './pages/PolicyPage'
 import { ConsolePage } from './pages/ConsolePage'
 import { ReportPage } from './pages/ReportPage'
 import { SmartDoctorPage } from './pages/SmartDoctorPage'
+import { UserAdminPage } from './pages/UserAdminPage'
 import './design.css'
 
 const ALL: UserRole[] = ['admin', 'staff', 'patient']
@@ -26,7 +27,7 @@ interface NavItem {
  * 两类令牌给出不同结果。
  *
  * 患者多一个「智慧医生」入口：面向患者的可信就医助手（智慧医生.docx），
- * 且它是患者登录后的默认页。管理员多出「数据源」与「安全策略」：
+ * 且它是患者登录后的默认页。管理员多出「数据源」「安全策略」「用户管理」：
  * 那是平台配置，不该开放给临床用户与病患。
  */
 function navItems(role: UserRole): NavItem[] {
@@ -38,6 +39,7 @@ function navItems(role: UserRole): NavItem[] {
     },
     { to: '/scope', label: '可查范围', roles: ['patient'] },
     { to: '/policy', label: '安全策略', roles: ['admin'] },
+    { to: '/users', label: '用户管理', roles: ['admin'] },
     { to: '/console', label: '查询控制台', roles: ALL },
     { to: '/reports', label: '安全报告', roles: ALL },
   ]
@@ -100,6 +102,12 @@ function Shell() {
           <Route
             path="/policy"
             element={isAdmin ? <PolicyPage /> : <Forbidden />}
+          />
+          {/* 开号是信息科的活：患者与医护不该能自己把自己注册成医生。
+              这里是第二层，第一层在接口上（非管理员令牌建号返回 403）。 */}
+          <Route
+            path="/users"
+            element={isAdmin ? <UserAdminPage /> : <Forbidden />}
           />
           <Route path="/console" element={<ConsolePage />} />
           <Route path="/reports" element={<ReportPage />} />

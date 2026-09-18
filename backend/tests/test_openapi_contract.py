@@ -15,14 +15,16 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.main import app
+from tests.helpers import load_demo, scope, sign
 
 # 合法例外：200 响应不是普通 JSON 对象，无法用 response_model 表达。
 _NO_MODEL_OK = {
     # 原始文件下载（Content-Disposition: attachment），由 Response 直接构造
     ("GET", "/api/reports/{report_id}/export"),
-    # 端到端模式预留接口，恒返回 501，没有成功响应可建模
-    ("POST", "/api/query/direct"),
 }
+# 注：`POST /api/query/direct` 曾经也在这张例外表里，理由是"恒返回 501"。
+# 那个理由早就失效了——它现在声明了 response_model=QueryResponse 且真的
+# 能跑通（缓存命中路径就有测试）。留在表里等于**静默跳过**对它的检查。
 
 
 def _api_operations():
@@ -100,7 +102,7 @@ def client(tmp_path, monkeypatch):
     from backend.db import init_db
     init_db(str(tmp_path / "medguard.db"))
     c = TestClient(app)
-    c.post("/api/datasources/demo")
+    load_demo(c)
     return c
 
 
@@ -124,12 +126,25 @@ def test_policy_response_keeps_all_fields(client):
 def test_report_detail_keeps_payload(client):
     """ReportDetail 继承 ReportSummary，payload 是新增字段，不能被裁掉。"""
     client.post("/api/query", json={
-        "token": {"type": "staff", "subject_id": None},
+        "token": sign("staff"),
         "datasource_id": "regional_health",
         "question_id": "doctor_dept_visits"})
-    rid = client.get("/api/reports").json()[0]["id"]
-    body = client.get(f"/api/reports/{rid}").json()
+    rid = client.get("/api/reports", params=scope(sign("staff"))).json()[0]["id"]
+    body = client.get(f"/api/reports/{rid}", params=scope(sign("staff"))).json()
     for key in ("id", "question", "token_type", "created_at",
                 "degradation_level", "event_count", "payload"):
         assert key in body, f"ReportDetail 响应丢了字段：{key}"
     assert "admission" in body["payload"]
+
+
+def test_health_reports_every_mounted_route(client):
+    """`/api/health` 的 routes 清单必须真的列出挂载的路由。
+
+    它曾经是死代码：遍历 `app.routes` 时只看到 /api/health 自己——新版
+    FastAPI 的 include_router 挂的是没有 `.path` 的 `_IncludedRouter`。
+    等于自检永远报"一切正常"，从 include_router 里漏掉一个路由组也发现不了。
+    """
+    from backend.main import app
+    routes = client.get("/api/health").json()["routes"]
+    assert set(routes) == {p for p in app.openapi()["paths"] if p.startswith("/api")}
+    assert len(routes) > 5, f"只列出 {len(routes)} 条，八成又退化成遍历 app.routes 了"

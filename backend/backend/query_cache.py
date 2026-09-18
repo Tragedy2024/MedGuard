@@ -16,6 +16,7 @@
 """
 import json
 import os
+import re
 import threading
 import time
 from typing import Any, Dict, List, Optional
@@ -76,7 +77,40 @@ def _evict(entries: Dict[str, Any], token_type: str, limit: int) -> None:
         entries.pop(k, None)
 
 
-def lookup(question: str, token_type: str) -> Optional[List[Dict[str, Any]]]:
+# 主体编号的字面量形状（演示库是 P001–P030 / S001–S008）。
+# 接入真实数据源时，这里应改成从策略或令牌约定里读，而不是猜格式。
+_SUBJECT_LITERAL = re.compile(r"'[PS]\d{3}'")
+
+
+def _is_subject_agnostic(plan: List[Dict[str, Any]],
+                         subject_id: Optional[str] = None) -> bool:
+    """计划是否与"我是谁"无关。
+
+    三种情况：
+      1. 用 `{subject_id}` 占位符 → 执行前才替换成具体主体，**可共用**；
+      2. 压根没引用主体（如「统计各科室接诊量」）→ **可共用**；
+      3. 把主体写成了字面量（`WHERE doctor_id = 'S001'`）→ **只对那个主体成立**。
+
+    第 3 种跨主体复用是**数据越权**：S002 会拿到 S001 的患者名单，而且
+    `admission.passed=true`——层一根本看不出问题，因为计划"绑定"得好好的，
+    只是绑的是别人。
+
+    判据刻意放宽到"出现任何主体形状的字面量"而不只是"出现本次主体"：
+    模型万一写错了别人的编号，那种计划更不该被任何人复用。
+    """
+    if not plan:
+        return True
+    for s in plan:
+        sql = s.get("sql") or ""
+        if "{subject_id}" in sql:
+            continue
+        if _SUBJECT_LITERAL.search(sql):
+            return False
+    return True
+
+
+def lookup(question: str, token_type: str,
+           subject_id: Optional[str] = None) -> Optional[List[Dict[str, Any]]]:
     """查缓存。命中返回计划，未命中返回 None。"""
     key = normalize(question)
     if not key:
@@ -93,15 +127,32 @@ def lookup(question: str, token_type: str) -> Optional[List[Dict[str, Any]]]:
         if types and token_type not in types:
             return None
 
+        # 与主体相关的计划只认它当初是为谁生成的。
+        # 没有这个字段 = 计划用占位符写的，与主体无关，可以共用。
+        bound = entry.get("subject_id")
+        if bound is not None and bound != (subject_id or ""):
+            return None
+
+        plan = entry.get("plan") or []
+
+        # 双重保险：计划里若出现主体**字面量**，必须正好是请求者本人。
+        # 上面那道 subject_id 检查管的是"这条缓存是给谁存的"，这一道管的是
+        # "计划里到底写了谁的编号"——两者可能不一致（模型写错了别人的工号）。
+        # 那种计划交给任何执行方都是错的，干脆谁都别给。
+        for sq in plan:
+            for lit in _SUBJECT_LITERAL.findall(sq.get("sql") or ""):
+                if lit.strip("'") != (subject_id or ""):
+                    return None
+
         entry["hits"] = int(entry.get("hits", 0)) + 1
         entry["last_used"] = time.strftime("%Y-%m-%dT%H:%M:%S")
         _write(data)
 
-    return [dict(s) for s in entry.get("plan") or []]
+    return [dict(s) for s in plan]
 
 
 def store(question: str, plan: List[Dict[str, Any]], token_type: str,
-          source: str = "llm") -> None:
+          subject_id: Optional[str], source: str = "llm") -> None:
     """写入/更新一条缓存。source 记录来源（llm / manual），便于回溯。"""
     key = normalize(question)
     if not key or not plan:
@@ -113,7 +164,7 @@ def store(question: str, plan: List[Dict[str, Any]], token_type: str,
         prev = entries.get(key) or {}
         types = set(prev.get("token_types") or [])
         types.add(token_type)
-        entries[key] = {
+        entry = {
             "plan": [dict(s) for s in plan],
             "token_types": sorted(types),
             "hits": int(prev.get("hits", 0)),
@@ -121,6 +172,12 @@ def store(question: str, plan: List[Dict[str, Any]], token_type: str,
             "last_used": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "source": prev.get("source") or source,
         }
+        # 计划里写死了主体就记下是给谁的；用占位符的则与主体无关，不记。
+        # 字段缺席即"与主体无关"——所以主体为空串时也要显式写 ""，
+        # 否则会被当成 agnostic 而与 None 混淆。
+        if not _is_subject_agnostic(plan):
+            entry["subject_id"] = subject_id or ""
+        entries[key] = entry
         _evict(entries, token_type, config.QUERY_CACHE_PER_TOKEN)
         _write(data)
 

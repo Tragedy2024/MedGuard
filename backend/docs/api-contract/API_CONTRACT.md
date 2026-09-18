@@ -3,6 +3,11 @@
 > 权威契约文件：**`openapi.json`**（同目录，由后端自动生成）。
 > 前端用它生成类型：`npx openapi-typescript openapi.json -o src/api/types.ts`
 > 本文件是中文补充说明（示例、枚举、预设查询表），与 openapi.json 不一致时以 openapi.json 为准。
+>
+> ✅ 契约产物已于 2026-09-18 重新生成（**17 条 path**，补齐了 `/api/smart-doctor/ask`
+> 与三个 `/api/auth/*` 端点，`Token` 也带上了 `account` / `exp` / `sig`）。
+> `frontend/openapi.json`、`frontend/src/api/types.ts`、本目录的 `openapi.json`
+> 三份同步。
 
 ---
 
@@ -29,19 +34,28 @@ curl http://localhost:8000/api/health
 | 方法 | 路径 | 用途 |
 |---|---|---|
 | GET | `/api/health` | 健康检查（算法层可用性 + 策略列表） |
+| POST | `/api/auth/login` | 登录，**签发带 HMAC 签名的令牌**（见 §6.2） |
+| POST | `/api/auth/register` | 建号（**仅管理员**） |
+| GET | `/api/auth/users` | 账号列表（**仅管理员**） |
 | GET | `/api/datasources` | 数据源列表（空数组=未载入演示数据） |
-| POST | `/api/datasources/demo` | 一键载入演示数据（幂等重建演示库） |
+| POST | `/api/datasources/demo` | 一键载入演示数据（**仅管理员**；**先删库再重建**） |
 | GET | `/api/datasources/{id}/schema` | 库表结构（表/列/类型/主键） |
 | GET | `/api/policies` | 已定案策略的数据源 id 列表 |
 | GET | `/api/policies/{datasource_id}` | 策略详情（标签/理由/跨域规则/审查状态） |
-| PUT | `/api/policies/{datasource_id}` | 更新策略（只合并提交的键） |
+| PUT | `/api/policies/{datasource_id}` | 更新策略（**仅管理员**；决定医盾拦什么） |
 | GET | `/api/policies/{datasource_id}/validate` | 策略可加载性校验 |
 | POST | `/api/query` | **核心**：提问（准入→审计→执行） |
-| POST | `/api/query/direct` | 端到端模式（预留，当前 501） |
-| GET | `/api/reports?limit=20` | 历史报告列表 |
+| POST | `/api/query/direct` | 自由提问（缓存优先，未命中才调模型；无 Key 时 503） |
+| POST | `/api/smart-doctor/ask` | 智慧医生：面向患者的可信就医助手（**仅病患令牌**） |
+| GET | `/api/reports` | 历史报告列表（**按账号隔离**，见 §6.1） |
 | GET | `/api/reports/{id}` | 报告详情（含完整 payload） |
 | GET | `/api/reports/{id}/export` | 导出 JSON（Content-Disposition: attachment） |
 | GET | `/api/metrics/detection` | 检测效能指标（来自论文仓库实测） |
+
+> ⚠️ **所有收令牌的端点都会验签**（`query` / `query.direct` / `smart-doctor`
+> / `reports` 全在内）。令牌由 `/api/auth/login` 签发，签名不符或过期一律
+> **401**。`/api/reports*` 与 `/api/auth/users` 是 GET，令牌走查询参数，
+> 详见 §6.1。
 
 ## 3. 核心接口：POST /api/query
 
@@ -49,11 +63,21 @@ curl http://localhost:8000/api/health
 
 ```json
 {
-  "token": { "type": "patient", "subject_id": "P001" },
+  "token": {
+    "type": "patient",
+    "subject_id": "P001",
+    "account": "patient",
+    "exp": 1790000000,
+    "sig": "<64 位十六进制>"
+  },
   "datasource_id": "regional_health",
   "question_id": "patient_my_lab"
 }
 ```
+
+> ⚠️ **`token` 必须是 `/api/auth/login` 签发的完整令牌**。上面五个字段缺一
+> 不可：少了 `sig` / `exp` 会 401。手写一个 `{"type":"patient","subject_id":"P001"}`
+> 在今天已经**不管用**了——那正是这次改动要堵的口子。
 
 - `token.type`：`"staff"`（医护）或 `"patient"`（病患）。
 - 病患令牌必须带 `subject_id`（当前演示库固定 `P001`）；医护令牌 `subject_id` 为 `null`。
@@ -229,9 +253,88 @@ curl http://localhost:8000/api/health
  "source": "NL2SQL/results/rq3/"}
 ```
 
+### 6.1 安全报告（`/api/reports*`）——按账号隔离
+
+安全报告是**审计台账**，只列出**该令牌自己发起的**查询。
+
+GET 带不了请求体，而令牌要**验签**，所以令牌的每个字段都走查询参数：
+
+| 端点 | 必填 query | 可选 query |
+|---|---|---|
+| `GET /api/reports` | `token_type`、`exp`、`sig` | `subject_id`、`account`、`limit`（默认 20） |
+| `GET /api/reports/{id}` | 同上 | 同上（无 `limit`） |
+| `GET /api/reports/{id}/export` | 同上 | 同上（无 `limit`） |
+
+```bash
+# 先登录拿令牌，再把它的字段摊进查询串
+TOK=$(curl -s -X POST http://localhost:8000/api/auth/login \
+      -H 'Content-Type: application/json' \
+      -d '{"account":"patient","password":"medguard"}' | python -c \
+      "import json,sys; t=json.load(sys.stdin)['token']; print('&'.join(f'{k}={t[k]}' for k in ('type','subject_id','account','exp','sig')))")
+curl "http://localhost:8000/api/reports?token_type=${TOK#type=}"
+```
+
+前端把这段逻辑收在 `src/api/scope.ts` 的 `tokenScope()` 里，别处不用重复实现。
+
+约定：
+
+- **`token_type` 不传 → 422**；**签名不符 / 过期 → 401**。身份不是可选项：
+  这个端点原先不收身份、无过滤地返回全表，于是医生跑完查询、患者登录后
+  看到的是医生的记录。
+- **越权 = 404，与"不存在"同一响应**——不暴露"这条记录存在"这个事实本身。
+- `subject_id` 为空串等价于省略（管理员令牌就是这种）。
+- 存储侧：隔离依据是 `reports.account`——**不是** `(token_type, subject_id)`。
+  那个组合有个洞：管理员的 `subject_id` 是空的，会和**建号时「绑定主体」留空
+  的 staff** 落进同一个桶，而那个字段在用户管理页是**选填**的（实测复现过：
+  新建的 staff 一登录就看到了管理员的记录）。账号唯一，不会重合。
+- 迁移：`init_db` 内对老库执行 `ALTER TABLE ... ADD COLUMN`（无需删库）。
+  两个字段变化之前入库的历史行没有账号信息，**谁都读不到**——它们本来就
+  归不了属。
+
+### 6.2 账号（`/api/auth/*`）
+
+| 端点 | 说明 |
+|---|---|
+| `POST /api/auth/login` | 口令校验通过后返回 `{user, token}`；`token` 带 HMAC 签名，有效期 8 小时 |
+| `POST /api/auth/register` | **仅管理员**（非管理员 403、令牌无效 401、账号重复 409、口令 < 6 位 422） |
+| `GET /api/auth/users` | **仅管理员**；令牌同样走查询参数（`token_type`/`subject_id`/`account`/`exp`/`sig`） |
+
+- 口令以 PBKDF2-SHA256（20 万轮）哈希存储，**接口从不返回口令哈希**。
+- 令牌签名覆盖 `type`／`subject_id`／`account`／`exp` 四者，密钥由
+  `MEDGUARD_TOKEN_SECRET` 提供，未设置时自动生成并持久化到 `data/.token_secret`
+  （该文件已 gitignore，**绝不入库**）。
+- 账号不存在与口令错误返回**同一句话**，避免账号枚举。
+
 **GET /api/reports** → `[{"id": 5, "question": "统计各科室接诊量", "token_type": "staff", "created_at": "2026-09-14 15:20:01", "degradation_level": "L0", "event_count": 0}, ...]`（最新在前）
 
 **GET /api/reports/{id}** → 上述字段 + `payload`（完整 QueryResponse 快照）。
+
+### 6.3 智慧医生（`POST /api/smart-doctor/ask`）
+
+面向患者的可信就医助手。**只接受病患令牌**（`token.type == "patient"`），且
+令牌必须带 `subject_id`——没有主语绑定就无从"只读本人"。`token` 需为
+`/api/auth/login` 签发的完整令牌（含 `account`／`exp`／`sig`），否则 401。
+
+```json
+{ "token": { "type": "patient", "subject_id": "P001", "account": "patient",
+             "exp": 1790000000, "sig": "<64 位十六进制>" },
+  "datasource_id": "regional_health",
+  "question": "我的血糖结果正常吗" }
+```
+
+返回三块，**每块自带 `source`**（前端据此标注来源，不要写死）：
+
+| 字段 | `source` 取值 |
+|---|---|
+| `data` | `医院主库`（经层一 + 层二后取数） |
+| `interpretation` / `advice` | `医院审核知识库`，知识库未覆盖时由 AI 兜底 → `AI 智能导诊` |
+
+`advice.urgent` **由分诊等级决定**：知识库每条检验分档与症状都声明
+`acuity`（1 濒危／2 危重／3 急症／4 非急症，对齐 WS/T 390-2012），
+`urgent = acuity <= 2`。`advice.text` 里的安全网提示（"若同时出现…请立即
+就医"）与 `urgent` 是两回事，**无条件展示**。
+
+错误码：非病患令牌 403；缺 `subject_id` 422；问题为空 422。
 
 ## 7. 前端接入清单
 

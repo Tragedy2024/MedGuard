@@ -1,5 +1,11 @@
 # 后端实现计划 — 医患信息数据服务云平台
 
+> ⚠️ **本文是 2026-09-10 的实现计划，其中的代码示例反映的是当时的设计，不保证
+> 与当前实现一致。**已知至少两处：reports 路由当时没有令牌身份参数
+> （现在要求必填 `token_type` + `exp`/`sig`），且此后新增了 auth 与
+> smart-doctor 两组路由。抄之前请对照 `backend/docs/api-contract/API_CONTRACT.md`
+> 与现有代码。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 实现 FastAPI 后端，提供数据源管理、安全策略、查询与拦截、安全事件报告四组接口，并保证病患令牌无法触及任何涉他患者数据。

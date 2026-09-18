@@ -1,5 +1,11 @@
 # 前端实现计划 — 医患信息数据服务云平台
 
+> ⚠️ **本文是 2026-09-10 的实现计划，其中的代码示例反映的是当时的设计，不保证
+> 与当前实现一致。**已知：`fetchReports(limit)` / `fetchReport(id)` /
+> `exportReportUrl(id)` 现在都必须先收一个 `Token`（报告按令牌身份隔离，
+> 且 GET 端点要带 `exp`/`sig` 验签，见 `src/api/scope.ts`）。抄之前请对照
+> 现有代码与 `backend/docs/api-contract/API_CONTRACT.md`。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 实现 React SPA，呈现四个模块（身份与数据源 / 安全策略管理 / 查询与拦截控制台 / 安全事件报告），把"医盾"引擎的零 LLM 审计过程做成**看得见、看得懂**的界面。

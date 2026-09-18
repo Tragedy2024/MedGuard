@@ -6,9 +6,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.main import app
+from tests.helpers import load_demo, sign
 
-STAFF = {"type": "staff", "subject_id": None}
-PATIENT = {"type": "patient", "subject_id": "P001"}
+# 端点一律验签（见 tests/helpers.py），裸字典令牌会 401。
+STAFF = sign("staff")
+PATIENT = sign("patient", "P001")
 
 # 预期：question_id -> (令牌, 是否放行, 最少事件数, 期望的降级等级集合)
 EXPECTED = [
@@ -34,7 +36,7 @@ def client(tmp_path, monkeypatch):
     from backend.db import init_db
     init_db(str(tmp_path / "medguard.db"))
     c = TestClient(app)
-    c.post("/api/datasources/demo")
+    load_demo(c)
     return c
 
 

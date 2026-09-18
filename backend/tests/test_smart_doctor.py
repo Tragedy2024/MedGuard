@@ -8,6 +8,7 @@ from backend import smart_doctor
 from backend.smart_doctor import (INTENT_DISEASE, INTENT_FALLBACK, INTENT_LAB,
                                   INTENT_MEDICATION, INTENT_SYMPTOM,
                                   interpret_lab, parse_intent)
+from tests.helpers import load_demo, sign
 
 
 @pytest.fixture(scope="module")
@@ -195,14 +196,14 @@ def _client(tmp_path, monkeypatch):
     init_db(str(tmp_path / "medguard.db"))
     from backend.main import app
     c = TestClient(app)
-    c.post("/api/datasources/demo")
+    load_demo(c)
     return c
 
 
 def test_api_smart_doctor_ask(tmp_path, monkeypatch):
     c = _client(tmp_path, monkeypatch)
     r = c.post("/api/smart-doctor/ask", json={
-        "token": {"type": "patient", "subject_id": "P001"},
+        "token": sign("patient", "P001"),
         "datasource_id": "regional_health",
         "question": "我的血糖结果正常吗？接下来怎么办？"})
     assert r.status_code == 200
@@ -216,7 +217,7 @@ def test_api_smart_doctor_ask(tmp_path, monkeypatch):
 def test_api_smart_doctor_rejects_staff_token(tmp_path, monkeypatch):
     c = _client(tmp_path, monkeypatch)
     r = c.post("/api/smart-doctor/ask", json={
-        "token": {"type": "staff", "subject_id": None},
+        "token": sign("staff"),
         "datasource_id": "regional_health",
         "question": "我的血糖结果正常吗"})
     assert r.status_code == 403
@@ -225,7 +226,7 @@ def test_api_smart_doctor_rejects_staff_token(tmp_path, monkeypatch):
 def test_api_smart_doctor_requires_subject(tmp_path, monkeypatch):
     c = _client(tmp_path, monkeypatch)
     r = c.post("/api/smart-doctor/ask", json={
-        "token": {"type": "patient", "subject_id": None},
+        "token": sign("patient"),
         "datasource_id": "regional_health",
         "question": "我的血糖结果正常吗"})
     assert r.status_code == 422
@@ -234,7 +235,7 @@ def test_api_smart_doctor_requires_subject(tmp_path, monkeypatch):
 def test_api_smart_doctor_empty_question(tmp_path, monkeypatch):
     c = _client(tmp_path, monkeypatch)
     r = c.post("/api/smart-doctor/ask", json={
-        "token": {"type": "patient", "subject_id": "P001"},
+        "token": sign("patient", "P001"),
         "datasource_id": "regional_health",
         "question": "   "})
     assert r.status_code == 422

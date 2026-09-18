@@ -18,6 +18,11 @@
 一个面向医院场景的数据查询平台。医生和病患**用中文提问**，答案**直接来自医院主库**——
 大模型只负责把问题翻译成 SQL，不生成任何答案内容。
 
+> **一处限定**：患者的「智慧医生」在**知识库未覆盖**的问法上会调模型生成*解读*
+> 与*建议*文案。那是文字解释，不是数据——院内数据仍然只来自主库，模型碰不到。
+> 而且它**必须逐块标注来源**：「医院审核知识库」与「AI 智能导诊」分开，
+> 绝不把模型生成的内容盖成人工审核章。
+
 但它真正在做的事在另一侧：
 
 > 大模型要参与查询，数据就必须进它的上下文。
@@ -39,7 +44,7 @@
     ▼
 ┌─ 翻译 ──────────────────────────────────────────────────────┐
 │ 自然语言  ──▶  查询计划 [{id, description, sql}, …]          │
-│ 缓存优先，未命中才调 LLM。LLM 只翻译，不生成答案。           │
+│ 缓存优先，未命中才调 LLM。LLM 只翻译，不生成数据答案。       │
 └──────────────────────────┬──────────────────────────────────┘
                            ▼
             ┌──【层一】准入检查 ──┐
@@ -86,6 +91,22 @@
 - Python **3.10+**（实测 3.13 / conda 环境 `medguard` 为 3.12）
 - Node **20+**（实测 24）
 
+### 一键启动（演示用，推荐）
+
+```bash
+./start_demo.sh              # Git Bash / macOS / Linux
+start_demo.bat               # Windows 双击
+```
+
+两个脚本做同一件事：找解释器 → 验依赖 → 必要时构建前端 → 起服务 → 开浏览器。
+加 `--lan` 还能让手机或另一台电脑通过局域网 IP 打开。
+
+**只有一个进程、一个端口**（`http://localhost:8000`）。后端顺带托管前端构建
+产物，前后端**同源**——浏览器不产生跨域预检，换端口、用局域网 IP、前面加反代
+都不会撞 CORS。演示现场因此少一个会翻车的环节。
+
+> 前端**单独**跑（带热重载）时仍走 `npm run dev` + Vite proxy，见下面两节。
+
 ### 后端
 
 ```bash
@@ -115,7 +136,7 @@ Vite 已配好 proxy，把 `/api` 转发到 `8000`，**无需处理跨域**。
 
 | 账号 | 密码 | 身份 | 能进哪些页 |
 |---|---|---|---|
-| `admin` | `medguard` | 医院管理员（信息科） | 数据源 / 安全策略 / 查询控制台 / 安全报告 |
+| `admin` | `medguard` | 医院管理员（信息科） | 数据源 / 安全策略 / **用户管理** / 查询控制台 / 安全报告 |
 | `doctor` | `medguard` | 医护人员（医生001·心内科） | 可查范围 / 查询控制台 / 安全报告 |
 | `patient` | `medguard` | 病患（患者001） | 可查范围 / 查询控制台 / 安全报告 |
 
@@ -123,6 +144,11 @@ Vite 已配好 proxy，把 `/api` 转发到 `8000`，**无需处理跨域**。
 > 医护与病患的页面完全相同，差别只在令牌；患者额外拥有「智慧医生」（可信就医助手，登录后默认页）——那是患者视角的主入口，其余页面照常。这正是演示矩阵成立的前提。
 > 身份**不可在界面上随手切换**，必须退出后重新登录——
 > 对一个以安全为卖点的产品，"能随便切身份"本身就是可信度问题。
+
+**这三个账号存在后端**（平台元数据库的 `users` 表，口令是 PBKDF2 哈希，
+不是明文），登录由 `POST /api/auth/login` 判定并**签发带 HMAC 签名的令牌**，
+所有收令牌的端点都会验签。管理员登录后可在「用户管理」页建新账号——
+医院里开号是信息科的活，所以**没有自助注册**；非管理员调用建号接口返回 403。
 
 ### 关于 API Key（可选）
 
@@ -179,7 +205,7 @@ cp .env.example .env      # 填入 OPENAI_API_KEY
 | 层 | 选型 | 说明 |
 |---|---|---|
 | 前端 | React 19 · Vite 8 · TypeScript 6 · React Router 7 | 纯展示层，不直接读数据 |
-| 后端 | FastAPI · Pydantic v2 · SQLite | 同步路由，四组 API |
+| 后端 | FastAPI · Pydantic v2 · SQLite | 同步路由，六组 API（auth/数据源/策略/查询/报告/智慧医生） |
 | 审计 | `sqlglot` 纯 AST 静态分析 | **零 LLM、零数据库访问** |
 | 翻译 | MAC-SQL 多智能体体系（vendor 内置） | 自然语言 → 多步分解计划 |
 | 契约 | OpenAPI → `openapi-typescript` | 后端一改，前端**编译报错** |
@@ -196,18 +222,23 @@ MedGuard/
 │   │   ├── admission.py       ★ 层一：令牌准入判定（纯函数，零 IO）
 │   │   ├── deps.py            ★ 算法层唯一访问点（load_policy / audit_plan）
 │   │   ├── llm_nl2sql.py      自然语言 → 查询计划（缓存未命中时才走）
-│   ├── smart_doctor.py   智慧医生：意图识别 + 医盾取数 + 知识库三块 + AI 兜底
+│   │   ├── smart_doctor.py    智慧医生：意图识别 + 医盾取数 + 知识库三块
+│   │   │                      + acuity 分诊等级（决定急诊横幅）+ AI 兜底
 │   │   ├── query_cache.py     「问法 → 计划」缓存
+│   │   ├── credentials.py     口令哈希（PBKDF2）+ 令牌签名（HMAC-SHA256）
+│   │   ├── security.py        HTTP 层身份强制：验签、管理员校验
 │   │   ├── labels.py          违规类型/严重度/降级等级的中文映射
 │   │   ├── schemas.py         ★ 前后端契约（字段名即契约）
-│   │   ├── routers/           datasources / policies / query / reports
+│   │   ├── routers/           auth / datasources / policies / query /
+│   │   │                      reports / smart_doctor
 │   │   └── main.py            FastAPI 装配
 │   ├── demo/
 │   │   ├── seed.py            建 5 表 + 一眼假数据
 │   │   ├── ssa/regional_health.yaml   ★ 手写安全策略（含跨域规则）
+│   │   ├── smart_knowledge.yaml       ★ 智慧医生知识库（检验分档/症状/疾病）
 │   │   └── queries.json       预设查询库（医护 4 + 病患 5）
 │   ├── vendor/nl2sql/         内置算法层（改动记录见 VENDOR-PATCHES.md）
-│   ├── tests/                 153 项
+│   ├── tests/                 217 项
 │   └── docs/api-contract/     中文契约说明
 ├── frontend/
 │   └── src/
@@ -215,7 +246,7 @@ MedGuard/
 │       ├── api/               types.ts（生成物）/ models.ts（适配层）/ client.ts
 │       ├── store/             auth（会话）/ aliases（业务别名）/ presets
 │       ├── components/        EclTag · DegradationBadge · SqlDiff · EventCard …
-│       └── pages/             LoginPage + 五个模块页
+│       └── pages/             登录页 + 各角色模块页（含智慧医生、用户管理）
 ├── docs/
 │   ├── TestPlan.txt           ★ 全部测试资产与演示缓存
 │   └── superpowers/           设计文档 / 实现计划 / 团队规范
@@ -227,18 +258,23 @@ MedGuard/
 ## 测试
 
 ```bash
-cd backend && python -m pytest tests/ -q        # 153 项，约 4 秒
+cd backend && python -m pytest tests/ -q        # 217 项，约 18 秒
 cd frontend && npx tsc -b                       # 类型检查
 cd frontend && npm run visual                   # 视觉核查，截图 + 收集控制台报错
 ```
 
-**153 项后端测试**覆盖层一准入、演示库 seed 锚点、SSA 策略完整性（防 fail-open 缺口）、
-智慧医生（意图识别 / 三块结构 / 层一只读本人 / **AI 兜底**）、
-算法层适配、四组路由契约，以及**演示数据校验**——9 条预设查询逐条断言
+**217 项后端测试**覆盖层一准入、演示库 seed 锚点、SSA 策略完整性（防 fail-open 缺口）、
+智慧医生（意图识别与歧义引导 / 三块结构 / 层一只读本人 / **acuity 分诊等级** /
+**AI 兜底**）、算法层适配、六组路由契约，以及**演示数据校验**——9 条预设查询逐条断言
 「是否放行 / 最少事件数 / 期望的降级等级」。后者是阻塞性的：
 演示库触发失败 = 视频录不出来。
 
-**14 项视觉核查**用系统已装的 Chrome 遍历关键页面，
+安全报告另有**按账号隔离**的断言：医生与患者各自只看到自己发起的查询，
+越权读/导出别人的报告 id 一律 404。账号侧则钉住**令牌必须验签**——
+未签名的裸令牌全线 401，篡改 `type`/`subject_id`/`account`/`exp`/`sig`
+任一字段同样 401。
+
+**16 项视觉核查**用系统已装的 Chrome 遍历关键页面，
 任何一条 console error 都算失败。录演示视频前必须跑一遍。
 
 > ⚠️ `npx tsc --noEmit` 在本项目**静默什么都不检查**——根 `tsconfig.json`

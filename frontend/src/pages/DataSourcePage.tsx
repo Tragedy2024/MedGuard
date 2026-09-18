@@ -14,8 +14,10 @@ import type {
   DatasourceInfo, DetectionMetrics, Policy, SchemaTable,
 } from '../api/models'
 import { errorText } from '../api/client'
+import { useAuth } from '../store/auth'
 
 export function DataSourcePage() {
+  const { session } = useAuth()
   const [sources, setSources] = useState<DatasourceInfo[]>([])
   const [tables, setTables] = useState<SchemaTable[]>([])
   const [policy, setPolicy] = useState<Policy | null>(null)
@@ -52,7 +54,8 @@ export function DataSourcePage() {
   const handleCreate = async () => {
     setLoading(true)
     try {
-      await createDemoDatasource()
+      // 载入演示数据要管理员令牌：它会先删库再重建。
+      await createDemoDatasource(session!.token)
       await load()
     } catch (e) {
       setError(errorText(e))

@@ -21,7 +21,7 @@ curl http://localhost:8000/api/datasources          # 应返回 regional_health
 curl http://localhost:8000/api/metrics/detection    # 检测效能（论文实测数字）
 ```
 
-跑测试：`python -m pytest tests/ -v`（123 项，含演示数据校验）。
+跑测试：`python -m pytest tests/ -v`（217 项，含演示数据校验）。
 
 ## 给前端同学的对接材料
 
@@ -53,6 +53,10 @@ python -c "from backend.deps import algo_available; print(algo_available())"
 
 ## 启动
 
+> **演示场景**用仓库根的 `./start_demo.sh`（Windows 双击 `start_demo.bat`）：
+> 它会构建前端并让**后端一并托管**，只有一个进程一个端口，同源也就没有
+> CORS 问题。下面这两条是纯后端开发时的用法。
+
 ```bash
 # Git Bash
 bash scripts/run_dev.sh
@@ -74,9 +78,25 @@ python -c "from demo.seed import build_database; from backend import config; imp
 python -m pytest tests/ -v
 ```
 
-123 项测试覆盖：层一准入（纯函数）、演示库 seed 锚点、SSA 策略完整性
+217 项测试覆盖：层一准入（纯函数）、演示库 seed 锚点、SSA 策略完整性
 （防 fail-open 缺口）、算法层适配（含最终答案 AVG 误伤还原）、
-四个路由契约、**演示数据校验**（9 条预设查询全部按预期触发——阻塞性）。
+六个路由契约、**演示数据校验**（9 条预设查询全部按预期触发——阻塞性）、
+以及智慧医生（意图路由 / acuity 分诊等级 / AI 兜底输出形态）。
+
+**安全报告按账号隔离**（`reports` 表存 `account`）：`/api/reports` 三个端点
+要求必填 query 参数 `token_type`（外加 `exp`/`sig` 验签），不传 422，
+越权读/导出别人的报告 id 返回 404。老库由 `init_db` 原地 `ALTER TABLE` 补列，
+无需删库。
+
+> ⚠️ 曾经按 `(token_type, subject_id)` 隔离，那个设计有洞：管理员的
+> `subject_id` 是空的，会和**建号时「绑定主体」留空的 staff** 落进同一个桶——
+> 而那个字段在用户管理页是**选填**的。账号是唯一的，不会重合。
+
+**账号与令牌**：账号在元数据库的 `users` 表，口令以 PBKDF2-SHA256（20 万轮）
+哈希保存；登录由 `POST /api/auth/login` 签发带 HMAC 签名的令牌，
+**每个收令牌的端点都验签**（`backend/security.py` 的 `verified()`）——
+少挂一个，那个端点就仍可被伪造令牌访问。建号只有管理员能做，
+角色从**账号表**回查而不是信令牌自称。
 
 ## 目录结构
 
@@ -87,15 +107,19 @@ MedGuard/
 │   ├── admission.py        # 层一：病患令牌准入（纯函数）
 │   ├── deps.py             # ★ 算法层唯一访问点（load_policy / audit_plan）
 │   ├── labels.py           # 违规类型/严重度/降级等级中文映射
-│   ├── db.py               # 平台元数据库（medguard.db）
+│   ├── db.py               # 平台元数据库（medguard.db：users + reports）
+│   ├── credentials.py      # 口令哈希（PBKDF2）+ 令牌签名（HMAC-SHA256）
+│   ├── security.py         # HTTP 层身份强制：verified() / require_admin()
+│   ├── smart_doctor.py     # 智慧医生：意图识别 + 取数 + 知识库 + acuity + AI 兜底
 │   ├── schemas.py          # ★ 前后端契约（Pydantic，字段名即契约）
-│   ├── routers/            # datasources / policies / query / reports
+│   ├── routers/            # auth / datasources / policies / query / reports / smart_doctor
 │   └── main.py             # FastAPI 装配
 ├── demo/
 │   ├── seed.py             # 建 5 表 + 一眼假数据（random.Random(42)）
 │   ├── ssa/regional_health.yaml  # 手写策略（含跨域规则）
+│   ├── smart_knowledge.yaml      # 智慧医生知识库（含 acuity 分诊等级）
 │   └── queries.json        # 预设查询库（医护 4 + 病患 5）
-├── tests/                  # 123 项
+├── tests/                  # 217 项
 ├── scripts/                # 启动脚本
 └── data/                   # 运行时生成（gitignore）
 ```
@@ -107,6 +131,10 @@ MedGuard/
 | 路径/端口/数据目录 | `backend/config.py`（或环境变量 `MEDGUARD_*`） |
 | 病患表集合（接入真实数据源） | `config.PATIENT_TABLES`（当前演示库 4 张） |
 | 界面文案（违规/降级/令牌） | `backend/labels.py` |
+| 演示账号与口令 | `backend/db.py` 的 `_DEMO_USERS` / `_DEMO_PASSWORD`。**只在 users 表为空时种一次**，删掉之后不会再被重启建回来 |
+| 令牌有效期 / 口令轮数 | `backend/credentials.py` 的 `TOKEN_TTL_SEC` / `_PBKDF2_ROUNDS` |
+| 令牌签名密钥 | 环境变量 `MEDGUARD_TOKEN_SECRET`；不设则首次运行生成并持久化到 `data/.token_secret`（**已 gitignore，绝不入库**——泄了它签名就等于没有） |
+| 智慧医生的检验分档/症状/疾病词条 | `demo/smart_knowledge.yaml`。**每条分档与每个症状都必须显式写 `acuity`**（1 濒危／2 危重／3 急症／4 非急症），它决定 `advice.urgent` 是否弹急诊横幅；有测试遍历断言不许漏写 |
 | 预设演示问题 | `demo/queries.json`（含 `{subject_id}` 占位符） |
 | 演示库表结构与数据 | `demo/seed.py` + `demo/ssa/regional_health.yaml`（已互相校验，改一处必改另一处） |
 | API 契约（字段名） | `backend/schemas.py` —— 这即契约变更，前端需重新生成类型 |

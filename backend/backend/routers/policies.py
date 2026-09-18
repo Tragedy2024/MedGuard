@@ -13,15 +13,11 @@ from pydantic import BaseModel, Field
 
 from backend import config
 from backend.deps import list_policy_ids, load_policy
-from backend.schemas import (Policy, PolicyList, PolicyUpdateResult,
-                             PolicyValidation)
+from backend.schemas import (Policy, PolicyList, PolicyUpdateRequest,
+                             PolicyUpdateResult, PolicyValidation)
+from backend.security import require_admin
 
 router = APIRouter(prefix="/api/policies", tags=["policies"])
-
-
-class PolicyUpdate(BaseModel):
-    column_labels: Optional[Dict[str, Dict[str, str]]] = None
-    cross_domain_rules: Optional[List[Dict[str, Any]]] = None
 
 
 def _policy_path(datasource_id: str) -> str:
@@ -86,8 +82,15 @@ def get_policy(datasource_id: str):
 
 
 @router.put("/{datasource_id}", response_model=PolicyUpdateResult)
-def update_policy(datasource_id: str, body: PolicyUpdate):
-    """更新策略。只改 YAML 中明确提交的键，其余保留。"""
+def update_policy(datasource_id: str, body: PolicyUpdateRequest):
+    """更新策略。只改 YAML 中明确提交的键，其余保留。
+
+    **必须管理员**：这个接口决定了医盾拦什么——把 `id_card` 从 blocked 改成
+    free，整条防线就没了。它曾经完全敞开：匿名 PUT 就能改写磁盘上的策略文件，
+    实测返回 200 且文件真的被改。查接口敞开只是"多开一个终端"，这个接口敞开
+    是**把安全引擎本身交出去**。
+    """
+    require_admin(body.token)
     data = _read_policy_yaml(datasource_id)
 
     if body.column_labels:

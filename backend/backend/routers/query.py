@@ -23,6 +23,7 @@ from backend.labels import DEGRADATION_LABELS, DEGRADATION_MESSAGES
 from backend.schemas import (AdmissionInfo, DegradationInfo, MetricsInfo,
                              PlanItem, QueryRequest, QueryResponse,
                              ResultSet, RewriteInfo, SecurityEvent, Token)
+from backend.security import verified
 
 router = APIRouter(prefix="/api/query", tags=["query"])
 
@@ -34,6 +35,7 @@ def _load_queries() -> dict:
 
 @router.post("", response_model=QueryResponse)
 def run_query(req: QueryRequest):
+    verified(req.token)
     t0 = time.perf_counter()
     queries = _load_queries()
     spec = queries.get(req.question_id)
@@ -49,7 +51,7 @@ def run_query(req: QueryRequest):
     ]
 
     resp = _pipeline(plan, spec["question"], req.token, req.datasource_id, t0)
-    _persist(spec["question"], req.token.type, resp)
+    _persist(spec["question"], req.token, resp)
     return resp
 
 
@@ -180,12 +182,15 @@ def run_direct_query(req: DirectQueryRequest):
     模型倾向选更安全的写法，审计出来的违规常为 0；打磨过的计划才会触发
     Rule C 拆分与跨域 JOIN 事件。
     """
+    verified(req.token)
     t0 = time.perf_counter()
     question = (req.question or "").strip()
     if not question:
         raise HTTPException(status_code=422, detail="问题不能为空")
 
-    plan = query_cache.lookup(question, req.token.type)
+    # 必须连主体一起查：缓存里的计划可能把主体写成了字面量，
+    # 那种计划只对生成它的那个主体成立（见 query_cache._is_subject_agnostic）。
+    plan = query_cache.lookup(question, req.token.type, req.token.subject_id)
 
     if plan is None:
         if not llm_nl2sql.llm_available():
@@ -204,10 +209,11 @@ def run_direct_query(req: DirectQueryRequest):
             raise HTTPException(status_code=502,
                                 detail=f"翻译失败：{exc}") from exc
         # 只写回成功的翻译；失败不该污染缓存
-        query_cache.store(question, plan, req.token.type, source="llm")
+        query_cache.store(question, plan, req.token.type,
+                          req.token.subject_id, source="llm")
 
     resp = _pipeline(plan, question, req.token, req.datasource_id, t0)
-    _persist(question, req.token.type, resp)
+    _persist(question, req.token, resp)
     return resp
 
 
@@ -236,13 +242,22 @@ def _execute(sql_by_id: Dict[Any, str], plan: list) -> Optional[ResultSet]:
     return ResultSet(columns=cols, rows=rows)
 
 
-def _persist(question: str, token_type: str, resp: QueryResponse) -> None:
+def _persist(question: str, token: Token, resp: QueryResponse) -> None:
+    """落盘一条审计报告。
+
+    存的是**整个令牌身份**而不只是 type：安全报告要按发起人隔离。隔离依据
+    是 **account**——按 (token_type, subject_id) 隔离时，管理员（subject_id
+    为空）会和"绑定主体留空"的 staff 撞进同一个桶，而建号界面上那个字段是
+    选填的，等于默认路径上就串号。
+    """
     db_path = config.METADATA_DB
     if not os.path.exists(db_path):
         return
     save_report(db_path, {
         "question": question,
-        "token_type": token_type,
+        "token_type": token.type,
+        "subject_id": token.subject_id,
+        "account": token.account,
         "degradation_level": resp.degradation.level,
         "event_count": len(resp.events),
         "payload": resp.model_dump(),

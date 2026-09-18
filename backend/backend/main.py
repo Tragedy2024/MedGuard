@@ -6,10 +6,14 @@
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
-from backend.routers import datasources, policies, query, reports, smart_doctor
+from backend import config
+from backend.routers import (auth, datasources, policies, query, reports,
+                             smart_doctor)
 from backend.schemas import HealthInfo
 
 
@@ -48,13 +52,23 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# CORS。
+#
+# **同源托管时（见文件末尾）浏览器根本不产生跨域预检**，这项只在前后端
+# 分开部署时才用得上——所以默认值只留 Vite 开发服务器的地址，生产/局域网
+# 场景不必配。确实要跨域时用逗号分隔的白名单覆盖：
+#     MEDGUARD_CORS_ORIGINS="https://a.example.com,https://b.example.com"
+_origins = [o.strip() for o in os.environ.get(
+    "MEDGUARD_CORS_ORIGINS", "http://localhost:5173").split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
 app.include_router(datasources.router)
 app.include_router(policies.router)
 app.include_router(query.router)
@@ -70,6 +84,49 @@ def health():
         "status": "ok",
         "algo_engine": "available" if algo_available() else "unavailable",
         "policies": list_policy_ids(),
-        "routes": sorted({r.path for r in app.routes
-                          if getattr(r, "path", "").startswith("/api")}),
+        # 从 OpenAPI schema 取，而不是遍历 `app.routes`：新版 FastAPI 的
+        # include_router 挂上去的是没有 `.path` 的 `_IncludedRouter` 包装体，
+        # 遍历只会列出 /api/health 自己——六个路由组全被过滤掉，这条"路由
+        # 挂载状态"的自检等于永远报"一切正常"。
+        "routes": sorted(p for p in app.openapi()["paths"]
+                         if p.startswith("/api")),
     }
+
+
+# ── 前端静态托管（可选）───────────────────────────────────────
+#
+# `frontend/dist` 存在就由后端一并托管：一个进程、一个端口，而且**同源**
+# ——浏览器不产生跨域预检，局域网里换 IP 访问、前面加反代都不会撞 CORS。
+# 演示现场因此少一个会翻车的环节。
+#
+# 必须注册在**所有 API 路由之后**：FastAPI 按注册顺序匹配，这个 catch-all
+# 放前面会把 /api/* 全吃掉。
+_DIST = config.FRONTEND_DIST
+if os.path.isdir(_DIST):
+    _ASSETS = os.path.join(_DIST, "assets")
+    if os.path.isdir(_ASSETS):
+        app.mount("/assets", StaticFiles(directory=_ASSETS), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    def spa(full_path: str):
+        """非 /api 的路径回落到 index.html。
+
+        React Router 的地址（`/users`、`/reports/3`）在服务端**没有对应
+        文件**，直接敲地址或按 F5 就会 404——这是演示时最容易踩的一脚。
+        字体、照片、favicon 这些真实存在的文件仍原样返回。
+        """
+        if full_path.startswith("api/"):
+            # 未匹配的 /api/* 应当是 404，不能回一份 HTML——那会让前端拿到
+            # 一坨 HTML 去 JSON.parse，报出跟真实原因毫无关系的错。
+            raise HTTPException(status_code=404, detail="接口不存在")
+        if full_path:
+            target = os.path.normpath(os.path.join(_DIST, full_path))
+            # 目录穿越防护：normalize 之后必须仍在 dist 之内
+            if (target.startswith(os.path.normpath(_DIST) + os.sep)
+                    and os.path.isfile(target)):
+                return FileResponse(target)
+        return FileResponse(os.path.join(_DIST, "index.html"))
+else:
+    print(f"[static] 未找到前端构建产物，只提供 API：{_DIST}")
+    print("[static] 构建前端后重启即可单端口演示："
+          "cd frontend && npm run build")

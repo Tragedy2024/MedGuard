@@ -49,6 +49,10 @@ const SHOTS = [
       await p.waitForTimeout(250)
     },
   },
+  // 用户管理：开号入口只有信息科有（路由守卫是第二层，第一层在接口的
+  // require_admin 上——非管理员令牌调 /api/auth/register 返回 403）
+  { name: '04c-users', path: '/users', as: 'admin', height: 1400 },
+
   // 路由守卫：医生直接敲 /policy 应被挡住，而不是渲染出策略页
   { name: '05-forbidden', path: '/policy', as: 'doctor' },
 

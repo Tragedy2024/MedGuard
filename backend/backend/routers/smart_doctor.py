@@ -10,12 +10,14 @@ from fastapi import APIRouter, HTTPException
 
 from backend import smart_doctor
 from backend.schemas import SmartDoctorRequest, SmartDoctorResponse
+from backend.security import verified
 
 router = APIRouter(prefix="/api/smart-doctor", tags=["smart-doctor"])
 
 
 @router.post("/ask", response_model=SmartDoctorResponse)
 def ask(req: SmartDoctorRequest):
+    verified(req.token)
     question = (req.question or "").strip()
     if not question:
         raise HTTPException(status_code=422, detail="问题不能为空")

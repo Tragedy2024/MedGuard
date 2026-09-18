@@ -6,6 +6,10 @@
 __pycache__/
 *.pyc
 *.pyo
+
+# 运行时日志（uvicorn 等）。曾误提交过 backend/uvicorn.{out,err}.log，
+# 加规则防止再犯——日志不是源码，而且会随运行不断变化。
+*.log
 .venv/
 venv/
 .pytest_cache/
@@ -25,6 +29,10 @@ build/
 # 匹配不到 backend/data/。团队规范 §4.4 要求 .db 一律不入库。
 **/data/*.db
 **/data/*.db-journal
+# 令牌签名密钥（backend/credentials.py 首次运行时生成）。
+# **绝不入库**：它一泄露，任何人都能签发以假乱真的令牌，签名就等于没有。
+# 团队共享请走群消息/密码管理器，或各自用 MEDGUARD_TOKEN_SECRET 覆盖。
+**/data/.token_secret
 
 # 视觉核查输出（npm run visual）
 # 两个都写：v2 开发期用的是 -v2 后缀，当时只加了 .visual-out/，
@@ -42,3 +50,8 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+
+# 过程文件（本地 issue / spec / 审查产出）。CLAUDE.md 说 issue 与 spec 放在
+# 这里，那是**工作区**不是交付物——曾经差点把 131KB 的审查 diff 一起推上去。
+# 确实需要随仓库保留的条目，用 `git add -f` 单独放行。
+.scratch/

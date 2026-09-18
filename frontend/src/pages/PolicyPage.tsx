@@ -3,11 +3,13 @@ import { fetchPolicy, updatePolicy } from '../api/policies'
 import type { EclLabel, Policy } from '../api/models'
 import { ECL_TEXT, EclTag } from '../components/EclTag'
 import { errorText } from '../api/client'
+import { useAuth } from '../store/auth'
 
 const CX = 'regional_health'
 const LABELS: EclLabel[] = ['free', 'controlled', 'blocked']
 
 export function PolicyPage() {
+  const { session } = useAuth()
   const [policy, setPolicy] = useState<Policy | null>(null)
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -50,7 +52,9 @@ export function PolicyPage() {
   const save = async () => {
     setSaving(true)
     try {
-      await updatePolicy(CX, { column_labels: policy.column_labels })
+      // 策略写接口要管理员令牌：它决定医盾拦什么。
+      await updatePolicy(session!.token, CX,
+                         { column_labels: policy.column_labels })
       setDirty(false)
     } catch (e) {
       setError(errorText(e))

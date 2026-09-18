@@ -57,7 +57,7 @@ frontend/
     ├── store/              # auth（会话）/ aliases（业务别名）/ presets
     ├── components/         # EclTag、DegradationBadge、SqlDiff、PlanPanel…
     ├── lib/time.ts         # UTC → 北京时间
-    └── pages/              # LoginPage + 四个模块页
+    └── pages/              # 登录页 + 各角色模块页（含智慧医生、用户管理）
 ```
 
 ## 契约变更流程
@@ -80,6 +80,15 @@ frontend/
 
 `models.ts` 里的联合类型（`TokenType` / `DegradationLevel` / `EclLabel`）
 是**从契约派生**的，不是手写。后端一改取值，前端立刻编译失败——这是有意为之。
+
+> ✅ 2026-09-18 已重新生成（17 条 path）。此前 `SmartDoctor*` 系列类型一度是
+> **手写**的——当时 openapi.json 停在智慧医生上线前，生成的 types.ts 里没有
+> 这些 schema。现在它们已改回从契约派生，"契约一变就编译报错"对全部链路生效。
+>
+> 重新生成时暴露过一件事，值得记住：后端用 `Field(default_factory=list)` 声明的
+> 数组字段，在 OpenAPI 里是**非必填**，前端会拿到 `| undefined`。**不要在
+> `models.ts` 里手工抹平**（那正是这道防线要拦的东西），在调用点兜底：
+> `const rows = resp.data?.rows ?? []`。
 
 ## 设计系统
 

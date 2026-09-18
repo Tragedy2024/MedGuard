@@ -4,6 +4,75 @@
  */
 
 export interface paths {
+    "/api/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Login
+         * @description 登录。两种失败返回**同一句话**，且**耗时相当**。
+         *
+         *     错误信息合并是常识；耗时对齐同样必要——`user is None` 直接短路的话，
+         *     "账号不存在"会比"口令错误"快一个数量级（实测 3.3ms vs 38ms，PBKDF2
+         *     20 万轮的差距），等于把账号枚举从错误信息挪到了计时上。而演示口令
+         *     就印在登录页上，枚举出账号就能直接撞库。
+         *
+         *     所以账号不存在时也跑一次校验，只是拿一个永远对不上的哈希。
+         */
+        post: operations["login_api_auth_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register
+         * @description 建号。只有管理员令牌能调。
+         */
+        post: operations["register_api_auth_register_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Users
+         * @description 账号列表（管理员）。用于用户管理页，只返回公开字段。
+         *
+         *     GET 带不了请求体，所以令牌走查询参数（`token_from_query` 会验签）。
+         */
+        get: operations["users_api_auth_users_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/datasources": {
         parameters: {
             query?: never;
@@ -33,6 +102,10 @@ export interface paths {
         /**
          * Create Demo
          * @description 一键载入演示数据（建 5 表 + 灌虚构数据 + 初始化平台元数据库）。
+         *
+         *     **必须管理员**：它会**先删掉再重建**业务库（`build_database` 里有
+         *     `os.remove`），所有既有数据没了。管理员在页面上点一下没问题，
+         *     但匿名或局域网里的任何人都能触发就不是"演示便利"而是数据销毁了。
          */
         post: operations["create_demo_api_datasources_demo_post"];
         delete?: never;
@@ -90,6 +163,11 @@ export interface paths {
         /**
          * Update Policy
          * @description 更新策略。只改 YAML 中明确提交的键，其余保留。
+         *
+         *     **必须管理员**：这个接口决定了医盾拦什么——把 `id_card` 从 blocked 改成
+         *     free，整条防线就没了。它曾经完全敞开：匿名 PUT 就能改写磁盘上的策略文件，
+         *     实测返回 200 且文件真的被改。查接口敞开只是"多开一个终端"，这个接口敞开
+         *     是**把安全引擎本身交出去**。
          */
         put: operations["update_policy_api_policies__datasource_id__put"];
         post?: never;
@@ -185,7 +263,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Reports */
+        /**
+         * Reports
+         * @description 列出**该令牌发起的**查询报告。
+         *
+         *     这个端点原先不收任何身份、无过滤地返回全表，于是医生跑完查询、患者
+         *     登录后看到的是医生的记录。现在身份既必填、又必须签名有效。
+         */
         get: operations["reports_api_reports_get"];
         put?: never;
         post?: never;
@@ -223,6 +307,23 @@ export interface paths {
         get: operations["export_report_api_reports__report_id__export_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/smart-doctor/ask": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask */
+        post: operations["ask_api_smart_doctor_ask_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -342,6 +443,13 @@ export interface components {
             created: boolean;
         };
         /**
+         * DemoLoadRequest
+         * @description 一键载入演示数据。**只有管理员能调**——它会删掉并重建业务库。
+         */
+        DemoLoadRequest: {
+            token: components["schemas"]["Token"];
+        };
+        /**
          * DetectionMetrics
          * @description 检测效能——数字来自论文仓库 results/rq3/ 实测，不得杜撰。
          */
@@ -378,6 +486,18 @@ export interface components {
             policies: string[];
             /** Routes */
             routes: string[];
+        };
+        /** LoginRequest */
+        LoginRequest: {
+            /** Account */
+            account: string;
+            /** Password */
+            password: string;
+        };
+        /** LoginResponse */
+        LoginResponse: {
+            user: components["schemas"]["UserInfo"];
+            token: components["schemas"]["Token"];
         };
         /** MetricValue */
         MetricValue: {
@@ -455,8 +575,12 @@ export interface components {
             /** Datasource Ids */
             datasource_ids: string[];
         };
-        /** PolicyUpdate */
-        PolicyUpdate: {
+        /**
+         * PolicyUpdateRequest
+         * @description 更新安全策略。**只有管理员能改**——这两个接口决定了医盾拦什么。
+         */
+        PolicyUpdateRequest: {
+            token: components["schemas"]["Token"];
             /** Column Labels */
             column_labels?: {
                 [key: string]: {
@@ -517,6 +641,29 @@ export interface components {
             degradation: components["schemas"]["DegradationInfo"];
             metrics: components["schemas"]["MetricsInfo"];
             result?: components["schemas"]["ResultSet"] | null;
+        };
+        /**
+         * RegisterRequest
+         * @description 建号。**只有管理员令牌能调**（医院里开号是信息科的活）。
+         */
+        RegisterRequest: {
+            token: components["schemas"]["Token"];
+            /** Account */
+            account: string;
+            /** Password */
+            password: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "admin" | "staff" | "patient";
+            /** Subject Id */
+            subject_id?: string | null;
+            /**
+             * Display Name
+             * @default
+             */
+            display_name: string;
         };
         /**
          * ReportDetail
@@ -618,7 +765,104 @@ export interface components {
             /** Detail */
             detail: string;
         };
-        /** Token */
+        /**
+         * SmartDoctorAdvice
+         * @description 下一步建议（来源：医院审核知识库）。
+         */
+        SmartDoctorAdvice: {
+            /** Source */
+            source: string;
+            /**
+             * Text
+             * @default
+             */
+            text: string;
+            /** Actions */
+            actions?: string[];
+            /**
+             * Urgent
+             * @default false
+             */
+            urgent: boolean;
+        };
+        /**
+         * SmartDoctorDataBlock
+         * @description 院内数据（来源：医院主库）。经医盾层一准入 + 层二审计后返回。
+         */
+        SmartDoctorDataBlock: {
+            /** Source */
+            source: string;
+            /** Columns */
+            columns?: string[];
+            /** Rows */
+            rows?: unknown[][];
+            /**
+             * Sql After
+             * @default
+             */
+            sql_after: string;
+            /**
+             * Degradation Level
+             * @default L0
+             */
+            degradation_level: string;
+        };
+        /**
+         * SmartDoctorInterpretation
+         * @description 通俗解读（来源：医院审核知识库）。
+         *
+         *     items 为逐条说明（如每个检验项/每种药对应一条），字段随意图不同，
+         *     故用宽松字典——测试会逐键断言，前端按意图渲染。
+         */
+        SmartDoctorInterpretation: {
+            /** Source */
+            source: string;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+            /**
+             * Text
+             * @default
+             */
+            text: string;
+            /** Items */
+            items?: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** SmartDoctorRequest */
+        SmartDoctorRequest: {
+            token: components["schemas"]["Token"];
+            /** Datasource Id */
+            datasource_id: string;
+            /** Question */
+            question: string;
+        };
+        /** SmartDoctorResponse */
+        SmartDoctorResponse: {
+            /**
+             * Intent
+             * @enum {string}
+             */
+            intent: "lab" | "medication" | "symptom" | "disease" | "fallback";
+            /** Question */
+            question: string;
+            admission: components["schemas"]["AdmissionInfo"];
+            degradation: components["schemas"]["DegradationInfo"];
+            data?: components["schemas"]["SmartDoctorDataBlock"] | null;
+            interpretation?: components["schemas"]["SmartDoctorInterpretation"] | null;
+            advice?: components["schemas"]["SmartDoctorAdvice"] | null;
+        };
+        /**
+         * Token
+         * @description 数据访问凭证。
+         *
+         *     `exp` / `sig` 由 `POST /api/auth/login` 签发，覆盖 type/subject_id/exp
+         *     三者。**每个收令牌的端点都会验签**——在此之前令牌是客户端自己拼的，
+         *     手搓一个 `{"type":"patient","subject_id":"P002"}` 就能读别人的安全报告。
+         */
         Token: {
             /**
              * Type
@@ -627,6 +871,32 @@ export interface components {
             type: "staff" | "patient";
             /** Subject Id */
             subject_id?: string | null;
+            /** Account */
+            account?: string | null;
+            /** Exp */
+            exp?: number | null;
+            /** Sig */
+            sig?: string | null;
+        };
+        /**
+         * UserInfo
+         * @description 账号的公开信息——**不含口令哈希**。
+         */
+        UserInfo: {
+            /** Account */
+            account: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "admin" | "staff" | "patient";
+            /** Subject Id */
+            subject_id?: string | null;
+            /**
+             * Display Name
+             * @default
+             */
+            display_name: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -650,6 +920,107 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    login_api_auth_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoginResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_api_auth_register_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    users_api_auth_users_get: {
+        parameters: {
+            query: {
+                token_type: "staff" | "patient";
+                subject_id?: string | null;
+                account?: string | null;
+                exp?: number | null;
+                sig?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserInfo"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_datasources_api_datasources_get: {
         parameters: {
             query?: never;
@@ -677,7 +1048,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DemoLoadRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -686,6 +1061,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DemoDatasourceResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -783,7 +1167,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["PolicyUpdate"];
+                "application/json": components["schemas"]["PolicyUpdateRequest"];
             };
         };
         responses: {
@@ -926,8 +1310,13 @@ export interface operations {
     };
     reports_api_reports_get: {
         parameters: {
-            query?: {
+            query: {
                 limit?: number;
+                token_type: "staff" | "patient";
+                subject_id?: string | null;
+                account?: string | null;
+                exp?: number | null;
+                sig?: string | null;
             };
             header?: never;
             path?: never;
@@ -957,7 +1346,13 @@ export interface operations {
     };
     report_detail_api_reports__report_id__get: {
         parameters: {
-            query?: never;
+            query: {
+                token_type: "staff" | "patient";
+                subject_id?: string | null;
+                account?: string | null;
+                exp?: number | null;
+                sig?: string | null;
+            };
             header?: never;
             path: {
                 report_id: number;
@@ -988,7 +1383,13 @@ export interface operations {
     };
     export_report_api_reports__report_id__export_get: {
         parameters: {
-            query?: never;
+            query: {
+                token_type: "staff" | "patient";
+                subject_id?: string | null;
+                account?: string | null;
+                exp?: number | null;
+                sig?: string | null;
+            };
             header?: never;
             path: {
                 report_id: number;
@@ -1004,6 +1405,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ask_api_smart_doctor_ask_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SmartDoctorRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SmartDoctorResponse"];
                 };
             };
             /** @description Validation Error */

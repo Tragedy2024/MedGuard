@@ -3,6 +3,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.main import app
+from tests.helpers import load_demo, sign
 
 
 @pytest.fixture
@@ -12,8 +13,10 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
     monkeypatch.setattr(config, "METADATA_DB", str(tmp_path / "medguard.db"))
     monkeypatch.setattr(config, "BUSINESS_DB", str(tmp_path / "regional_health.db"))
+    from backend.db import init_db
+    init_db(str(tmp_path / "medguard.db"))
     client = TestClient(app)
-    client.post("/api/datasources/demo")
+    load_demo(client)
     return client
 
 
@@ -57,8 +60,32 @@ def test_all_demo_columns_are_labeled(client):
     assert unlabeled == [], f"以下列未标注（将被静默放行）：{unlabeled}"
 
 
+def _admin(client):
+    return client.post("/api/auth/login",
+                       json={"account": "admin", "password": "medguard"}).json()["token"]
+
+
+def test_put_policy_requires_admin(client):
+    """这个接口决定医盾拦什么——把 id_card 从 blocked 改成 free，
+    整条防线就没了。它曾经完全敞开：匿名 PUT 返回 200 且改写磁盘上的策略文件。"""
+    r = client.put("/api/policies/regional_health", json={
+        "column_labels": {"patients": {"id_card": "free"}}})
+    assert r.status_code == 422, "缺少令牌应当被拒"
+
+    pat = client.post("/api/auth/login",
+                      json={"account": "patient", "password": "medguard"}).json()["token"]
+    r = client.put("/api/policies/regional_health", json={
+        "token": pat, "column_labels": {"patients": {"id_card": "free"}}})
+    assert r.status_code == 403
+
+    # 关键：策略文件**一个字节都没变**
+    after = client.get("/api/policies/regional_health").json()
+    assert after["column_labels"]["patients"]["id_card"] == "blocked"
+
+
 def test_put_policy_updates_label(client):
     r = client.put("/api/policies/regional_health", json={
+        "token": _admin(client),
         "column_labels": {"patients": {"gender": "controlled"}},
     })
     assert r.status_code == 200
@@ -69,6 +96,7 @@ def test_put_policy_updates_label(client):
 
     # 复原，避免影响其他测试
     client.put("/api/policies/regional_health", json={
+        "token": _admin(client),
         "column_labels": {"patients": {"gender": "free"}},
     })
 

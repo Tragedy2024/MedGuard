@@ -192,7 +192,7 @@ def parse_intent(question: str) -> Tuple[str, Optional[str]]:
     """返回 (intent, entity)。entity 为命中的具体检验项/药名/症状关键词/疾病名。
 
     优先级（写成显式顺序，避免歧义）：
-      挂科意图 > 用药意图 > 疾病意图词 > 报告解读（避开被疾病词包住的假命中）
+      挂科意图 > 用药意图 > 疾病意图词 > 报告解读（避开被**疾病名**包住的假命中）
       > 疾病了解（命中词同时是症状词时转症状导诊） > 症状 > fallback
     """
     kb = load_knowledge()
@@ -226,10 +226,17 @@ def parse_intent(question: str) -> Tuple[str, Optional[str]]:
     # 3) 检查报告（命中检验项名，或出现"报告/结果/正常吗"等信号）
     tests = _find_entities(question, lab_tests)
     if tests:
-        # 命中的检验项若被更长的疾病关键词包住，是假命中：患者问的是
-        # 「高血脂」这个病，不是去查 test_name='血脂' 的记录——那样只会
-        # 得到「未找到检验记录」，而疾病词条永远取不到。
-        if not (disease_hit and any(t in disease_hit[0] for t in tests)):
+        # 命中的检验项若被**疾病名本身**包住，那是假命中：「高血脂」里的
+        # 「血脂」不该让患者去查 test_name='血脂' 的记录——那样只会得到
+        # 「未找到检验记录」，而疾病词条永远取不到。
+        #
+        # 判据必须是"这个关键词就是某个病的名字"。一刀切按"被更长的关键词
+        # 包住"来判会误伤：「血糖高」只是 糖尿病 的一个 keyword，患者问
+        # 「我的血糖高吗」是在问自己的数值，却会被判成糖尿病科普、
+        # 一条本人数据都不取。
+        keyword = disease_hit[0] if disease_hit else ""
+        swallowed = keyword in diseases and any(t in keyword for t in tests)
+        if not swallowed:
             return INTENT_LAB, tests[0]
     if any(s in question for s in _LAB_SIGNALS):
         return INTENT_LAB, None

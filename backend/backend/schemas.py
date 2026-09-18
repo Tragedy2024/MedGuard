@@ -9,8 +9,62 @@ from pydantic import BaseModel, Field
 
 
 class Token(BaseModel):
+    """数据访问凭证。
+
+    `exp` / `sig` 由 `POST /api/auth/login` 签发，签名覆盖
+    **type / subject_id / account / exp 四者**（少签一个字段，那个字段就能
+    被随意改动）。**每个收令牌的端点都会验签**——在此之前令牌是客户端自己
+    拼的，手搓一个 `{"type":"patient","subject_id":"P002"}` 就能读别人的
+    安全报告。
+
+    `account` 是报告隔离的依据：按 (type, subject_id) 隔离时，管理员
+    （subject_id 为空）会和"绑定主体留空"的 staff 撞进同一个桶。
+    """
     type: Literal["staff", "patient"]
     subject_id: Optional[str] = None   # 病患令牌必填，医护令牌为 None
+    account: Optional[str] = None      # 登录账号（管理员判定要用它回查）
+    exp: Optional[int] = None          # 到期时间戳（Unix 秒）
+    sig: Optional[str] = None          # HMAC-SHA256 十六进制
+
+
+class LoginRequest(BaseModel):
+    account: str
+    password: str
+
+
+class UserInfo(BaseModel):
+    """账号的公开信息——**不含口令哈希**。"""
+    account: str
+    role: Literal["admin", "staff", "patient"]
+    subject_id: Optional[str] = None
+    display_name: str = ""
+
+
+class LoginResponse(BaseModel):
+    user: UserInfo
+    token: Token
+
+
+class PolicyUpdateRequest(BaseModel):
+    """更新安全策略。**只有管理员能改**——这两个接口决定了医盾拦什么。"""
+    token: Token
+    column_labels: Optional[Dict[str, Dict[str, str]]] = None
+    cross_domain_rules: Optional[List[Dict[str, Any]]] = None
+
+
+class DemoLoadRequest(BaseModel):
+    """一键载入演示数据。**只有管理员能调**——它会删掉并重建业务库。"""
+    token: Token
+
+
+class RegisterRequest(BaseModel):
+    """建号。**只有管理员令牌能调**（医院里开号是信息科的活）。"""
+    token: Token
+    account: str
+    password: str
+    role: Literal["admin", "staff", "patient"]
+    subject_id: Optional[str] = None   # 病患必填（绑定本人），管理员必须为空
+    display_name: str = ""
 
 
 class QueryRequest(BaseModel):

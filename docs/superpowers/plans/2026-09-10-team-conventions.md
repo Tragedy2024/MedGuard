@@ -4,6 +4,20 @@
 **适用**：4 周开发期，2–3 人（后端负责人 / 前端 / 弹性）
 **设计文档**：`docs/superpowers/specs/2026-09-10-medguard-design.md`
 
+> ⚠️ **本文写于 2026-09-10。规范条文仍然有效，但下面两处的「契约样例」已被
+> 后续实现取代，照抄会写出跑不通的调用：**
+>
+> - **§3.2 · 安全事件报告**：契约漏了**令牌身份**。`/api/reports`、
+>   `/api/reports/{id}`、`/api/reports/{id}/export` 现在都要求必填 query 参数
+>   `token_type`（外加 `exp` / `sig` 用于验签），不传 422、跨身份读或导出 404。
+>   同一节的安全策略响应示例也少了 `table_aliases` / `column_aliases`。
+>   现状以 `backend/docs/api-contract/API_CONTRACT.md` §6.1 为准。
+> - **§3.3 · 契约的强制同步机制**：那条「后端每完成一个路由立即导出 OpenAPI →
+>   前端重新生成类型 → 契约一变就编译报错」**没有兑现过**——`openapi.json`
+>   与 `src/api/types.ts` 一直停在智慧医生上线前（13 条 path、无 SmartDoctor
+>   schema），2026-09-18 才补齐到 17 条。**规则本身是对的，是执行漏了**；
+>   这条规范请继续遵守。
+
 ---
 
 ## 0. 三条不可违反的规则
