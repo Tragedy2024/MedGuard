@@ -32,7 +32,11 @@ mkdirSync(OUT, { recursive: true })
 const SHOTS = [
   { name: '00-login', path: '/' },
   { name: '01-scope-doctor', path: '/', as: 'doctor', height: 1400 },
-  { name: '02-scope-patient', path: '/', as: 'patient', height: 1400 },
+  // 患者登录后的默认页是「智慧医生」（App.tsx 的 / 按角色分支），
+  // 病患版「可查范围」在 /scope。原先把这一条写成 path:'/'，截到的其实
+  // 是智慧医生页，既名不副实、又让智慧医生页完全没有截图覆盖。
+  { name: '02-scope-patient', path: '/scope', as: 'patient', height: 1400 },
+  { name: '02b-smart-doctor', path: '/', as: 'patient', height: 1400 },
   { name: '03-datasource-admin', path: '/', as: 'admin', height: 1500 },
   { name: '04-policy', path: '/policy', as: 'admin', height: 1300 },
   {

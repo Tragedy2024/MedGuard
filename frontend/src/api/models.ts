@@ -69,9 +69,15 @@ export interface PresetQuery {
 
 /* ── 智慧医生（智慧医生.docx）──────────────────────────────────
    后端 schemas.py 已定义同名模型，但 types.ts 是 openapi 生成物；
-   本机无 Node 无法重新生成，因此此处先以手写接口提供。将来执行
+   本次未重新生成，因此此处先以手写接口提供。将来执行
    `npx openapi-typescript openapi.json -o src/api/types.ts` 后，
-   应改为从 components 派生（与上方各类型一致）。 */
+   应改为从 components 派生（与上方各类型一致）。
+
+   注意两点：
+   - 原注释写的「本机无 Node 无法重新生成」不成立：Node 装在 D:\nodejs，
+     只是不在 PATH 里，跑 npx 前把它加进 PATH 即可。
+   - openapi.json 本身也还没更新（仍是 13 条 path、无 SmartDoctor
+     schema），所以重生成前要先从后端导出最新契约，两者是一起做的一件事。 */
 
 export interface SmartDoctorRequest {
   token: Token
