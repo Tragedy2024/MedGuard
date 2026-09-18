@@ -63,6 +63,9 @@ _ACUITY_URGENT_MAX = 2
 _DEFAULT_ACUITY = 4
 _ACUITY_LABELS = {1: "即刻", 2: "危重", 3: "急症", 4: "非急症"}
 
+# 单次模型调用的等待上限（秒）。见 _call_llm 的说明。
+_LLM_TIMEOUT_SEC = 30
+
 
 def _acuity(value: Any) -> int:
     """归一成 1–4。缺失或非法值按 4（非急症）处理。
@@ -75,6 +78,17 @@ def _acuity(value: Any) -> int:
     except (TypeError, ValueError):
         return _DEFAULT_ACUITY
     return n if 1 <= n <= 4 else _DEFAULT_ACUITY
+
+
+def _text(value: Any, default: str = "") -> str:
+    """取知识库的字符串字段。
+
+    YAML 里写了键而值为 null 时，`dict.get(k, default)` 返回的是 None 而非
+    default（默认值只在**键缺失**时才生效）。None 喂给 pydantic 的 str 字段
+    会直接 500，喂给 re.split 会 TypeError。知识库是人工维护的，"先留空待补"
+    是很自然的写法，必须兜住。
+    """
+    return value if isinstance(value, str) and value else default
 
 
 def _as_bool(value: Any) -> bool:
@@ -97,17 +111,22 @@ def _as_bool(value: Any) -> bool:
 def load_knowledge() -> Dict[str, Any]:
     """加载医院审核知识库（进程内缓存，文件损坏时返回空结构）。"""
     global _KB
-    if _KB is not None:
-        return _KB
-    path = os.path.join(config.DEMO_DIR, "smart_knowledge.yaml")
-    try:
-        with open(path, encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
-    except (OSError, yaml.YAMLError):
-        data = {}
+    # 读缓存与写缓存放在同一把锁里：原先的"锁外读 + 锁内写"两个请求会同时
+    # 判定 _KB is None 并各加载一次。
     with _LOCK:
+        if _KB is not None:
+            return _KB
+        path = os.path.join(config.DEMO_DIR, "smart_knowledge.yaml")
+        try:
+            with open(path, encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+        except (OSError, yaml.YAMLError):
+            # 读取失败**不缓存**：一次瞬时的 OSError 若把空结构永久留下来，
+            # 之后每次 parse_intent / interpret_lab 都拿到空知识库，直到
+            # 进程重启才恢复，而且没有任何重试路径。
+            return {}
         _KB = data
-    return data
+        return _KB
 
 
 # ── 意图识别（确定性关键词，零 LLM） ──────────────────────────
@@ -421,14 +440,38 @@ _AI_SYSTEM = """你是医院审核知识库的临床导诊专家。请用通俗�
 
 
 def _call_llm(prompt: str) -> str:
-    """调用内置算法层的大模型通道（与 llm_nl2sql 同一体系）。"""
+    """调用内置算法层的大模型通道（与 llm_nl2sql 同一体系）。
+
+    vendor 的 safe_call_llm 是「5 次重试 + 每次失败 sleep 20s」且**不接
+    超时参数**——首次网络失败就会把请求阻塞 80~100 秒，测试套件也会被拖住。
+    算法层一行不改（红线），故在产品层用守护线程兜住用户可见的等待时间。
+    超时后后台线程仍会跑完，但调用方已经拿到异常并走回退。
+    """
     src = config.ALGO_SRC_DIR
     if not src or not os.path.isdir(src):
         raise RuntimeError("算法层（vendor/nl2sql/src）不可用")
     if src not in sys.path:
         sys.path.insert(0, src)
     from core.llm import safe_call_llm  # 延迟导入：无 Key 时也可加载本模块
-    return safe_call_llm(prompt)
+
+    box: List[Any] = []
+
+    def _run() -> None:
+        try:
+            box.append((None, safe_call_llm(prompt)))
+        except BaseException as exc:  # noqa: BLE001 - 原样带回调用方
+            box.append((exc, None))
+
+    worker = threading.Thread(target=_run, daemon=True,
+                              name="smart-doctor-llm")
+    worker.start()
+    worker.join(_LLM_TIMEOUT_SEC)
+    if worker.is_alive():
+        raise TimeoutError(f"模型调用超过 {_LLM_TIMEOUT_SEC}s 未返回")
+    err, value = box[0]
+    if err is not None:
+        raise err
+    return value
 
 
 def _parse_llm_json(text: str) -> Optional[Dict[str, Any]]:
@@ -438,11 +481,27 @@ def _parse_llm_json(text: str) -> Optional[Dict[str, Any]]:
     start = text.find("{")
     if start < 0:
         return None
+    # 数括号时必须跳过 JSON 字符串字面量：字符串里出现**不成对**的
+    # { 或 }（如 "血糖 {空腹"）会让深度提前归零 / 一直不归零，导致合法
+    # JSON 被判失败，退化成把原始 JSON 原文展示给患者。
     depth = 0
+    in_string = False
+    escaped = False
     for i in range(start, len(text)):
-        if text[i] == "{":
+        ch = text[i]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
             depth += 1
-        elif text[i] == "}":
+        elif ch == "}":
             depth -= 1
             if depth == 0:
                 try:
@@ -493,8 +552,15 @@ def ai_triage(question: str) -> Optional[Dict[str, Any]]:
                 return v.strip()
         return default
 
-    actions = [str(a).strip() for a in (data.get("actions") or [])
-               if isinstance(a, str) and str(a).strip()]
+    raw_actions = data.get("actions")
+    if isinstance(raw_actions, str):
+        # 模型常把数组压成一句顿号串。直接迭代字符串会逐字符展开成
+        # ['补','充','水','分',…]，前端渲染成十几个单字条目。
+        raw_actions = re.split(r"[、,，;；\n]", raw_actions)
+    elif not isinstance(raw_actions, list):
+        raw_actions = []
+    actions = [a.strip() for a in raw_actions
+               if isinstance(a, str) and a.strip()]
     advice = _s("advice", default="如症状持续或加重，请及时就医面诊。")
     return {
         "title": _s("title", default="AI 智能导诊"),
@@ -584,7 +650,7 @@ def ask(question: str, subject_id: str) -> Dict[str, Any]:
         base["interpretation"] = {
             "source": _SOURCE_KB,
             "title": f"{entity}结果解读" if items else "未找到检验记录",
-            "text": (entry or {}).get("desc", ""),
+            "text": _text((entry or {}).get("desc")),
             "items": items,
         }
         advice_text = (entry or {}).get("advice_common") or []
@@ -666,10 +732,11 @@ def ask(question: str, subject_id: str) -> Dict[str, Any]:
                     hit = sym
                     break
         if hit:
+            dept = _text(hit.get("department"), "相应科室")
             base["interpretation"] = {
                 "source": _SOURCE_KB,
                 "title": f"关于「{entity}」",
-                "text": hit.get("text", ""),
+                "text": _text(hit.get("text")),
                 "items": [],
             }
             # 歧义引导：命中的症状词同时也是某个疾病的关键词时，患者可能
@@ -679,9 +746,9 @@ def ask(question: str, subject_id: str) -> Dict[str, Any]:
                      f"可以说「我想了解{ambiguous}」。" if ambiguous else "")
             base["advice"] = {
                 "source": _SOURCE_KB,
-                "text": f"建议优先咨询{hit.get('department', '相应科室')}。"
+                "text": f"建议优先咨询{dept}。"
                         f"（分诊等级：{_ACUITY_LABELS[_acuity(hit.get('acuity'))]}）" + guide,
-                "actions": [f"请咨询{hit.get('department', '相应科室')}",
+                "actions": [f"请咨询{dept}",
                             "症状加重或持续不缓解请及时就医"],
                 "urgent": _acuity(hit.get("acuity")) <= _ACUITY_URGENT_MAX,
             }
@@ -716,17 +783,19 @@ def ask(question: str, subject_id: str) -> Dict[str, Any]:
                     entity = dname
                     break
         if hit:
+            what = _text(hit.get("what"))
+            advice_text = _text(hit.get("advice"))
             base["interpretation"] = {
                 "source": _SOURCE_KB,
                 "title": f"关于「{entity}」",
-                "text": hit.get("what", ""),
+                "text": what,
                 "items": [],
             }
             base["advice"] = {
                 "source": _SOURCE_KB,
-                "text": hit.get("advice", ""),
+                "text": advice_text,
                 "actions": [s.strip() for s in
-                            re.split(r"[；;]", hit.get("advice", "")) if s.strip()],
+                            re.split(r"[；;]", advice_text) if s.strip()],
                 "urgent": False,
             }
         else:
