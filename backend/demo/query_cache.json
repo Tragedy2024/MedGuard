@@ -55,27 +55,6 @@
       "last_used": "2026-09-15T17:53:51",
       "source": "llm"
     },
-    "统计各科室接诊量": {
-      "plan": [
-        {
-          "id": 0,
-          "description": "中间：按科室聚合就诊量",
-          "sql": "SELECT department, COUNT(*) AS visit_count FROM visits GROUP BY department"
-        },
-        {
-          "id": 1,
-          "description": "最终：输出科室接诊量",
-          "sql": "SELECT department, COUNT(*) AS visit_count FROM visits GROUP BY department"
-        }
-      ],
-      "token_types": [
-        "staff"
-      ],
-      "hits": 0,
-      "created_at": "2026-09-15T17:48:59",
-      "last_used": "2026-09-15T17:48:59",
-      "source": "preset"
-    },
     "糖尿病患者产生了多少费用": {
       "plan": [
         {
@@ -97,65 +76,12 @@
       "last_used": "2026-09-15T17:51:43",
       "source": "preset"
     },
-    "按诊断结果分类统计患者数": {
-      "plan": [
-        {
-          "id": 0,
-          "description": "中间：按诊断分类（派生表达式引用诊断列）",
-          "sql": "SELECT CASE WHEN diagnosis_name LIKE '%糖尿病%' THEN '糖尿病' ELSE '其他' END AS grp, patient_id FROM clinical_records WHERE record_type = 'diagnosis'"
-        },
-        {
-          "id": 1,
-          "description": "最终：统计各类患者数",
-          "sql": "SELECT COUNT(DISTINCT patient_id) FROM clinical_records"
-        }
-      ],
-      "token_types": [
-        "staff"
-      ],
-      "hits": 0,
-      "created_at": "2026-09-15T17:49:30",
-      "last_used": "2026-09-15T17:49:30",
-      "source": "preset"
-    },
-    "导出患者基本信息核对表": {
-      "plan": [
-        {
-          "id": 0,
-          "description": "最终：导出患者信息（含禁止列）",
-          "sql": "SELECT patient_id, name, id_card FROM patients"
-        }
-      ],
-      "token_types": [
-        "staff"
-      ],
-      "hits": 0,
-      "created_at": "2026-09-15T17:49:49",
-      "last_used": "2026-09-15T17:49:49",
-      "source": "preset"
-    },
     "医生给我开的药怎么吃": {
       "plan": [
         {
           "id": 0,
           "description": "最终：我的用药说明",
           "sql": "SELECT drug_name, dosage, frequency, route FROM clinical_records WHERE patient_id = '{subject_id}' AND record_type = 'medication'"
-        }
-      ],
-      "token_types": [
-        "patient"
-      ],
-      "hits": 0,
-      "created_at": "2026-09-15T17:51:12",
-      "last_used": "2026-09-15T17:51:12",
-      "source": "preset"
-    },
-    "我的影像报告怎么说": {
-      "plan": [
-        {
-          "id": 0,
-          "description": "最终：我的影像结论",
-          "sql": "SELECT modality, body_part, impression FROM clinical_records WHERE patient_id = '{subject_id}' AND record_type = 'imaging'"
         }
       ],
       "token_types": [
@@ -199,6 +125,236 @@
       "created_at": "2026-09-15T17:51:12",
       "last_used": "2026-09-15T18:45:51",
       "source": "preset",
+      "subject_id": "S001"
+    },
+    "我的血糖是多少": {
+      "plan": [
+        {
+          "id": 0,
+          "description": "查询患者 P001 的血糖检测结果。",
+          "sql": "SELECT `result_value`, `unit`\nFROM `clinical_records`\nWHERE `patient_id` = 'P001'\n  AND `test_name` = '血糖';"
+        }
+      ],
+      "token_types": [
+        "patient"
+      ],
+      "hits": 0,
+      "created_at": "2026-09-18T21:03:36",
+      "last_used": "2026-09-18T21:03:36",
+      "source": "llm",
+      "subject_id": "P001"
+    },
+    "我的血糖高吗": {
+      "plan": [
+        {
+          "id": 0,
+          "description": "查询患者 P001 的血糖检验记录。",
+          "sql": "SELECT T1.`test_name`, T1.`result_value`, T1.`unit`, T1.`ref_range`\nFROM `clinical_records` AS T1\nWHERE T1.`patient_id` = 'P001'\n  AND T1.`record_type` = 'lab'\n  AND T1.`test_name` LIKE '%血糖%';"
+        },
+        {
+          "id": 1,
+          "description": "获取患者 P001 最近一次血糖检验的结果，用于判断血糖是否偏高。",
+          "sql": "SELECT T1.`test_name`, T1.`result_value`, T1.`unit`, T1.`ref_range`\nFROM `clinical_records` AS T1\nINNER JOIN `visits` AS T2\n  ON T1.`visit_id` = T2.`visit_id`\nWHERE T1.`patient_id` = 'P001'\n  AND T1.`record_type` = 'lab'\n  AND T1.`test_name` LIKE '%血糖%'\nORDER BY T2.`visit_date` DESC\nLIMIT 1;"
+        }
+      ],
+      "token_types": [
+        "patient"
+      ],
+      "hits": 4,
+      "created_at": "2026-09-18T21:05:47",
+      "last_used": "2026-09-18T21:31:11",
+      "source": "llm",
+      "subject_id": "P001"
+    },
+    "我这个病风险高吗": {
+      "plan": [
+        {
+          "id": 0,
+          "description": "获取患者 P001 的诊断记录及病情程度。",
+          "sql": "SELECT `diagnosis_name`, `severity`\nFROM `clinical_records`\nWHERE `patient_id` = 'P001'\n  AND `record_type` = 'diagnosis';"
+        },
+        {
+          "id": 1,
+          "description": "将病情程度映射为风险等级，判断风险是否高。",
+          "sql": "SELECT `diagnosis_name`,\n       CASE\n           WHEN `severity` = '重' THEN '高风险'\n           WHEN `severity` = '中' THEN '中风险'\n           WHEN `severity` = '轻' THEN '低风险'\n           ELSE '未知'\n       END AS `risk_level`\nFROM `clinical_records`\nWHERE `patient_id` = 'P001'\n  AND `record_type` = 'diagnosis';"
+        }
+      ],
+      "token_types": [
+        "patient"
+      ],
+      "hits": 0,
+      "created_at": "2026-09-18T21:19:03",
+      "last_used": "2026-09-18T21:19:03",
+      "source": "llm",
+      "subject_id": "P001"
+    },
+    "我的病风险高吗": {
+      "plan": [
+        {
+          "id": 0,
+          "description": "获取患者 P001 的临床记录中的病情程度（severity）。",
+          "sql": "SELECT diagnosis_name, severity\n  FROM clinical_records\n  WHERE patient_id = 'P001';"
+        },
+        {
+          "id": 1,
+          "description": "根据最高病情程度判断风险等级（重=高风险，中=中风险，轻=低风险）。",
+          "sql": "SELECT CASE\n         WHEN MAX(CASE WHEN severity = '重' THEN 1 ELSE 0 END) = 1 THEN '高风险'\n         WHEN MAX(CASE WHEN severity = '中' THEN 1 ELSE 0 END) = 1 THEN '中风险'\n         WHEN MAX(CASE WHEN severity = '轻' THEN 1 ELSE 0 END) = 1 THEN '低风险'\n         ELSE '未知'\n       END AS risk_assessment\n  FROM clinical_records\n  WHERE patient_id = 'P001';"
+        }
+      ],
+      "token_types": [
+        "patient"
+      ],
+      "hits": 0,
+      "created_at": "2026-09-18T21:19:31",
+      "last_used": "2026-09-18T21:19:31",
+      "source": "llm",
+      "subject_id": "P001"
+    },
+    "我的病紧急吗": {
+      "plan": [
+        {
+          "id": 0,
+          "description": "Find whether patient P001 has any emergency visits.",
+          "sql": "SELECT COUNT(*) \nFROM visits \nWHERE patient_id = 'P001' \n  AND visit_type = '急诊';"
+        },
+        {
+          "id": 1,
+          "description": "Based on the existence of emergency visits, determine if the illness is urgent.",
+          "sql": "SELECT CASE \n         WHEN EXISTS (\n           SELECT 1 \n           FROM visits \n           WHERE patient_id = 'P001' \n             AND visit_type = '急诊'\n         ) \n         THEN '是' \n         ELSE '否' \n       END AS is_urgent;"
+        }
+      ],
+      "token_types": [
+        "patient"
+      ],
+      "hits": 0,
+      "created_at": "2026-09-18T21:20:41",
+      "last_used": "2026-09-18T21:20:41",
+      "source": "llm",
+      "subject_id": "P001"
+    },
+    "医生给我的药一次吃多少": {
+      "plan": [
+        {
+          "id": 0,
+          "description": "Find all medication records for patient P001.",
+          "sql": "SELECT record_id, drug_name, dosage\nFROM clinical_records\nWHERE patient_id = 'P001'\n  AND record_type = 'medication';"
+        },
+        {
+          "id": 1,
+          "description": "Get the dosage per administration for each medication belonging to patient P001.",
+          "sql": "SELECT drug_name, dosage\nFROM clinical_records\nWHERE patient_id = 'P001'\n  AND record_type = 'medication'\n  AND dosage IS NOT NULL;"
+        }
+      ],
+      "token_types": [
+        "patient"
+      ],
+      "hits": 1,
+      "created_at": "2026-09-18T21:22:46",
+      "last_used": "2026-09-18T21:31:29",
+      "source": "llm",
+      "subject_id": "P001"
+    },
+    "该医院病人有多少": {
+      "plan": [
+        {
+          "id": 0,
+          "description": "Count the total number of patients in the hospital.",
+          "sql": "SELECT COUNT(*) AS patient_count\nFROM patients;"
+        }
+      ],
+      "token_types": [
+        "staff"
+      ],
+      "hits": 1,
+      "created_at": "2026-09-18T21:33:24",
+      "last_used": "2026-09-18T21:36:07",
+      "source": "llm"
+    },
+    "得病人数最多的是哪种病": {
+      "plan": [
+        {
+          "id": 0,
+          "description": "找出所有诊断记录中的疾病名称和病人编号。",
+          "sql": "SELECT `diagnosis_name`, `patient_id`\nFROM `clinical_records`\nWHERE `record_type` = 'diagnosis'\n  AND `diagnosis_name` IS NOT NULL;"
+        },
+        {
+          "id": 1,
+          "description": "按疾病分组，统计每种病对应的不同病人数量。",
+          "sql": "SELECT `diagnosis_name`, COUNT(DISTINCT `patient_id`) AS patient_count\nFROM `clinical_records`\nWHERE `record_type` = 'diagnosis'\n  AND `diagnosis_name` IS NOT NULL\nGROUP BY `diagnosis_name`;"
+        },
+        {
+          "id": 2,
+          "description": "找出病人数量最多的疾病名称。",
+          "sql": "SELECT `diagnosis_name`\nFROM `clinical_records`\nWHERE `record_type` = 'diagnosis'\n  AND `diagnosis_name` IS NOT NULL\nGROUP BY `diagnosis_name`\nORDER BY COUNT(DISTINCT `patient_id`) DESC\nLIMIT 1;"
+        }
+      ],
+      "token_types": [
+        "staff"
+      ],
+      "hits": 1,
+      "created_at": "2026-09-18T21:33:59",
+      "last_used": "2026-09-18T21:36:24",
+      "source": "llm"
+    },
+    "我今天接待了多少个患者": {
+      "plan": [
+        {
+          "id": 0,
+          "description": "获取今天由医生 S001 接诊的就诊记录。",
+          "sql": "SELECT patient_id\nFROM visits\nWHERE doctor_id = 'S001'\n  AND visit_date = DATE('now');"
+        },
+        {
+          "id": 1,
+          "description": "统计这些就诊记录中去重后的患者数量。",
+          "sql": "SELECT COUNT(DISTINCT patient_id)\nFROM visits\nWHERE doctor_id = 'S001'\n  AND visit_date = DATE('now');"
+        }
+      ],
+      "token_types": [
+        "staff"
+      ],
+      "hits": 0,
+      "created_at": "2026-09-18T21:38:26",
+      "last_used": "2026-09-18T21:38:26",
+      "source": "llm",
+      "subject_id": "S001"
+    },
+    "我接待了多少个患者": {
+      "plan": [
+        {
+          "id": 0,
+          "description": "Find all patients received by doctor `S001`.",
+          "sql": "SELECT patient_id\nFROM visits\nWHERE doctor_id = 'S001'"
+        },
+        {
+          "id": 1,
+          "description": "Count how many distinct patients doctor `S001` received.",
+          "sql": "SELECT COUNT(DISTINCT patient_id)\nFROM visits\nWHERE doctor_id = 'S001'"
+        }
+      ],
+      "token_types": [
+        "staff"
+      ],
+      "hits": 1,
+      "created_at": "2026-09-18T21:38:47",
+      "last_used": "2026-09-18T21:39:58",
+      "source": "llm",
+      "subject_id": "S001"
+    },
+    "我是哪个科室的医生": {
+      "plan": [
+        {
+          "id": 0,
+          "description": "查询医生工号为 `S001` 的医护人员所属科室。",
+          "sql": "SELECT department\nFROM staff\nWHERE staff_id = 'S001';"
+        }
+      ],
+      "token_types": [
+        "staff"
+      ],
+      "hits": 1,
+      "created_at": "2026-09-18T21:39:10",
+      "last_used": "2026-09-18T21:40:09",
+      "source": "llm",
       "subject_id": "S001"
     }
   }

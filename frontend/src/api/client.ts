@@ -33,17 +33,26 @@ async function pickErrorMessage(res: Response): Promise<string> {
   return `${res.status} ${res.statusText}${raw ? '：' + raw.slice(0, 200) : ''}`
 }
 
+/**
+ * API 基地址。
+ *
+ * 本地 / 同源部署（start_demo 后端托管 dist）：留空，走相对路径。
+ * 前后端分离部署（前端 Vercel、后端 Railway）时在构建期注入：
+ *     VITE_API_BASE=https://<railway 域名>
+ */
+const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? ''
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response
   try {
-    res = await fetch(path, {
+    res = await fetch(API_BASE + path, {
       headers: { 'Content-Type': 'application/json' },
       ...init,
     })
   } catch {
     // fetch 只在网络层失败时抛（连不上、服务没起、请求被中断）。
     // 原始错误是英文的 "Failed to fetch"，对用户毫无意义。
-    throw new Error('无法连接后端服务（localhost:8000），请确认服务已启动。')
+    throw new Error('无法连接后端服务，请确认服务已启动或稍后重试。')
   }
 
   if (!res.ok) {
