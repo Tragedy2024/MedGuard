@@ -1,0 +1,45 @@
+# Render 部署配置（医盾 MedGuard · 后端，前端仍走 Vercel）
+#
+# 使用方法：
+#   1) 把本文件推送到 GitHub
+#   2) Render 控制台 https://render.com → New → Blueprint（或 New Web Service
+#      选仓库后手动填下面字段）→ 自动按本文件创建
+#   3) 服务起来后把 https://<service>.onrender.com 填给前端 VITE_API_BASE，
+#      并把 Vercel 域名填进 MEDGUARD_CORS_ORIGINS
+#
+# 免费层说明：
+#   - 无持久磁盘：演示库 / 三账号 / 签名密钥由首次启动的 bootstrap **自动重建**，
+#     每次冷启动都是干净演示环境（报告历史不保留）。可接受，因为验收矩阵
+#     不依赖历史报告。
+#   - 冷启动约 30-60 秒，第一次打开慢是正常的。
+#   - 每月 750 小时，演示足够。
+
+services:
+  - type: web
+    name: medguard
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: OPENAI_API_BASE
+        value: https://api.deepseek.com/v1
+        sync: false
+      - key: MODEL_NAME
+        value: deepseek-v4-flash
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: MEDGUARD_CORS_ORIGINS
+        value: http://localhost:5173
+        sync: false
+      - key: MEDGUARD_DATA_DIR
+        value: /tmp/medguard-data
+        sync: false
+      - key: MEDGUARD_ACCESS_LOG
+        value: "0"
+        sync: false
