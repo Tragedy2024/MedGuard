@@ -1,0 +1,21 @@
+# Railway 部署配置（医盾 MedGuard 后端）
+# 用法：仓库推 GitHub → Railway 控制台 New Project → Deploy from GitHub repo → 选本仓库。
+# railway 会自动使用本文件：构建（Nixpacks 探测 Python）+ 启动命令 + 数据卷。
+
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+# Railway 注入 $PORT；后端同时托管 frontend/dist（同源部署，无 CORS 预检）
+startCommand = "cd backend && python -m uvicorn backend.main:app --host 0.0.0.0 --port $PORT"
+healthcheckPath = "/api/health"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5
+
+# 数据持久化：报告库 / 演示库 / 账号 / 签名密钥都落在 backend/data/，
+# 必须挂卷，否则每次重启全部丢失（部署后控制台 Service → Volumes 确认）。
+# volume 名 medguard-data 在控制台创建时选择本挂载点。
+[[mounts]]
+name = "medguard-data"
+path = "/app/backend/data"
