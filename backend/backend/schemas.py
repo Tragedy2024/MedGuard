@@ -266,10 +266,23 @@ class HealthInfo(BaseModel):
 # 智慧医生（面向患者的可信就医助手，见 docs/智慧医生.docx）
 # ════════════════════════════════════════════════════════════════
 
+class SmartDoctorContext(BaseModel):
+    """上一轮的识别结果——用来解析「它」「那个」这类**指代**。
+
+    为什么带的是**已解析的结果**而不是上一轮的原话：链式追问会退化。
+    「我的血糖结果正常吗」→「它正常吗」→「严重吗」，如果每一轮都把
+    **原话**传下去，第二轮回解析「它正常吗」同样得不到实体，第三轮就断了。
+    传解析结果则每轮都在往前推进。
+    """
+    intent: str
+    entity: Optional[str] = None
+
+
 class SmartDoctorRequest(BaseModel):
     token: Token
     datasource_id: str
     question: str
+    context: Optional[SmartDoctorContext] = None
 
 
 class SmartDoctorDataBlock(BaseModel):
@@ -303,6 +316,9 @@ class SmartDoctorAdvice(BaseModel):
 
 class SmartDoctorResponse(BaseModel):
     intent: Literal["lab", "medication", "symptom", "disease", "fallback"]
+    # 本轮命中的知识条目名（如「血糖」）。前端拿它作为下一轮的 context 回传，
+    # 指代才能一轮轮接下去。不是患者数据——它只是知识库里的条目名。
+    entity: Optional[str] = None
     question: str
     admission: AdmissionInfo
     degradation: DegradationInfo

@@ -314,7 +314,12 @@ def test_direct_uncached_without_key_gives_actionable_503(
         "token": STAFF, "datasource_id": "regional_health",
         "question": "一个绝对没有收录过的问法"})
     assert r.status_code == 503
-    assert "OPENAI_API_KEY" in r.json()["detail"]
+    detail = r.json()["detail"]
+    assert "暂未收录" in detail
+    # **不给非开发者看配置项名**：这段话是给医护和病患看的，
+    # `OPENAI_API_KEY` 只有开发者认识（PRODUCT.md 硬约束③：界面上只用
+    # 中文业务语言）。精确原因进服务端日志。
+    assert "OPENAI_API_KEY" not in detail
 
 
 def test_unknown_question_id_404(client):

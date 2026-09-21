@@ -33,6 +33,30 @@ async function pickErrorMessage(res: Response): Promise<string> {
   return `${res.status} ${res.statusText}${raw ? '：' + raw.slice(0, 200) : ''}`
 }
 
+/**
+ * 带 HTTP 状态的错误。
+ *
+ * 光有文案不够：调用方经常要**按状态分派**——查询控制台在
+ * 「问法未收录」（503）时该把可用问法摆出来，在网络不通时该提示检查服务，
+ * 两者的界面表达完全不同。靠匹配中文文案来区分既脆弱、又会被改文案改坏。
+ *
+ * `status` 为 0 表示请求根本没发出去（网络层失败）。
+ */
+export class ApiError extends Error {
+  readonly status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+  }
+}
+
+/** 取错误里的 HTTP 状态；不是 ApiError（或网络失败）时返回 null。 */
+export function errorStatus(err: unknown): number | null {
+  return err instanceof ApiError ? err.status : null
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response
   try {
@@ -43,11 +67,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   } catch {
     // fetch 只在网络层失败时抛（连不上、服务没起、请求被中断）。
     // 原始错误是英文的 "Failed to fetch"，对用户毫无意义。
-    throw new Error('无法连接后端服务（localhost:8000），请确认服务已启动。')
+    throw new ApiError('无法连接后端服务（localhost:8000），请确认服务已启动。', 0)
   }
 
   if (!res.ok) {
-    throw new Error(await pickErrorMessage(res))
+    throw new ApiError(await pickErrorMessage(res), res.status)
   }
   return res.json() as Promise<T>
 }

@@ -1249,6 +1249,25 @@ a { color: inherit; }
 }
 .console-footnote { margin-top: 2px; }
 
+/* 撞墙后的出路：把可用问法摆出来。
+   刻意用**品牌蓝**而不是警示色——它是「这里还有别的路」，
+   不是又一个错误；红/琥珀留给层一/层二语义，不参与装饰。 */
+.next-steps {
+  padding: 20px 22px;
+  background: var(--brand-bg);
+  border: 1px solid var(--brand-rule);
+  border-radius: 3px;
+}
+.next-steps > h4 {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--brand-deep);
+  margin-bottom: 14px;
+}
+
 .rewrite-log { list-style: none; display: flex; flex-direction: column; gap: 6px; }
 .rewrite-log li {
   font-family: var(--font-mono); font-size: 11.5px; line-height: 1.65;
@@ -1576,6 +1595,30 @@ html { scroll-behavior: smooth; }
 .sd-tasks { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 @media (max-width: 640px) { .sd-tasks { grid-template-columns: 1fr; } }
 
+/* 追问入口：首轮之后常驻的一行紧凑任务按钮。
+   与首屏的 .sd-tasks 网格刻意不同——这里是对话中的补充入口，
+   用胶囊形与更小的字号降低视觉重量，不跟答案抢注意力。 */
+.sd-followup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding-top: 2px;
+}
+.sd-followup-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  color: var(--ink-faint);
+  margin-right: 2px;
+}
+.sd-followup .sd-task {
+  padding: 7px 13px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+
 .sd-task {
   padding: 12px 14px;
   border: 1px solid var(--line, #dfe5ec);
@@ -1655,6 +1698,23 @@ html { scroll-behavior: smooth; }
   color: var(--layer2, #b7791f);
 }
 .sd-item-text { font-size: 13px; color: #333; line-height: 1.6; margin-top: 4px; }
+
+/* 知识库检索来源（RAG 的检索结果）。
+   条目正文可能很长，钳到两行——这一行回答的是"这条回答参考了什么"，
+   不是要让患者把知识库原文读完。 */
+.sd-ref { display: flex; flex-direction: column; gap: 3px; }
+.sd-ref > span:first-child {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.sd-ref-source {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--ink-faint);
+}
 .sd-caution { color: var(--layer1, #c0392b); }
 
 .sd-actions { margin: 8px 0 0; padding-left: 18px; font-size: 14px; line-height: 1.8; }

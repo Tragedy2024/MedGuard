@@ -786,6 +786,21 @@ export interface components {
             urgent: boolean;
         };
         /**
+         * SmartDoctorContext
+         * @description 上一轮的识别结果——用来解析「它」「那个」这类**指代**。
+         *
+         *     为什么带的是**已解析的结果**而不是上一轮的原话：链式追问会退化。
+         *     「我的血糖结果正常吗」→「它正常吗」→「严重吗」，如果每一轮都把
+         *     **原话**传下去，第二轮回解析「它正常吗」同样得不到实体，第三轮就断了。
+         *     传解析结果则每轮都在往前推进。
+         */
+        SmartDoctorContext: {
+            /** Intent */
+            intent: string;
+            /** Entity */
+            entity?: string | null;
+        };
+        /**
          * SmartDoctorDataBlock
          * @description 院内数据（来源：医院主库）。经医盾层一准入 + 层二审计后返回。
          */
@@ -839,6 +854,7 @@ export interface components {
             datasource_id: string;
             /** Question */
             question: string;
+            context?: components["schemas"]["SmartDoctorContext"] | null;
         };
         /** SmartDoctorResponse */
         SmartDoctorResponse: {
@@ -847,6 +863,8 @@ export interface components {
              * @enum {string}
              */
             intent: "lab" | "medication" | "symptom" | "disease" | "fallback";
+            /** Entity */
+            entity?: string | null;
             /** Question */
             question: string;
             admission: components["schemas"]["AdmissionInfo"];
@@ -859,9 +877,14 @@ export interface components {
          * Token
          * @description 数据访问凭证。
          *
-         *     `exp` / `sig` 由 `POST /api/auth/login` 签发，覆盖 type/subject_id/exp
-         *     三者。**每个收令牌的端点都会验签**——在此之前令牌是客户端自己拼的，
-         *     手搓一个 `{"type":"patient","subject_id":"P002"}` 就能读别人的安全报告。
+         *     `exp` / `sig` 由 `POST /api/auth/login` 签发，签名覆盖
+         *     **type / subject_id / account / exp 四者**（少签一个字段，那个字段就能
+         *     被随意改动）。**每个收令牌的端点都会验签**——在此之前令牌是客户端自己
+         *     拼的，手搓一个 `{"type":"patient","subject_id":"P002"}` 就能读别人的
+         *     安全报告。
+         *
+         *     `account` 是报告隔离的依据：按 (type, subject_id) 隔离时，管理员
+         *     （subject_id 为空）会和"绑定主体留空"的 staff 撞进同一个桶。
          */
         Token: {
             /**

@@ -92,12 +92,23 @@ function SmartDoctor() {
     setRunning(true)
     setError(null)
     setTaskHint(null)
+    // 把**上一轮的识别结果**交给后端，用来解析「它」「那个」这类指代。
+    //
+    // 传的是已解析的 {intent, entity} 而不是上一轮的原话：链式追问才不会
+    // 一轮轮退化——「我的血糖结果正常吗」→「它正常吗」→「严重吗」，
+    // 若每轮都传原话，第二轮回解析「它正常吗」同样拿不到实体，第三轮就断了。
+    const prev = messages.filter((m) => m.role === 'doctor' && m.resp).at(-1)?.resp
+    const context = prev
+      ? { intent: prev.intent, entity: prev.entity ?? null }
+      : undefined
+
     setMessages((m) => [...m, { role: 'user', text: question }])
     try {
       const resp = await askSmartDoctor({
         token: session.token,
         datasource_id: DATASOURCE,
         question,
+        context,
       })
       setMessages((m) => [...m, { role: 'doctor', text: question, resp }])
     } catch (e) {
@@ -188,6 +199,27 @@ function SmartDoctor() {
           {running && (
             <div className="loading" role="status" aria-live="polite">
               正在为您解读……
+            </div>
+          )}
+
+          {/* 追问入口。
+              原先这四个任务入口只在 messages.length === 0 时渲染——患者问过
+              第一句之后它们就**消失了**，此后再想问别的只能靠打字回忆。
+              「还能问什么」是产品该主动告诉患者的事，不该让他去猜；
+              所以首轮之后改为一行常驻的紧凑入口。 */}
+          {messages.length > 0 && (
+            <div className="sd-followup">
+              <span className="sd-followup-label">还可以问我</span>
+              {TASKS.map((t) => (
+                <button
+                  key={t.key}
+                  className="sd-task"
+                  onClick={() => onTask(t)}
+                  disabled={running}
+                >
+                  {t.label}
+                </button>
+              ))}
             </div>
           )}
           {error && <div className="alert-error">{error}</div>}
@@ -399,6 +431,28 @@ function InterpretationRow({
   item: Record<string, unknown>
   aliasOf: (q: string) => string
 }) {
+  // 知识库检索来源行（RAG 的检索结果）。
+  // 放在最前面判：`ref_` 前缀与下面的 test_name / drug_name 不会冲突，
+  // 但先判更直白，也表明「这是另一类行，不是检验项也不是药品」。
+  if (item.ref_title !== undefined) {
+    return (
+      <>
+        <div className="sd-item-line">
+          <strong>{String(item.ref_title)}</strong>
+          {item.ref_kind ? (
+            <span className="sd-item-label">{String(item.ref_kind)}</span>
+          ) : null}
+        </div>
+        <div className="sd-item-text sd-ref">
+          {item.ref_excerpt ? <span>{String(item.ref_excerpt)}</span> : null}
+          {item.ref_source ? (
+            <span className="sd-ref-source">出处：{String(item.ref_source)}</span>
+          ) : null}
+        </div>
+      </>
+    )
+  }
+
   // 检验解读行
   if (item.test_name !== undefined) {
     const name = String(item.test_name)

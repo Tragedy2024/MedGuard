@@ -241,6 +241,14 @@ def test_api_smart_doctor_empty_question(tmp_path, monkeypatch):
     assert r.status_code == 422
 
 # ── AI 兜底（知识库未覆盖的问法）──────────────────────────────
+#
+# ⚠️ 本组用的问法必须是**知识库确实覆盖不到**的。2026-09-21 给症状补口语
+# 别名时，原先用的「我最近拉肚子，肚子疼怎么办」因为含 `肚子疼`（已加为
+# symptom_stomach 的别名）改为走症状导诊——那是**改进**（该导诊到消化内科，
+# 不该甩给模型），但让本组夹具失效：其中一条甚至变成"假绿"
+# （断言 source == 医院审核知识库，而症状命中的来源恰好也是它）。
+# 故换成**行政管理类**问法「怎么办出院手续」——它永远不会成为医学知识条目，
+# 以后再扩写知识库也不会再撞坏这组夹具。
 
 def test_ai_fallback_uses_llm_when_configured(demo_db, monkeypatch):
     """配置了 Key 且模型正常返回 → 回答来自 AI，来源标注「AI 智能导诊」。"""
@@ -250,17 +258,17 @@ def test_ai_fallback_uses_llm_when_configured(demo_db, monkeypatch):
     monkeypatch.setattr(
         smart_doctor, "_call_llm",
         lambda prompt: _json.dumps({
-            "title": "拉肚子咨询",
-            "text": "腹泻常见于肠道感染或饮食不当。",
-            "advice": "症状轻可先补充水分与清淡饮食；持续超两天请挂消化内科。",
-            "actions": ["补充水分", "清淡饮食", "持续不缓解就医"],
+            "title": "出院手续咨询",
+            "text": "出院手续请到住院部前台办理。",
+            "advice": "请携带押金单到住院部结算窗口办理。",
+            "actions": ["携带押金单", "到结算窗口", "办理出院"],
             "urgent": False,
         }, ensure_ascii=False),
     )
-    r = smart_doctor.ask("我最近拉肚子，肚子疼怎么办", "P001")
+    r = smart_doctor.ask("怎么办理出院手续", "P001")
     assert r["interpretation"]["source"] == "AI 智能导诊"
-    assert "肠道感染" in r["interpretation"]["text"]
-    assert r["advice"]["actions"] == ["补充水分", "清淡饮食", "持续不缓解就医"]
+    assert "住院部" in r["interpretation"]["text"]
+    assert r["advice"]["actions"] == ["携带押金单", "到结算窗口", "办理出院"]
     assert r["advice"]["urgent"] is False
 
 
@@ -281,7 +289,7 @@ def test_ai_fallback_without_key_keeps_guide(demo_db, monkeypatch):
     """未配置 Key → 不调模型，回退确定性的引导文案。"""
     from backend import config as _config
     monkeypatch.setattr(_config, "LLM_API_KEY", "")
-    r = smart_doctor.ask("我最近拉肚子，肚子疼怎么办", "P001")
+    r = smart_doctor.ask("怎么办理出院手续", "P001")
     assert r["interpretation"]["source"] == "医院审核知识库"
     assert "换个问法" in r["interpretation"]["title"]
 
@@ -295,8 +303,11 @@ def test_ai_call_failure_falls_back_to_guide(demo_db, monkeypatch):
         raise RuntimeError("network down")
 
     monkeypatch.setattr(smart_doctor, "_call_llm", boom)
-    r = smart_doctor.ask("我最近拉肚子，肚子疼怎么办", "P001")
+    r = smart_doctor.ask("怎么办理出院手续", "P001")
     assert r["interpretation"]["source"] == "医院审核知识库"
+    # 这条断言是**必需的**：只断言 source 的话，症状命中恰好也返回
+    # 「医院审核知识库」——测试会在走错路径时依然通过（曾经如此）。
+    assert "换个问法" in r["interpretation"]["title"]
 
 
 def test_ai_dirty_output_kept_as_text(demo_db, monkeypatch):
@@ -481,7 +492,7 @@ def test_kb_null_values_do_not_500(monkeypatch):
         "diseases": dict(kb.get("diseases") or {}),
     }
     patched["diseases"]["测试病"] = {"what": None, "advice": None,
-                                     "keywords": ["测试病"]}
+                                     "aliases": ["测试病"]}
     monkeypatch.setattr(smart_doctor, "_KB", patched)
     r = smart_doctor.ask("我想了解测试病", "P001")
     assert r["interpretation"]["text"] == ""
@@ -499,3 +510,69 @@ def test_load_knowledge_failure_is_not_cached(monkeypatch):
     assert smart_doctor._KB is None          # 关键：没有被缓存
     monkeypatch.setattr(_config, "DEMO_DIR", real_dir)
     assert smart_doctor.load_knowledge().get("lab_tests")
+
+
+# ── 多轮：指代解析（「它」「那个」）────────────────────────────
+
+def _ctx(intent, entity=None):
+    return {"intent": intent, "entity": entity}
+
+
+def test_context_fills_in_when_nothing_recognized():
+    """本轮完全没识别出意图 → 整轮沿用上一轮。
+
+    「我的血糖结果正常吗」→「严重吗」：第二句自身没有话题。
+    """
+    got = smart_doctor._resolve_with_context(
+        INTENT_FALLBACK, None, _ctx(INTENT_LAB, "血糖"))
+    assert got == (INTENT_LAB, "血糖")
+
+
+def test_context_fills_entity_when_intent_matches():
+    """本轮判出意图但没判出实体，且意图相同 → 只补实体。
+
+    「我的血糖结果正常吗」→「它正常吗」：能判出是在问检验，但不知问哪项。
+    """
+    got = smart_doctor._resolve_with_context(INTENT_LAB, None, _ctx(INTENT_LAB, "血糖"))
+    assert got == (INTENT_LAB, "血糖")
+
+
+def test_context_does_not_leak_across_intents():
+    """★ 意图不同时**绝不**把上一轮的实体带过去。
+
+    患者先问血糖、再问「医生开的药怎么吃」：意图从 lab 变成 medication，
+    若把「血糖」当药品名带过去，会去查 drug_name='血糖'——一条都查不到，
+    患者拿到"未找到用药记录"，**比不补还糟**。
+    """
+    got = smart_doctor._resolve_with_context(
+        INTENT_MEDICATION, None, _ctx(INTENT_LAB, "血糖"))
+    assert got == (INTENT_MEDICATION, None)
+
+
+def test_context_does_not_override_a_recognized_entity():
+    """本轮自己判出了实体 → 一律以本轮为准，不受上一轮影响。"""
+    got = smart_doctor._resolve_with_context(
+        INTENT_LAB, "血脂", _ctx(INTENT_LAB, "血糖"))
+    assert got == (INTENT_LAB, "血脂")
+
+
+def test_no_context_is_unchanged():
+    """不传 context 等价于单轮问答。"""
+    assert smart_doctor._resolve_with_context(INTENT_LAB, None, None) == (INTENT_LAB, None)
+    assert smart_doctor._resolve_with_context(
+        INTENT_FALLBACK, None, _ctx("")) == (INTENT_FALLBACK, None)
+
+
+def test_ask_uses_context_and_reports_entity(demo_db):
+    """端到端：「它正常吗」接在血糖之后，应真的查到血糖。"""
+    r = smart_doctor.ask("它正常吗", "P001", context=_ctx(INTENT_LAB, "血糖"))
+    assert r["intent"] == INTENT_LAB
+    assert r["entity"] == "血糖"
+    assert r["data"] is not None
+    assert r["data"]["rows"], "应真的查到了本人的血糖记录"
+
+
+def test_ask_reports_entity_for_next_turn(demo_db):
+    """响应要带上 entity —— 前端靠它把指代一轮轮接下去。"""
+    r = smart_doctor.ask("我的血糖结果正常吗", "P001")
+    assert r["entity"] == "血糖"

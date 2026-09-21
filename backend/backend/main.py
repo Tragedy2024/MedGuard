@@ -36,9 +36,33 @@ def _bootstrap_demo_data() -> None:
         print(f"[bootstrap] 演示数据初始化跳过（可手动调用 POST /api/datasources/demo）: {exc}")
 
 
+def _prewarm_knowledge() -> None:
+    """预热知识检索。
+
+    jieba 首次切词要加载词典（约 1 秒）。放在启动时做，是为了不让
+    **第一个提问的患者**吃这一下——那 1 秒恰好落在演示时最不该卡的地方。
+
+    失败不影响服务启动：检索只是 AI 兜底路径的增强，它不可用时
+    问答照常（退回无上下文的纯生成）。
+    """
+    try:
+        from backend import smart_doctor
+        from backend.knowledge import retrieval
+
+        kb = smart_doctor.load_knowledge()
+        if kb:
+            n = len(retrieval.get_index(kb).docs)
+            # flush=True：stdout 接管道时是块缓冲，不刷就看不到——
+            # 而这条恰恰是"启动完成"的信号。
+            print(f"[prewarm] 知识检索已就绪（{n} 条）", flush=True)
+    except Exception as exc:  # noqa: BLE001 - 预热失败不该拖垮启动
+        print(f"[prewarm] 知识检索预热跳过：{exc}", flush=True)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     _bootstrap_demo_data()
+    _prewarm_knowledge()
     yield
 
 

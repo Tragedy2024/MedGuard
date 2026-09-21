@@ -112,17 +112,26 @@ MedGuard/
 │   ├── security.py         # HTTP 层身份强制：verified() / require_admin()
 │   ├── smart_doctor.py     # 智慧医生：意图识别 + 取数 + 知识库 + acuity + AI 兜底
 │   ├── schemas.py          # ★ 前后端契约（Pydantic，字段名即契约）
+│   ├── knowledge/          # 知识检索（RAG 的检索那一步）
+│   │   ├── corpus.py       #   把知识库展平成统一文档（索引**含正文**）
+│   │   ├── tokenize.py     #   jieba 分词 + 用户词典（词典来自语料 aliases）
+│   │   └── retrieval.py    #   BM25（手写，无第三方依赖）
 │   ├── routers/            # auth / datasources / policies / query / reports / smart_doctor
-│   └── main.py             # FastAPI 装配
+│   └── main.py             # FastAPI 装配（含启动时预热分词器）
 ├── demo/
 │   ├── seed.py             # 建 5 表 + 一眼假数据（random.Random(42)）
 │   ├── ssa/regional_health.yaml  # 手写策略（含跨域规则）
-│   ├── smart_knowledge.yaml      # 智慧医生知识库（含 acuity 分诊等级）
+│   ├── smart_knowledge.yaml      # 智慧医生知识库 v2（id/aliases/provenance/relations）
 │   └── queries.json        # 预设查询库（医护 4 + 病患 5）
-├── tests/                  # 217 项
+├── tests/                  # 250 项
 ├── scripts/                # 启动脚本
 └── data/                   # 运行时生成（gitignore）
 ```
+
+> ⚠️ **`knowledge/` 只服务于「为生成找相关段落」**（RAG 的检索）。"判断用户在
+> 问哪个条目"由 `smart_doctor._find_entity` 的**别名字面匹配**负责。
+> 两者的索引口径**相反**，别把 `knowledge/` 接到实体识别上——详见
+> `corpus.doc_text_for_index` 的说明与 `tests/test_knowledge_rag.py`。
 
 ## 后续修改指引（留好的接口）
 
@@ -134,7 +143,9 @@ MedGuard/
 | 演示账号与口令 | `backend/db.py` 的 `_DEMO_USERS` / `_DEMO_PASSWORD`。**只在 users 表为空时种一次**，删掉之后不会再被重启建回来 |
 | 令牌有效期 / 口令轮数 | `backend/credentials.py` 的 `TOKEN_TTL_SEC` / `_PBKDF2_ROUNDS` |
 | 令牌签名密钥 | 环境变量 `MEDGUARD_TOKEN_SECRET`；不设则首次运行生成并持久化到 `data/.token_secret`（**已 gitignore，绝不入库**——泄了它签名就等于没有） |
-| 智慧医生的检验分档/症状/疾病词条 | `demo/smart_knowledge.yaml`。**每条分档与每个症状都必须显式写 `acuity`**（1 濒危／2 危重／3 急症／4 非急症），它决定 `advice.urgent` 是否弹急诊横幅；有测试遍历断言不许漏写 |
+| 智慧医生的检验分档/症状/疾病词条 | `demo/smart_knowledge.yaml`（**v2**：每个条目必须有 `id` / `aliases` / `provenance`，疾病还可写 `relations`）。**每条分档与每个症状都必须显式写 `acuity`**（1 濒危／2 危重／3 急症／4 非急症），它决定 `advice.urgent` 是否弹急诊横幅；`tests/test_smart_knowledge.py` 有 14 项结构守卫，**漏一个即失败** |
+| 让知识库听懂更多说法 | **加 `aliases`，不要加检索**。实体识别是别名字面匹配；11 个口语问法（发烧／睡不着／肚子疼…）就是这么修好的。⚠️ 单字别名要慎用——`糖` 会让「糖尿病怎么办」被血糖抢走（见 `test_single_char_aliases_do_not_steal_disease_questions`） |
+| RAG 检索的召回/精度 | `backend/knowledge/retrieval.py` 的 `DEFAULT_MIN_SCORE` / `min_matches`。**刻意精度优先**：语料没有的话题宁可留空，也不硬凑上下文给模型 |
 | 预设演示问题 | `demo/queries.json`（含 `{subject_id}` 占位符） |
 | 演示库表结构与数据 | `demo/seed.py` + `demo/ssa/regional_health.yaml`（已互相校验，改一处必改另一处） |
 | API 契约（字段名） | `backend/schemas.py` —— 这即契约变更，前端需重新生成类型 |

@@ -4,8 +4,9 @@
 > 前端用它生成类型：`npx openapi-typescript openapi.json -o src/api/types.ts`
 > 本文件是中文补充说明（示例、枚举、预设查询表），与 openapi.json 不一致时以 openapi.json 为准。
 >
-> ✅ 契约产物已于 2026-09-18 重新生成（**17 条 path**，补齐了 `/api/smart-doctor/ask`
-> 与三个 `/api/auth/*` 端点，`Token` 也带上了 `account` / `exp` / `sig`）。
+> ✅ 契约产物已于 **2026-09-21** 重新生成（**17 条 path**）。
+> 本次新增 `SmartDoctorRequest.context` 与 `SmartDoctorResponse.entity`
+> （多轮指代，见 §6.3）——**这是契约变更，走 `[CONTRACT]` 提交流程**。
 > `frontend/openapi.json`、`frontend/src/api/types.ts`、本目录的 `openapi.json`
 > 三份同步。
 
@@ -319,8 +320,28 @@ curl "http://localhost:8000/api/reports?token_type=${TOK#type=}"
 { "token": { "type": "patient", "subject_id": "P001", "account": "patient",
              "exp": 1790000000, "sig": "<64 位十六进制>" },
   "datasource_id": "regional_health",
-  "question": "我的血糖结果正常吗" }
+  "question": "我的血糖结果正常吗",
+  "context": { "intent": "lab", "entity": "血糖" } }
 ```
+
+**`context` 可选**，用于**多轮指代**（「它正常吗」「严重吗」）。传的是
+**上一轮的识别结果**——即上一轮响应里的 `intent` 与 `entity`——而**不是
+上一轮的原话**：传原话会让链式追问退化（「我的血糖结果正常吗」→「它正常吗」
+→「严重吗」，第二轮回解析「它正常吗」同样拿不到实体，第三轮就断了）。
+
+后端的补全规则刻意保守：
+
+| 本轮识别情况 | 处理 |
+|---|---|
+| 完全没识别出意图（`fallback`） | 整轮沿用上一轮 |
+| 有意图、无实体，且**意图与上一轮相同** | 只补实体 |
+| 意图与上一轮**不同** | **绝不补** |
+
+> 第三条不是多余的谨慎：患者先问血糖、再问「医生给我开的药怎么吃」，
+> 若不判意图就补，会去查 `drug_name='血糖'`——一条都查不到，患者拿到
+> "未找到用药记录"，**比不补还糟**。
+
+不传 `context` 即等价于单轮问答。
 
 返回三块，**每块自带 `source`**（前端据此标注来源，不要写死）：
 
@@ -328,6 +349,15 @@ curl "http://localhost:8000/api/reports?token_type=${TOK#type=}"
 |---|---|
 | `data` | `医院主库`（经层一 + 层二后取数） |
 | `interpretation` / `advice` | `医院审核知识库`，知识库未覆盖时由 AI 兜底 → `AI 智能导诊` |
+
+响应里的 **`entity`** 是本轮命中的知识条目名（如 `血糖`）。前端要把它与
+`intent` 一起作为下一轮的 `context` 回传，指代才能一轮轮接下去。
+**它不是患者数据**——只是知识库里的条目名。
+
+AI 兜底路径走的是 **RAG**：先用本地 BM25 从知识库检索相关条目（零模型调用），
+把条目塞进提示词并要求「优先依据它们作答、不足时明说不确定」，再交给模型。
+此时 `interpretation.items` 里会带上本次参考的条目（`ref_title` / `ref_kind` /
+`ref_source` / `ref_excerpt`），前端逐条渲染出来。
 
 `advice.urgent` **由分诊等级决定**：知识库每条检验分档与症状都声明
 `acuity`（1 濒危／2 危重／3 急症／4 非急症，对齐 WS/T 390-2012），

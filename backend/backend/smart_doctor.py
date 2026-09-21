@@ -19,6 +19,23 @@
 - **知识库优先，AI 兜底**：知识库是人工审核的确定性内容（离线、毫秒级）；
   只有知识库没覆盖的问法才交给 AI。涉及本人数据的意图（lab / medication）
   永远不把数据发给模型——AI 只做解释，不碰数据。
+- **实体识别靠别名，不靠检索** ★：`_find_entity` / `_find_entities` /
+  `_find_disease` 把「规范名 + 别名」一起做**字面匹配**。
+  2026-09-21 实现过一版 BM25 检索兜底（jieba 分词 + 手写 BM25 + 图扩跳），
+  **实测增量为零**，已删除。理由是结构性的、与语料规模无关：
+
+      索引 token 全部来自别名 → 而别名又都在分词用户词典里（每个别名
+      是一个整 token）→ 于是「检索能命中」⟺「某别名是查询的子串」，
+      那正是字面匹配的条件；而字面匹配先跑，兜底永远没有机会。
+
+  两种能让它触发的改法实测都**引入错配**：去掉用户词典 →
+  「血压有点高」命中「高血脂」（单字「高」重合）；把正文加进索引 →
+  「我肾怎么样」命中「水肿」（正文里写着"与心、肾…有关"）。
+  实测脚本与数据见 `.scratch/rag-ux/`（该目录 gitignore）。
+
+  → **要提升覆盖率，请加别名，不要加检索。** 13 个漏掉的问法
+  （`发烧`↔`发热`、`睡不着`↔`失眠`、`肚子疼`↔`腹痛`）全部是词本身
+  对不上——字面检索跨不过同义词，只有别名能。
 """
 import os
 import re
@@ -47,6 +64,10 @@ _SOURCE_AI = "AI 智能导诊"
 
 _LOCK = threading.Lock()
 _KB: Optional[Dict[str, Any]] = None
+
+# 知识库格式版本。载入时强校验（见 load_knowledge）——v1 与 v2 的条目字段名
+# 不同（keywords/keys → aliases），读错了不会报错，只会静默失去全部关键字。
+_KB_VERSION = 2
 
 
 # ── 分诊等级（acuity）────────────────────────────────────────
@@ -125,6 +146,15 @@ def load_knowledge() -> Dict[str, Any]:
             # 之后每次 parse_intent / interpret_lab 都拿到空知识库，直到
             # 进程重启才恢复，而且没有任何重试路径。
             return {}
+        # 格式版本守卫。v1 用 keywords/keys、条目没有 aliases，被 v2 的代码
+        # 读到时会**静默失去全部关键字**——症状与疾病从此再也匹配不上，
+        # 却没有一行报错。这类静默降级正是本项目最反对的失败模式，故显式挡住。
+        # 与"读取失败"同样处理：不缓存、返回空结构、打一行可读的原因。
+        if data.get("version") != _KB_VERSION:
+            print(f"[smart-doctor] 知识库版本不符：期望 {_KB_VERSION}，"
+                  f"实际 {data.get('version')!r}。按加载失败处理，"
+                  f"请检查 {path}", flush=True)
+            return {}
         _KB = data
         return _KB
 
@@ -141,33 +171,70 @@ _DISEASE_SIGNALS = ("想了解", "是什么病", "这种病", "这个病", "了�
                     "科普")
 
 
-def _find_entity(question: str, table: Dict[str, Any]) -> Optional[str]:
-    """在知识库某表里找命中的键（如 lab_tests 里的「血糖」）。
+def _names_of(key: str, entry: Any) -> List[str]:
+    """一个条目可被问到的全部名字：规范名（YAML 键）+ 别名。"""
+    names = [key] if key else []
+    if isinstance(entry, dict):
+        names.extend(a for a in (entry.get("aliases") or [])
+                     if isinstance(a, str) and a)
+    return names
 
-    取**最长命中**而非首个命中：键之间存在包含关系（「血脂」是「高血脂」
-    的子串），按字典顺序取首个会让「高血脂」被短键抢走。
+
+def _find_entity(question: str, table: Dict[str, Any]) -> Optional[str]:
+    """在知识库某表里找命中的条目，返回它的**键**（如 lab_tests 的「血糖」）。
+
+    匹配口径是**规范名与别名一起看**，取最长命中：名字之间有包含关系
+    （「血脂」是「高血脂」的子串），短名先命中会让长名永远排不上。
+
+    别名必须参与匹配——否则语料里写的 `空腹葡萄糖`、`转氨酶` 这些同义
+    说法全是死数据，患者换个说法就掉进"我没听懂"（实测：接入前这四个
+    问法全部答不上来，接入后全部命中）。
     """
-    hits = [k for k in table if k and k in question]
-    return max(hits, key=len) if hits else None
+    best_len, best_key = 0, None
+    for key, entry in table.items():
+        for n in _names_of(key, entry):
+            if n in question and len(n) > best_len:
+                best_len, best_key = len(n), key
+    return best_key
 
 
 def _find_entities(question: str, table: Dict[str, Any]) -> List[str]:
-    """问题里命中的**全部**键，长的在前；被更长命中包住的短键丢掉。
+    """问题里命中的**全部**条目（返回键），长的在前；被更长命中包住的丢掉。
 
     「我的血脂和血糖结果正常吗」原先只查血糖（YAML 顺序在前），血脂完全
     不查也不提，患者拿到的是误导性的安心答复。
     """
-    hits = [k for k in table if k and k in question]
-    return [k for k in sorted(hits, key=len, reverse=True)
-            if not any(k != other and k in other for other in hits)]
+    matched: List[Tuple[str, str]] = []          # (命中的名字, 键)
+    for key, entry in table.items():
+        best = ""
+        for n in _names_of(key, entry):
+            if n in question and len(n) > len(best):
+                best = n
+        if best:
+            matched.append((best, key))
+
+    names = [n for n, _ in matched]
+    kept = [(n, k) for n, k in matched
+            if not any(n != o and n in o for o in names)]
+    kept.sort(key=lambda x: len(x[0]), reverse=True)
+    out: List[str] = []
+    for _, k in kept:
+        if k not in out:
+            out.append(k)
+    return out
 
 
 def _find_disease(question: str, diseases: Dict[str, Any]
                   ) -> Optional[Tuple[str, str]]:
-    """找命中的疾病，返回 (命中的关键词, 疾病名)；取最长命中。"""
+    """找命中的疾病，返回 (命中的关键词, 疾病名)；取最长命中。
+
+    关键词要一并返回（而不只是疾病名）：上层用它判断"这个命中词是不是
+    同时也是个症状词"（「我胃痛」该走导诊而不是疾病科普），也用它生成
+    转向引导句。
+    """
     hits: List[Tuple[str, str]] = []
     for dname, d in diseases.items():
-        for k in (d.get("keywords") or []):
+        for k in (d.get("aliases") or []):
             if k and k in question:
                 hits.append((k, dname))
         if dname in question:
@@ -177,13 +244,13 @@ def _find_disease(question: str, diseases: Dict[str, Any]
 
 def _symptom_key_matched(keyword: str, symptoms: List[Dict[str, Any]]) -> bool:
     """keyword 是否同时是某个症状条目的 keys（歧义判定）。"""
-    return any(keyword in (s.get("keys") or []) for s in symptoms)
+    return any(keyword in (s.get("aliases") or []) for s in symptoms)
 
 
 def _disease_of_keyword(keyword: str, diseases: Dict[str, Any]) -> Optional[str]:
     """哪个疾病把 keyword 也当成自己的关键词（生成歧义引导句用）。"""
     for dname, d in diseases.items():
-        if keyword in (d.get("keywords") or []):
+        if keyword in (d.get("aliases") or []):
             return dname
     return None
 
@@ -204,7 +271,7 @@ def parse_intent(question: str) -> Tuple[str, Optional[str]]:
     # 0) 明确要挂科 → symptom（感冒了该挂什么科，不能落到 disease）
     if any(s in question for s in _ASK_DEPT):
         for sym in symptoms:
-            for k in (sym.get("keys") or []):
+            for k in (sym.get("aliases") or []):
                 if k and k in question:
                     return INTENT_SYMPTOM, k
         return INTENT_SYMPTOM, None
@@ -235,7 +302,16 @@ def parse_intent(question: str) -> Tuple[str, Optional[str]]:
         # 「我的血糖高吗」是在问自己的数值，却会被判成糖尿病科普、
         # 一条本人数据都不取。
         keyword = disease_hit[0] if disease_hit else ""
-        swallowed = keyword in diseases and any(t in keyword for t in tests)
+        # 判据要用该检验项的**全部名字**（规范名 + 别名），不能只用规范名。
+        # 例：用户问「我甲状腺功能减退」，检验项是通过别名「甲状腺功能」命中的，
+        # 而它的规范名「促甲状腺激素」并不在这个疾病名里——只用规范名会判成
+        # "没被包住"，于是检验项把疾病问题抢走，患者拿到一份跟他问的无关的化验。
+        # （这条在别名接入之前是对的：那时能命中的只有规范名本身。）
+        swallowed = keyword in diseases and any(
+            name in keyword
+            for t in tests
+            for name in _names_of(t, lab_tests.get(t) or {})
+        )
         if not swallowed:
             return INTENT_LAB, tests[0]
     if any(s in question for s in _LAB_SIGNALS):
@@ -254,7 +330,7 @@ def parse_intent(question: str) -> Tuple[str, Optional[str]]:
 
     # 5) 症状
     for sym in symptoms:
-        for k in (sym.get("keys") or []):
+        for k in (sym.get("aliases") or []):
             if k and k in question:
                 return INTENT_SYMPTOM, k
     if any(s in question for s in ("不舒服", "症状", "哪里难受")):
@@ -520,15 +596,79 @@ def _parse_llm_json(text: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def ai_triage(question: str) -> Optional[Dict[str, Any]]:
-    """AI 兜底作答。成功返回三块内容，失败返回 None（调用方回退引导）。"""
-    if not config.LLM_API_KEY:
-        return None
-    prompt = (
-        f"{_AI_SYSTEM}\n\n"
+def _retrieve_context(question: str, top_k: int = 3) -> List[Dict[str, Any]]:
+    """从知识库里检索与问题相关的条目 —— **RAG 的检索（R）那一步**。
+
+    纯本地 BM25，**这一步不调模型**。检索不可用时返回空列表：知识库检索
+    失败不该连累整个问答，没有上下文就退回原来的纯生成路径。
+
+    注意与实体识别的区别：那里问"用户在问**哪一条**"（用别名精确匹配），
+    这里问"哪些条目的**内容**与问题相关"——所以索引含正文，见
+    backend/knowledge/corpus.py 的 doc_text_for_index。
+    """
+    try:
+        from backend.knowledge import corpus, retrieval
+        kb = load_knowledge()
+        if not kb:
+            return []
+        hits = retrieval.get_index(kb).search(question, top_k=top_k)
+    except Exception as exc:      # noqa: BLE001 - 检索失败不连累问答
+        print(f"[smart-doctor] 知识库检索不可用，退回无上下文作答：{exc}",
+              flush=True)
+        return []
+
+    refs: List[Dict[str, Any]] = []
+    for doc, score in hits:
+        refs.append({
+            # `ref_` 前缀是给前端的：InterpretationRow 靠 test_name / drug_name
+            # 分派渲染，加前缀它们就不会被误判成检验项行或用药行。
+            "ref_title": doc.name,
+            "ref_kind": corpus.KIND_LABELS.get(doc.kind, ""),
+            "ref_source": doc.source,
+            "ref_excerpt": doc.text,
+            "ref_id": doc.id,
+            "ref_score": round(score, 2),
+        })
+    return refs
+
+
+def _build_ai_prompt(question: str, refs: List[Dict[str, Any]]) -> str:
+    """组装提示词 —— **RAG 的增强（A）那一步**。
+
+    有检索结果时把它放进上下文，并要求模型**优先依据这些条目**作答、
+    不足以回答时明说不确定。没有检索结果时**如实说明**，而不是假装有依据。
+    """
+    if refs:
+        lines = "\n".join(
+            f"{i}. {r['ref_title']}（{r['ref_kind']}）：{r['ref_excerpt']}"
+            for i, r in enumerate(refs, 1)
+        )
+        block = (
+            "\n\n【本院知识库中与该问题可能相关的条目】\n"
+            f"{lines}\n\n"
+            "请**优先依据上面这些条目**作答。若它们不足以回答，"
+            "请明确说明不确定，**不要编造**。\n"
+        )
+    else:
+        block = ("\n\n（本院知识库中没有检索到相关条目，"
+                 "请基于通用医学常识谨慎作答，并说明这一点。）\n")
+    return (
+        f"{_AI_SYSTEM}{block}\n"
         f"患者的咨询内容：{question.strip()}\n\n"
         "请按要求输出 JSON。"
     )
+
+
+def ai_triage(question: str, refs: Optional[List[Dict[str, Any]]] = None
+              ) -> Optional[Dict[str, Any]]:
+    """AI 兜底作答。成功返回三块内容，失败返回 None（调用方回退引导）。
+
+    `refs` 是已检索到的知识条目（见 _retrieve_context）。不传表示没有
+    上下文——那条路径仍可用，但只有带上下文时答案才是**有依据的**。
+    """
+    if not config.LLM_API_KEY:
+        return None
+    prompt = _build_ai_prompt(question, refs or [])
     try:
         raw = _call_llm(prompt)
     except Exception as exc:  # noqa: BLE001 - 网络/鉴权异常统一回退
@@ -579,15 +719,20 @@ def ai_triage(question: str) -> Optional[Dict[str, Any]]:
 
 
 def _apply_ai_fallback(base: Dict[str, Any], question: str) -> bool:
-    """填 AI 兜底回答（来源：AI 智能导诊）。成功返回 True，失败返回 False。"""
-    ai = ai_triage(question)
+    """填 AI 兜底回答（来源：AI 智能导诊）。成功返回 True，失败返回 False。
+
+    **先检索、再生成**（RAG）：检索到的知识条目既进提示词（让答案有依据，
+    而不是让模型凭空编），也回填到 `items`（让患者看见"这条回答参考了什么"）。
+    """
+    refs = _retrieve_context(question)
+    ai = ai_triage(question, refs=refs)
     if ai is None:
         return False
     base["interpretation"] = {
         "source": _SOURCE_AI,
         "title": ai["title"],
         "text": ai["text"],
-        "items": [],
+        "items": refs,
     }
     base["advice"] = {
         "source": _SOURCE_AI,
@@ -600,14 +745,58 @@ def _apply_ai_fallback(base: Dict[str, Any], question: str) -> bool:
 
 # ── 入口 ──────────────────────────────────────────────────────
 
-def ask(question: str, subject_id: str) -> Dict[str, Any]:
-    """处理一次提问，返回三块结构的响应（供路由直接返回）。"""
+def _resolve_with_context(intent: str, entity: Optional[str],
+                          context: Optional[Dict[str, Any]]
+                          ) -> Tuple[str, Optional[str]]:
+    """用上一轮的识别结果补上这一轮缺失的部分（「它」「那个」这类指代）。
+
+    **规则刻意保守**——只在确实缺信息时才补，两种情形：
+
+      1. 本轮**完全没识别出意图**（fallback）→ 整轮沿用上一轮。
+         「我的血糖结果正常吗」→「严重吗」：第二句自身没有话题，
+         但它显然是接着上一句问的。
+      2. 本轮识别出了意图、但**没识别出实体**，且**意图与上一轮相同**
+         → 只把实体补上。
+         「我的血糖结果正常吗」→「它正常吗」：第二句能判出是在问检验
+         （「正常吗」是检验信号），但不知道问的是哪一项。
+
+    **第 2 条的"意图相同"是关键，不是多余的谨慎。** 患者先问血糖、再问
+    「医生开的药怎么吃」，意图从 lab 变成 medication——这时**绝不能**把
+    「血糖」当药品名带过去：那会去查 `drug_name='血糖'`，一条都查不到，
+    患者拿到的是"未找到用药记录"，比不补还糟。
+    """
+    if not context:
+        return intent, entity
+
+    prev_intent = context.get("intent")
+    prev_entity = context.get("entity")
+    if not prev_intent:
+        return intent, entity
+
+    if intent == INTENT_FALLBACK:
+        return prev_intent, prev_entity or entity
+
+    if entity is None and prev_entity and intent == prev_intent:
+        return intent, prev_entity
+
+    return intent, entity
+
+
+def ask(question: str, subject_id: str,
+        context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """处理一次提问，返回三块结构的响应（供路由直接返回）。
+
+    `context` 是上一轮的 `{intent, entity}`，用于解析指代（见
+    _resolve_with_context）。不传即等价于单轮问答。
+    """
     kb = load_knowledge()
-    intent, entity = parse_intent(question)
+    raw_intent, raw_entity = parse_intent(question)
+    intent, entity = _resolve_with_context(raw_intent, raw_entity, context)
     subject = subject_id or ""
 
     base = {
         "intent": intent,
+        "entity": entity,
         "question": question,
         "data": None,
         "interpretation": None,
@@ -735,7 +924,7 @@ def ask(question: str, subject_id: str) -> Dict[str, Any]:
         hit = None
         if entity:
             for sym in kb.get("symptoms") or []:
-                if entity in (sym.get("keys") or []):
+                if entity in (sym.get("aliases") or []):
                     hit = sym
                     break
         if hit:
@@ -785,7 +974,7 @@ def ask(question: str, subject_id: str) -> Dict[str, Any]:
         diseases = kb.get("diseases") or {}
         if entity:
             for dname, d in diseases.items():
-                if entity in (d.get("keywords") or []) or entity == dname:
+                if entity in (d.get("aliases") or []) or entity == dname:
                     hit = d
                     entity = dname
                     break

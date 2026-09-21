@@ -18,6 +18,11 @@ npm run dev          # http://localhost:5173
 
 后端端口 `8000`，前端 `5173`，Vite proxy 把 `/api` 转发到后端（无需配 CORS）。
 
+> **`npm install` 依赖仓库里的 `.npmrc`**：`openapi-typescript` 的 peer 要求是
+> `typescript@^5.x`，而本项目用 `~6.0.2`，npm 默认会因此**拒绝安装**。
+> `.npmrc` 里的 `legacy-peer-deps=true` 让 npm 不校验 peer——该依赖只用于
+> 重新生成 `types.ts`，不参与构建与运行，这个冲突是虚的。详见文件内注释。
+
 **演示账号**（密码均为 `medguard`）：`admin` / `doctor` / `patient`。
 见登录页左下角，点一下自动填入。
 
@@ -29,7 +34,12 @@ npm run dev          # http://localhost:5173
 | `npm run build` | `tsc -b && vite build` → `dist/` |
 | `npm run preview` | 预览生产构建 |
 | `npm run lint` | oxlint |
+| `npm run e2e` | **端到端回归核查（断言式，30 项）**：双令牌矩阵、层一拒答文案逐字匹配、指标恒为 0、报告按账号隔离、关键界面渲染。**失败即 exit 1**；`BASE_URL` 未指定且无服务时自己起一个后端再停掉 |
 | `npm run visual` | **视觉核查**：用系统 Chrome 遍历关键页面截图 + 收集控制台报错 |
+
+> **e2e 与 visual 的区别就在"断言"二字**：visual 只截图 + 收报错，给人看；
+> e2e 判定通过/失败，给机器判。在本脚本之前，前端**零断言测试**，
+> 双令牌矩阵靠人工核对——改组件很容易悄悄弄坏演示效果。
 
 `npm run visual` 输出到 `../.visual-out/`（gitignore）。录演示视频前跑一遍，
 能挡住「样式塌了 / 页面白屏 / 接口报错 / 越权能进」这类翻车。

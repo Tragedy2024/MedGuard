@@ -194,10 +194,17 @@ def run_direct_query(req: DirectQueryRequest):
 
     if plan is None:
         if not llm_nl2sql.llm_available():
+            # 精确原因（缺哪个配置项）只进服务端日志。**不写进给用户看的
+            # 文案里**：`OPENAI_API_KEY` 是开发者才认识的配置名，而这段话
+            # 是给医护和病患看的——PRODUCT.md 硬约束③「界面上只用中文业务
+            # 语言」，把配置项名摊到界面上，与向医生展示 `clinical_records.
+            # impression` 是同一类错误。
+            print(f"[nl2sql] 问法未收录且无可用模型（未配置 OPENAI_API_KEY），"
+                  f"问题：{question[:50]!r}", flush=True)
             raise HTTPException(
                 status_code=503,
-                detail="该问法暂未收录，且未配置模型（缺少 OPENAI_API_KEY），"
-                       "无法翻译新问法。请换一个已收录的问法。",
+                detail="该问法暂未收录，系统也未接入语言模型翻译服务，"
+                       "无法翻译新的问法。请从常用问题里选一个。",
             )
         try:
             plan = llm_nl2sql.decompose(

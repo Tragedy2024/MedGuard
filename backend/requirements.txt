@@ -12,6 +12,11 @@ sqlglot>=26.0.0
 # 策略 YAML
 PyYAML>=6.0
 
+# 中文分词（智慧医生的知识检索，见 backend/knowledge/）
+# 约 20MB（含词典），首次调用有约 1 秒的词典加载——已在
+# backend/main.py 的 lifespan 里预热，避免第一个提问的患者吃这一下。
+jieba>=0.42
+
 # 自然语言 → SQL（MAC-SQL 体系，已内置在 vendor/nl2sql/src/core/）
 # 注意：上游 MAC-SQL 的 core/agents.py 还 import 了 pandas 与 tiktoken，
 # 但两者都是死导入，已在本仓库移除以免拖入约 32MB 依赖。

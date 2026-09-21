@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { runDirectQuery, runQuery } from '../api/query'
-import type { QueryResponse } from '../api/models'
+import type { PresetQuery, QueryResponse } from '../api/models'
 import { AliasProvider } from '../store/aliases'
 import { useAuth } from '../store/auth'
 import { presetsFor } from '../store/presets'
 import { AdmissionPanel } from '../components/AdmissionPanel'
 import { DegradationBadge } from '../components/DegradationBadge'
 import { ResultTable } from '../components/ResultTable'
-import { errorText } from '../api/client'
+import { errorStatus, errorText } from '../api/client'
 
 const DATASOURCE = 'regional_health'
 
@@ -16,6 +16,25 @@ export function ConsolePage() {
     <AliasProvider datasourceId={DATASOURCE}>
       <Console />
     </AliasProvider>
+  )
+}
+
+/** 可用问法按钮组。出现两处（常驻工具条 / 撞墙后的出路），抽出来避免两处漂移。 */
+function PresetButtons({ presets, running, onPick, label }: {
+  presets: PresetQuery[]
+  running: boolean
+  onPick: (id: string) => void
+  label?: string
+}) {
+  return (
+    <div className="preset-bar">
+      {label && <span className="preset-label">{label}</span>}
+      {presets.map((p) => (
+        <button key={p.id} onClick={() => onPick(p.id)} disabled={running}>
+          {p.question}
+        </button>
+      ))}
+    </div>
   )
 }
 
@@ -33,6 +52,7 @@ function Console() {
   const [showBusy, setShowBusy] = useState(false)
   const [slow, setSlow] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [errStatus, setErrStatus] = useState<number | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -56,11 +76,13 @@ function Console() {
   const send = async (fn: () => Promise<QueryResponse>) => {
     setRunning(true)
     setError(null)
+    setErrStatus(null)
     setData(null)
     try {
       setData(await fn())
     } catch (e) {
       setError(errorText(e))
+      setErrStatus(errorStatus(e))
     } finally {
       setRunning(false)
     }
@@ -105,14 +127,8 @@ function Console() {
         </button>
       </form>
 
-      <div className="preset-bar">
-        <span className="preset-label">常用问题</span>
-        {presets.map((p) => (
-          <button key={p.id} onClick={() => askPreset(p.id)} disabled={running}>
-            {p.question}
-          </button>
-        ))}
-      </div>
+      <PresetButtons presets={presets} running={running}
+                     onPick={askPreset} label="常用问题" />
 
       {showBusy && (
         <div className="loading" role="status" aria-live="polite">
@@ -215,6 +231,21 @@ function Console() {
             <span className="metrics-note">纯静态分析，不调模型、不碰数据库</span>
           </div>
         </>
+      )}
+
+      {/* 撞墙时给出出路。
+          原先自由提问失败只回一句「请换一个已收录的问法」，却**不告诉用户
+          有哪些**——只能靠猜，猜错一次就再撞一次。这里把清单直接摆出来，
+          一键可点。只在两种情况出现：
+            · 503 问法未收录 —— 换一个问法确实有用
+            · 层一拒绝     —— 这个问法越界了，但清单里还有能问的
+          网络不通（status 0）时**不出现**：那种情况下点哪个都一样失败，
+          摆出来只是噪音。 */}
+      {(errStatus === 503 || denied) && presets.length > 0 && (
+        <section className="next-steps">
+          <h4>{denied ? '你还可以问这些' : '试试这些已收录的问法'}</h4>
+          <PresetButtons presets={presets} running={running} onPick={askPreset} />
+        </section>
       )}
     </div>
   )
