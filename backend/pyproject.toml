@@ -1,0 +1,5 @@
+# Vercel FastAPI 构建的入口配置。
+# 应用在 backend/backend/main.py；services 配置里的 entrypoint 字段对
+# FastAPI Web Service 不生效，平台只认这里的 [tool.vercel] 段。
+[tool.vercel]
+entrypoint = "backend.main:app"
