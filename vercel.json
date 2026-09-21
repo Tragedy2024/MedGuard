@@ -8,7 +8,8 @@
       ]
     },
     "backend": {
-      "root": "backend"
+      "root": "backend",
+      "entrypoint": "backend.main:app"
     }
   },
   "rewrites": [
