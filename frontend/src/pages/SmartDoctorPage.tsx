@@ -55,6 +55,8 @@ const TASKS: Task[] = [
 const SOURCE_DATA = '医院主库'
 const SOURCE_KB = '医院审核知识库'
 const SOURCE_AI = 'AI 智能导诊'
+/** 症状导诊与疾病条目的事实来源——开源数据集，非本项目自撰。 */
+const SOURCE_DATASET = 'OpenCMKG 开源数据集'
 
 interface Message {
   role: 'user' | 'doctor'
@@ -279,15 +281,22 @@ function SmartDoctor() {
                 </span>
               </li>
               <li>
+                <span className="sd-source-tag">{SOURCE_DATASET}</span>
+                <span className="sd-source-desc">
+                  就诊科室建议与疾病条目取自开源中文医学知识图谱 OpenCMKG，
+                  <strong>非本项目自撰</strong>；抽取脚本随仓库交付，可复现、可审计。
+                </span>
+              </li>
+              <li>
                 <span className="sd-source-tag">{SOURCE_KB}</span>
                 <span className="sd-source-desc">
-                  医院审核定稿的医学知识，不随时间与模型变动。
+                  检验数值分档与用药说明来自本项目的仿真知识库（演示数据）。
                 </span>
               </li>
               <li>
                 <span className="sd-source-tag">{SOURCE_AI}</span>
                 <span className="sd-source-desc">
-                  知识库未覆盖的问法由大模型作答，未经人工审核，仅供参考。
+                  通俗解读与下一步建议由大模型生成，<strong>未经人工审核</strong>，仅供参考。
                 </span>
               </li>
             </ul>

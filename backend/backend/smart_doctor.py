@@ -47,6 +47,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import yaml
 
 from backend import config
+from backend import dataset_kb
 from backend.admission import admission_check_plan
 from backend.deps import audit_plan
 from backend.labels import DEGRADATION_LABELS, DEGRADATION_MESSAGES
@@ -718,6 +719,83 @@ def ai_triage(question: str, refs: Optional[List[Dict[str, Any]]] = None
     }
 
 
+_AI_EXPLAIN_SYMPTOM = """你是医院导诊台的护士。患者描述了症状，系统已从知识库中
+给出候选就诊科室。请用通俗的中文给出解读与建议。
+
+要求：
+1. 不替患者下诊断结论——不说"您患了 XX 病"这类话。
+2. 建议要具体：该挂什么科、是否需要尽快就医。
+3. 出现危急信号（剧烈胸痛、呼吸困难、意识模糊、大出血等）必须提示立即就医。
+4. 症状描述不足时可建议患者补充。
+
+只输出一个 JSON，不要输出任何其他文字：
+{"text": "对症状的通俗解读（2-3句）", "advice": "建议（挂什么科、是否尽快就医）", "actions": ["行动建议1", "行动建议2"], "urgent": true 或 false}"""
+
+_AI_EXPLAIN_DISEASE = """你是医院导诊台的护士。患者想了解一种疾病，系统已从知识库中
+取出该疾病的相关条目（常见症状、常用检查、常用药物、可能并发症、治疗方式）。
+请用**通俗的中文**把这些条目讲给患者听，并给出就诊建议。
+
+要求：
+1. 以系统给出的条目为准，**不要补充条目之外的医学断言**，不替患者下诊断。
+2. 说明该疾病该挂哪个科、什么情况下需要尽快就医。
+3. 涉及用药时提醒"遵医嘱，勿自行用药"。
+4. 措辞让非医学背景的人能看懂，避免堆砌术语。
+
+只输出一个 JSON，不要输出任何其他文字：
+{"text": "通俗解读（3-5句）", "advice": "就诊建议", "actions": ["行动建议1", "行动建议2"], "urgent": true 或 false}"""
+
+
+def _ai_explain(question: str, *, facts: str, system: str
+                ) -> Optional[Dict[str, Any]]:
+    """让 AI 基于**数据集给出的事实**生成解读与建议。
+
+    与 `_apply_ai_fallback` 的分工不同：那边是"数据集完全没覆盖"时的兜底；
+    这边是"数据集已经给了事实，请 AI 补解读与建议"。
+
+    **事实与建议分开标注**：事实标数据集（interpretation.source），
+    本函数产出的建议标「AI 智能导诊」（advice.source）——绝不混同。
+    未配置 Key 或调用失败时返回 None，由调用方给确定性文案。
+    """
+    if not config.LLM_API_KEY:
+        return None
+    prompt = (
+        f"{system}\n\n"
+        f"患者的咨询：{question.strip()}\n"
+        f"知识库给出的事实：\n{facts}\n\n"
+        "请按要求输出 JSON。"
+    )
+    try:
+        raw = _call_llm(prompt)
+    except Exception as exc:      # noqa: BLE001 - 网络/鉴权异常统一回退
+        print(f"[smart-doctor] AI 解读调用失败，回退确定性文案：{exc}", flush=True)
+        return None
+    data = _parse_llm_json(raw)
+    if not data:
+        return None
+
+    def _s(key: str) -> str:
+        v = data.get(key)
+        return v.strip() if isinstance(v, str) and v.strip() else ""
+
+    actions = data.get("actions")
+    if isinstance(actions, str):
+        # 模型常把数组压成一句顿号串，直接迭代会逐字符展开
+        actions = re.split(r"[、,，;；\n]", actions)
+    elif not isinstance(actions, list):
+        actions = []
+    actions = [a.strip() for a in actions if isinstance(a, str) and a.strip()]
+
+    text, advice = _s("text"), _s("advice")
+    if not (text or advice):
+        return None
+    return {
+        "source": _SOURCE_AI,
+        "text": " ".join(x for x in (text, advice) if x),
+        "actions": actions,
+        "urgent": _as_bool(data.get("urgent")),
+    }
+
+
 def _apply_ai_fallback(base: Dict[str, Any], question: str) -> bool:
     """填 AI 兜底回答（来源：AI 智能导诊）。成功返回 True，失败返回 False。
 
@@ -921,47 +999,58 @@ def ask(question: str, subject_id: str,
                              "checked_tables": [], "bound_to_subject": False}
         base["degradation"] = {"level": "L0", "label": "通过",
                                "message_cn": "", "message": ""}
-        hit = None
-        if entity:
-            for sym in kb.get("symptoms") or []:
-                if entity in (sym.get("aliases") or []):
-                    hit = sym
-                    break
-        if hit:
-            dept = _text(hit.get("department"), "相应科室")
+
+        # 科室候选来自**开源数据集**（OpenCMKG 的症状→疾病→科室两跳聚合），
+        # 不是自写内容。给候选列表而不是单一科室：实测 top1 只有 65%，
+        # 而导诊本来就该给候选。
+        triage = dataset_kb.lookup_symptom(entity or question)
+        if triage:
+            cands = triage["candidates"]
+            top = cands[0]["department"] if cands else ""
             base["interpretation"] = {
-                "source": _SOURCE_KB,
-                "title": f"关于「{entity}」",
-                "text": _text(hit.get("text")),
-                "items": [],
+                "source": dataset_kb.source_note(),
+                "title": f"关于「{entity or triage['matched']}」的就诊科室",
+                "text": (f"根据开源医学知识图谱中 **{triage['total']} 个相关疾病**的"
+                         f"科室分布，以下科室最常见（仅供参考，请以医生判断为准）。"),
+                "items": [
+                    {"ref_title": c["department"], "ref_kind": "就诊科室",
+                     "ref_source": dataset_kb.source_note(),
+                     "ref_excerpt": f"数据集中有 {c['disease_count']} 个相关疾病归入该科室"}
+                    for c in cands
+                ],
             }
-            # 歧义引导：命中的症状词同时也是某个疾病的关键词时，患者可能
-            # 其实是想了解那个病（"我胃痛" vs "我想了解胃炎"）。
-            ambiguous = _disease_of_keyword(entity or "", kb.get("diseases") or {})
-            guide = (f" 如果您是想了解「{ambiguous}」这个疾病，"
-                     f"可以说「我想了解{ambiguous}」。" if ambiguous else "")
-            base["advice"] = {
-                "source": _SOURCE_KB,
-                "text": f"建议优先咨询{dept}。"
-                        f"（分诊等级：{_ACUITY_LABELS[_acuity(hit.get('acuity'))]}）" + guide,
-                "actions": [f"请咨询{dept}",
-                            "症状加重或持续不缓解请及时就医"],
-                "urgent": _acuity(hit.get("acuity")) <= _ACUITY_URGENT_MAX,
-            }
-        else:
-            # 知识库未覆盖的症状（如「我膝盖疼」「我拉肚子」）→ AI 兜底
-            if _apply_ai_fallback(base, question):
-                return base
-            base["interpretation"] = {
-                "source": _SOURCE_KB,
-                "title": "请描述您的具体症状",
-                "text": "您可以说「我胸痛」「我头晕」这类具体症状，我会帮您判断该咨询哪个科室。",
-                "items": [],
-            }
-            base["advice"] = {
-                "source": _SOURCE_KB, "text": "急性剧烈不适请直接急诊就诊。",
-                "actions": ["描述具体症状重试"], "urgent": False,
-            }
+            # 解读与建议交给 AI，**来源标注「AI 智能导诊」**——
+            # 与上面来自数据集的科室候选分开，绝不混同。
+            cands_text = "、".join(
+                f"{c['department']}（{c['disease_count']} 个相关疾病）"
+                for c in cands[:3])
+            advice = _ai_explain(question, facts=f"候选就诊科室：{cands_text}",
+                                 system=_AI_EXPLAIN_SYMPTOM)
+            if advice:
+                base["advice"] = advice
+            else:
+                base["advice"] = {
+                    "source": dataset_kb.source_note(),
+                    "text": (f"建议优先咨询{top}。若症状加重或持续不缓解，"
+                             "请及时就医；急性剧烈不适应直接急诊。"),
+                    "actions": [f"请咨询{top}", "症状加重或持续不缓解请及时就医"],
+                    "urgent": False,
+                }
+            return base
+
+        # 数据集里查不到 → AI 兜底（或确定性引导）
+        if _apply_ai_fallback(base, question):
+            return base
+        base["interpretation"] = {
+            "source": _SOURCE_KB,
+            "title": "请描述您的具体症状",
+            "text": "您可以说「我胸痛」「我头晕」这类具体症状，我会帮您判断该咨询哪个科室。",
+            "items": [],
+        }
+        base["advice"] = {
+            "source": _SOURCE_KB, "text": "急性剧烈不适请直接急诊就诊。",
+            "actions": ["描述具体症状重试"], "urgent": False,
+        }
         return base
 
     # ── 疾病了解 ──
@@ -970,42 +1059,49 @@ def ask(question: str, subject_id: str,
                              "checked_tables": [], "bound_to_subject": False}
         base["degradation"] = {"level": "L0", "label": "通过",
                                "message_cn": "", "message": ""}
-        hit = None
-        diseases = kb.get("diseases") or {}
-        if entity:
-            for dname, d in diseases.items():
-                if entity in (d.get("aliases") or []) or entity == dname:
-                    hit = d
-                    entity = dname
-                    break
-        if hit:
-            what = _text(hit.get("what"))
-            advice_text = _text(hit.get("advice"))
+
+        # 事实来自**开源数据集**（OpenCMKG 的疾病关系聚合），不是自写文案。
+        info = dataset_kb.lookup_disease(entity or "")
+        if info:
+            facts = info["facts"]
+            dept = facts.get("dept") or "相应科室"
             base["interpretation"] = {
-                "source": _SOURCE_KB,
-                "title": f"关于「{entity}」",
-                "text": what,
-                "items": [],
+                "source": dataset_kb.source_note(dataset_kb.DISEASE_FILE),
+                "title": f"关于「{info['matched']}」",
+                "text": ("以下条目来自开源医学知识图谱，**仅供参考**，"
+                         "请以医生判断为准。"),
+                "items": dataset_kb.disease_fact_lines(facts),
             }
-            base["advice"] = {
-                "source": _SOURCE_KB,
-                "text": advice_text,
-                "actions": [s.strip() for s in
-                            re.split(r"[；;]", advice_text) if s.strip()],
-                "urgent": False,
-            }
-        else:
-            # 知识库未收录的疾病 → AI 兜底
-            if _apply_ai_fallback(base, question):
-                return base
-            base["interpretation"] = {
-                "source": _SOURCE_KB,
-                "title": "暂未收录该疾病",
-                "text": "您可以直接问「我想了解糖尿病」这类常见疾病，或到查询控制台查阅您的检查结果。",
-                "items": [],
-            }
-            base["advice"] = {"source": _SOURCE_KB, "text": "",
-                              "actions": [], "urgent": False}
+            # 解读与建议交给 AI，来源标注「AI 智能导诊」——与上面的事实分开
+            lines = [f"- {label}：{'、'.join(facts[k])}"
+                     for k, label in dataset_kb.DISEASE_FIELDS if facts.get(k)]
+            advice = _ai_explain(
+                question,
+                facts=f"疾病：{info['matched']}\n所属科室：{dept}\n"
+                      + "\n".join(lines),
+                system=_AI_EXPLAIN_DISEASE)
+            if advice:
+                base["advice"] = advice
+            else:
+                base["advice"] = {
+                    "source": dataset_kb.source_note(dataset_kb.DISEASE_FILE),
+                    "text": f"建议就诊科室：{dept}。具体诊疗请遵医嘱。",
+                    "actions": [f"可咨询{dept}", "具体诊疗请遵医嘱"],
+                    "urgent": False,
+                }
+            return base
+
+        # 数据集里没有这个疾病 → AI 兜底
+        if _apply_ai_fallback(base, question):
+            return base
+        base["interpretation"] = {
+            "source": _SOURCE_KB,
+            "title": "暂未收录该疾病",
+            "text": "您可以直接问「我想了解糖尿病」这类常见疾病，或到查询控制台查阅您的检查结果。",
+            "items": [],
+        }
+        base["advice"] = {"source": _SOURCE_KB, "text": "",
+                          "actions": [], "urgent": False}
         return base
 
     # ── 兜底（未识别的问法）──
