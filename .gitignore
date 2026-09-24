@@ -55,5 +55,3 @@ Thumbs.db
 # 这里，那是**工作区**不是交付物——曾经差点把 131KB 的审查 diff 一起推上去。
 # 确实需要随仓库保留的条目，用 `git add -f` 单独放行。
 .scratch/
-.vercel
-.env*

@@ -19,6 +19,13 @@ _READY = False
 # 小于这个长度的 token 一律丢弃。见 cut() 的说明——中文单字会让 BM25 失效。
 _MIN_TOKEN_LEN = 2
 
+# 只在“查询侧”过滤。正文仍完整建索引，避免这些词在固定短语里丢失语义。
+# 这些通用问法词曾让「这个问题有什么建议」误召回失眠/皮肤瘙痒。
+QUERY_STOPWORDS = frozenset({
+    "这个", "那个", "问题", "建议", "请问", "一下", "什么", "怎么",
+    "怎么办", "如何", "情况", "有点", "感觉", "可以", "需要",
+})
+
 
 def prepare(aliases: Iterable[str] = ()) -> None:
     """把知识库的别名灌进 jieba 用户词典（幂等，进程内只做一次）。
@@ -64,6 +71,11 @@ def cut(text: str) -> List[str]:
             continue          # 纯标点（如「……」）
         out.append(t)
     return out
+
+
+def query_terms(text: str) -> List[str]:
+    """返回用于检索的有效查询词；通用问法词不参与相关性计算。"""
+    return [t for t in cut(text) if t not in QUERY_STOPWORDS]
 
 
 def is_ready() -> bool:

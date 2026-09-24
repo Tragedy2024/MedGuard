@@ -4,7 +4,7 @@
 见 test_smart_doctor.py。这里检的是"为生成找相关段落"。
 """
 from backend import smart_doctor
-from backend.knowledge import corpus, retrieval, tokenize
+from backend.knowledge import corpus, hybrid, retrieval, tokenize
 from backend.smart_doctor import _build_ai_prompt, _retrieve_context
 
 
@@ -71,6 +71,15 @@ def test_one_shared_word_is_not_enough():
     assert "便秘" not in titled, f"通用词误命中：{titled}"
 
 
+def test_single_medical_term_is_retrievable():
+    """动态门槛允许单医学实体，修复固定 min_matches=2 造成的零召回。"""
+    assert _retrieve_context("头痛")
+
+
+def test_generic_question_words_do_not_retrieve_context():
+    assert _retrieve_context("这个问题有什么建议") == []
+
+
 def test_zero_score_docs_are_never_returned():
     kb = smart_doctor.load_knowledge()
     idx = retrieval.get_index(kb)
@@ -122,5 +131,95 @@ def test_retrieval_failure_does_not_break_the_answer(monkeypatch):
     def boom(*a, **k):
         raise RuntimeError("索引炸了")
 
-    monkeypatch.setattr(retrieval, "get_index", boom)
+    monkeypatch.setattr(hybrid, "search", boom)
     assert _retrieve_context("随便问点什么") == []
+
+
+def test_hybrid_dense_recovers_a_semantic_match():
+    docs = [
+        corpus.Doc(id="sleep", kind="symptom", key="sleep", name="失眠",
+                   aliases=("失眠",), text="夜间难以入睡，睡眠质量下降。"),
+        corpus.Doc(id="skin", kind="symptom", key="skin", name="皮肤瘙痒",
+                   aliases=("皮肤瘙痒",), text="皮肤发痒。"),
+    ]
+
+    class FakeEncoder:
+        @staticmethod
+        def _one(text):
+            if "睡不着" in text or "失眠" in text or "入睡" in text:
+                return [1.0, 0.0]
+            return [0.0, 1.0]
+
+        def encode_corpus(self, texts):
+            out = []
+            for text in texts:
+                out.append(self._one(text))
+            return out
+
+        def encode_query(self, text):
+            return self._one(text)
+
+    retriever = hybrid.HybridRetriever(
+        docs, encoder=FakeEncoder(), dense_min_score=0.8,
+    )
+    hits = retriever.search("最近总是睡不着", top_k=1)
+    assert hits and hits[0][0].id == "sleep"
+
+
+def test_missing_optional_bge_falls_back_to_bm25(monkeypatch):
+    """真实部署没装模型或模型下载失败时，RAG 仍应可用。"""
+    from backend import config
+
+    class BrokenBGE:
+        def __init__(self, _model_name):
+            raise RuntimeError("model unavailable")
+
+    monkeypatch.setattr(config, "RAG_DENSE_ENABLED", True)
+    monkeypatch.setattr(hybrid, "BGEEncoder", BrokenBGE)
+    hybrid.reset()
+    try:
+        hits = hybrid.search(smart_doctor.load_knowledge(), "头痛")
+        assert hits
+    finally:
+        hybrid.reset()
+
+
+def test_bge_index_failure_falls_back_to_bm25(monkeypatch):
+    """模型可加载但编码语料失败时，也不能阻断检索。"""
+    from backend import config
+
+    class BrokenIndexEncoder:
+        def __init__(self, _model_name):
+            pass
+
+        def encode_corpus(self, _texts):
+            raise MemoryError("not enough memory")
+
+        def encode_query(self, _text):
+            return [1.0]
+
+    monkeypatch.setattr(config, "RAG_DENSE_ENABLED", True)
+    monkeypatch.setattr(hybrid, "BGEEncoder", BrokenIndexEncoder)
+    hybrid.reset()
+    try:
+        hits = hybrid.search(smart_doctor.load_knowledge(), "头痛")
+        assert hits
+    finally:
+        hybrid.reset()
+
+
+def test_bge_query_failure_falls_back_and_disables_dense():
+    """运行中的向量查询异常后，本次及后续请求都走 BM25。"""
+    docs = corpus.build_docs(smart_doctor.load_knowledge())
+
+    class BrokenQueryEncoder:
+        def encode_corpus(self, texts):
+            return [[1.0] for _ in texts]
+
+        def encode_query(self, _text):
+            raise RuntimeError("encoder crashed")
+
+    retriever = hybrid.HybridRetriever(docs, encoder=BrokenQueryEncoder())
+    assert retriever.search("头痛")
+    assert retriever._dense is None
+    assert retriever.search("头痛")

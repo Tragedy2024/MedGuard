@@ -6,6 +6,23 @@
 #
 # 本文件覆盖演示库中出现的全部检验项 / 药品 / 常见症状 / 常见诊断。
 #
+# ── ⚠️ 2026-09-23 改造后，本文件的定位变了 ────────────────────
+#
+# 智慧医生的**医学内容**已改由开源数据集提供（见 scripts/build_dataset_tables.py
+# 与 backend/dataset_kb.py）：症状→科室、疾病条目都取自 OpenCMKG。
+#
+# 本文件现在的用途：
+#   · symptoms[].aliases  / diseases[].aliases  → **意图识别**（判断患者在问哪类）
+#   · lab_tests                                → 检验数值分档（仍在用）
+#   · medications                              → 用药说明（仍在用）
+#   · departments                              → 科室名与别名
+#
+# **已不再被读取的字段**（保留待清理，删它们要同步改守卫测试）：
+#   · symptoms[].text / department / acuity
+#   · diseases[].what / advice / relations
+#
+# 也就是说：本文件正从「知识库」退化为「术语表 + 检验/用药内容」。
+
 # ── v2 相对 v1 的变化（**只改结构，不改内容语义**）─────────────────
 #
 #   1. 每个内容条目新增 `id`        —— relations 的稳定引用目标

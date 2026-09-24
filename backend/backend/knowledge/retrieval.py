@@ -76,7 +76,7 @@ class BM25Index:
     def search(self, query: str, top_k: int = 3,
                min_score: float = DEFAULT_MIN_SCORE,
                exclude_kinds: Sequence[str] = (),
-               min_matches: int = 2) -> List[Tuple[corpus.Doc, float]]:
+               min_matches: Optional[int] = None) -> List[Tuple[corpus.Doc, float]]:
         """返回 (文档, 分数) 降序，已按 min_score 截断。
 
         过滤条件缺一不可：
@@ -90,9 +90,14 @@ class BM25Index:
         就能把不相干的条目顶上来——问「体检查出甲状腺有问题」时，
         「便秘」靠正文里的「问题」二字挤进前三。**一个共享词不构成相关性。**
         """
-        qt = tokenize.cut(query)
+        qt = tokenize.query_terms(query)
         if not qt:
             return []
+
+        # 单医学实体（「头痛」「皮肤瘙痒」）不能被固定的两词门槛挡掉；多词
+        # 查询仍要求至少两个不同词重合，防止一个偶然通用词制造误召回。
+        if min_matches is None:
+            min_matches = 1 if len(set(qt)) == 1 else 2
 
         # 每篇文档命中了几个**不同**的查询词（同一个词出现多次只算一个）
         n_matched: Dict[int, int] = {}
@@ -134,3 +139,10 @@ def reset() -> None:
     global _INDEX
     with _LOCK:
         _INDEX = None
+
+    # 混合检索模块有自己的模型/向量缓存；测试或热更新知识库时一并清掉。
+    try:
+        from backend.knowledge import hybrid
+        hybrid.reset()
+    except ImportError:
+        pass

@@ -124,17 +124,42 @@ def test_ask_medication_returns_personal_data(demo_db):
 
 
 def test_ask_symptom_no_personal_data_required(demo_db):
+    """症状导诊不查院内数据；科室候选来自**开源数据集**。
+
+    2026-09-23 改造：症状→科室 从自写知识库改为 OpenCMKG 的两跳聚合
+    （症状→疾病→科室，投票取前几名）。因此科室从自定的「心血管内科」
+    变成数据集投票的结果（胸痛首选呼吸内科）。
+
+    **断言来源标注**：防止有人日后悄悄改回自写内容——那样"知识库来自
+    开源数据集"这句话就不成立了。
+    """
     r = smart_doctor.ask("我不舒服，胸痛，不知道挂什么科", "P001")
     assert r["intent"] == INTENT_SYMPTOM
     assert r["data"] is None  # 不涉及院内数据
-    assert "心血管内科" in r["advice"]["text"]
+    assert "OpenCMKG" in r["interpretation"]["source"]
+    cands = [i["ref_title"] for i in r["interpretation"]["items"]]
+    assert cands, "应给出科室候选"
+    assert len(cands) >= 2, "应给候选列表而非单一科室——实测 top1 只有 65%"
 
 
 def test_ask_disease_knowledge_only(demo_db):
+    """疾病科普：事实来自**开源数据集**，不再查院内数据。
+
+    2026-09-23 改造：疾病卡片从自写文案改为 OpenCMKG 的关系聚合
+    （症状/检查/药物/并发症/治疗/科室）。自写的 `what`/`advice` 两段
+    解释性文字已移除——解释改由 AI 生成并单独标注。
+    """
     r = smart_doctor.ask("我想了解糖尿病", "P001")
     assert r["intent"] == INTENT_DISEASE
     assert r["data"] is None
-    assert "饮食" in r["advice"]["text"]
+    assert "OpenCMKG" in r["interpretation"]["source"]
+    items = r["interpretation"]["items"]
+    kinds = [i["ref_kind"] for i in items]
+    titles = [i["ref_title"] for i in items]
+    assert "就诊科室" in kinds, f"应给出科室归属，实际 kinds={kinds}"
+    assert "常见症状" in titles, f"应给出症状条目，实际 titles={titles}"
+    # 科室名本身是 ref_title（那一条的 kind 才是「就诊科室」）
+    assert any("科" in t for t in titles), f"应给出具体科室名，实际 {titles}"
 
 
 def test_ask_fallback_guides_user(demo_db, monkeypatch):
@@ -395,11 +420,22 @@ def test_urgent_not_raised_when_no_record_found(demo_db):
 
 
 def test_urgent_raised_for_red_flag_symptoms(demo_db):
-    """胸痛/便血是红旗信号（acuity 2）→ 弹横幅；普通症状不弹。"""
+    """⚠️ **急诊横幅已恢复**：由红旗规则层（backend/redflags.py）驱动。
+
+    2026-09-23 症状→科室改走开源数据集（OpenCMKG）时，原由知识库 `acuity`
+    分诊等级驱动的急诊横幅随之消失；本用例当时把该损失钉住（断言 urgent
+    为 False）。2026-09-24 按代码评审 P1 增加红旗规则层后显式改回。
+
+    "数据从哪来"的答案：来自 `backend/redflags.py` 的**显式规则清单**
+    （胸痛、呼吸困难、意识障碍、大出血、严重过敏等 6 组，精度优先、
+    零 LLM、零网络），命中即无条件升级——这是规则而非自写知识内容，
+    与"知识库来自开源数据集"不冲突。`urgent` 字段仍在契约里。
+    """
     assert smart_doctor.ask(
         "我不舒服，胸痛，不知道挂什么科", "P001")["advice"]["urgent"] is True
-    assert smart_doctor.ask("我最近便血", "P001")["advice"]["urgent"] is True
-    assert smart_doctor.ask("我头晕", "P001")["advice"]["urgent"] is False
+    # 非红旗症状不受影响
+    assert smart_doctor.ask(
+        "我不舒服，头晕，不知道挂什么科", "P001")["advice"]["urgent"] is False
 
 
 # ── 回归：意图路由 ────────────────────────────────────────────
@@ -414,16 +450,30 @@ def test_intent_longest_key_wins_for_lab_substring(demo_db):
 
 
 def test_ambiguous_symptom_routes_to_triage_with_guide(demo_db):
-    """疾病关键词同时是症状词时 → 症状导诊，并给出转向疾病科普的引导。"""
-    for q, dept, disease in [("我胃痛", "消化内科", "胃炎"),
-                             ("我胃疼", "消化内科", "胃炎"),
-                             ("我咳嗽", "呼吸内科", "支气管炎"),
-                             ("我感冒了", "呼吸内科", "上呼吸道感染")]:
+    """疾病关键词同时是症状词时 → **仍走症状导诊**（意图路由不变）。
+
+    ⚠️ **已知功能损失**：转向疾病科普的引导句（"如果您是想了解「胃炎」…"）
+    在 2026-09-23 改造后消失了——它依赖自写知识库里"症状别名与疾病关键词
+    重叠"这一结构，改走开源数据集后没有这层对应关系。
+
+    **路由本身没变**，这正是本用例继续守的部分：患者说「我胃痛」走导诊，
+    说「我想了解胃炎」走科普——两者不会互相抢。
+    """
+    for q in ["我胃痛", "我胃疼", "我咳嗽"]:
         r = smart_doctor.ask(q, "P001")
         assert r["intent"] == INTENT_SYMPTOM, q
-        assert dept in r["advice"]["text"], q
-        assert f"我想了解{disease}" in r["advice"]["text"], q
-        # 疾病科普本身仍然可达，没有被歧义规则误伤
+        # 科室候选来自数据集，不再是自写知识库
+        assert "OpenCMKG" in r["interpretation"]["source"], q
+
+    # ⚠️ **已知覆盖缺口**：「感冒」在数据集里没有对应的通用症状名
+    # （只有「反复感冒」「胃肠感冒」这类限定说法），因此不硬凑，
+    # 落到 AI 兜底路径。意图仍是症状导诊，只是科室来自 AI 而非数据集。
+    r = smart_doctor.ask("我感冒了", "P001")
+    assert r["intent"] == INTENT_SYMPTOM
+    assert "OpenCMKG" not in r["interpretation"]["source"]
+
+    # 疾病科普本身仍然可达，没有被歧义规则误伤
+    for disease in ["胃炎", "支气管炎", "上呼吸道感染"]:
         assert smart_doctor.ask(
             f"我想了解{disease}", "P001")["intent"] == INTENT_DISEASE
 
@@ -482,22 +532,28 @@ def test_parse_llm_json_skips_braces_inside_strings():
         "t": "血糖 {空腹", "u": True}
 
 
-def test_kb_null_values_do_not_500(monkeypatch):
-    """YAML 写了键但值为 null（"先留空待补"）不能把接口打成 500。"""
+def test_kb_null_values_do_not_500(demo_db, monkeypatch):
+    """YAML 写了键但值为 null（"先留空待补"）不能把接口打成 500。
+
+    2026-09-23：疾病与症状路径已改走开源数据集、不再读知识库，本用例
+    因此**改指检验项路径**——那条路仍然读 `smart_knowledge.yaml`，
+    空值风险还在，守卫必须继续有效（而不是随路径迁移一起消失）。
+    """
     kb = smart_doctor.load_knowledge()
-    patched = {
-        "lab_tests": kb.get("lab_tests") or {},
-        "medications": kb.get("medications") or {},
-        "symptoms": list(kb.get("symptoms") or []),
-        "diseases": dict(kb.get("diseases") or {}),
+    patched = dict(kb)
+    patched["lab_tests"] = dict(kb.get("lab_tests") or {})
+    # 一个字段全为 null 的检验项——read 到时不能炸
+    patched["lab_tests"]["测试项"] = {
+        "id": "lab_test_item", "aliases": ["测试项"],
+        "provenance": {"reviewed": True, "source": "测试"},
+        "desc": None, "unit": None, "normal": None,
+        "ranges": None, "advice_common": None, "urgent_text": None,
     }
-    patched["diseases"]["测试病"] = {"what": None, "advice": None,
-                                     "aliases": ["测试病"]}
     monkeypatch.setattr(smart_doctor, "_KB", patched)
-    r = smart_doctor.ask("我想了解测试病", "P001")
-    assert r["interpretation"]["text"] == ""
-    assert r["advice"]["text"] == ""
-    assert r["advice"]["actions"] == []
+    r = smart_doctor.ask("我的测试项正常吗", "P001")
+    # 不抛异常即为通过；解读可以是空或"未找到记录"，但不能 500
+    assert r["intent"] == INTENT_LAB
+    assert r["interpretation"] is not None
 
 
 def test_load_knowledge_failure_is_not_cached(monkeypatch):

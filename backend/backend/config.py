@@ -93,6 +93,23 @@ LLM_API_KEY = os.environ.get("OPENAI_API_KEY") or ""
 LLM_API_BASE = os.environ.get("OPENAI_API_BASE") or "https://api.deepseek.com/v1"
 LLM_MODEL = os.environ.get("MODEL_NAME") or "deepseek-v4-pro"
 
+# ── RAG 检索（默认尝试本地 BGE；不可用时自动降级为 BM25）──────────
+#
+# BGE 使用延迟加载：首次真正检索时才初始化；未安装 FlagEmbedding 则立即降级。
+# 权重首次使用会下载，之后可完全离线运行。小型 CPU 演示优先 bge-small-zh-v1.5；有 GPU
+# 或需要多语言/长文本时可换成 BAAI/bge-m3。
+RAG_DENSE_ENABLED = os.environ.get("MEDGUARD_RAG_DENSE", "1").lower() in {
+    "1", "true", "yes", "on",
+}
+RAG_DENSE_MODEL = os.environ.get(
+    "MEDGUARD_RAG_DENSE_MODEL", "BAAI/bge-small-zh-v1.5"
+)
+# bge-small-zh-v1.5 在本项目 91 条语料上的实测分界：有效口语问法约
+# 0.62～0.73；泛问/天气约 0.40～0.45；未覆盖膝痛最高约 0.54。
+# 因而默认取 0.58。换模型或扩语料后必须用金标集重新校准。
+RAG_DENSE_MIN_SCORE = float(os.environ.get("MEDGUARD_RAG_DENSE_MIN_SCORE", "0.58"))
+RAG_CANDIDATE_K = max(3, int(os.environ.get("MEDGUARD_RAG_CANDIDATE_K", "20")))
+
 # ── 问答缓存 ─────────────────────────────────────────────────────
 # 系统自动积累的「问法 → 查询计划」缓存。演示时先查它（离线、确定性、
 # 毫秒级），未命中再调 LLM。预热方式就是提前跑几次查询。

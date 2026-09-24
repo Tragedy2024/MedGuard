@@ -182,24 +182,6 @@
       "created_at": "2026-09-15T17:51:12",
       "last_used": "2026-09-15T18:45:51",
       "source": "preset"
-    },
-    "得这个病的有多少人": {
-      "plan": [
-        {
-          "id": 0,
-          "description": "Identify the disease name referred to by “这个病” from the conversation context.  \nSub question 2: Count how many distinct patients treated by doctor S001 have this disease.",
-          "sql": "SELECT COUNT(DISTINCT T1.patient_id)\nFROM clinical_records AS T1\nINNER JOIN visits AS T2\n  ON T1.patient_id = T2.patient_id\nWHERE T2.doctor_id = 'S001'\n  AND T1.diagnosis_name = '疾病名称';"
-        }
-      ],
-      "token_types": [
-        "patient",
-        "staff"
-      ],
-      "hits": 8,
-      "created_at": "2026-09-15T17:51:12",
-      "last_used": "2026-09-15T18:45:51",
-      "source": "preset",
-      "subject_id": "S001"
     }
   }
 }
