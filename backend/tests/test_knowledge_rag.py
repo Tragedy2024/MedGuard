@@ -223,3 +223,131 @@ def test_bge_query_failure_falls_back_and_disables_dense():
     assert retriever.search("头痛")
     assert retriever._dense is None
     assert retriever.search("头痛")
+
+
+# ── OpenCMKG 第二知识源（2026-09 设计评审：双知识源 + 加权 RRF + YAML 配额）──
+
+def _doc(id_, name, text, kind="disease"):
+    return corpus.Doc(id=id_, kind=kind, key=name, name=name,
+                      aliases=(name,), text=text)
+
+
+def test_opencmkg_adapter_loads_docs(monkeypatch, tmp_path):
+    """适配器把 rag_documents.json 展平成带来源/质量等级的 Doc。"""
+    import json as _json
+    from backend.knowledge import opencmkg
+    doc_file = tmp_path / "rag_documents.json"
+    doc_file.write_text(_json.dumps({
+        "documents": [
+            {"id": "opencmkg:disease:冠心病", "kind": "disease", "key": "冠心病",
+             "name": "冠心病", "aliases": ["冠心病"],
+             "text": "关联症状：胸痛；就诊科室：心血管内科"},
+            {"id": "opencmkg:symptom:胸痛", "kind": "symptom", "key": "胸痛",
+             "name": "胸痛", "aliases": ["胸痛"], "text": "关联疾病：冠心病"},
+        ],
+    }, ensure_ascii=False))
+    monkeypatch.setattr(opencmkg, "_DOCS_FILE", str(doc_file))
+    opencmkg.reset()
+    docs = opencmkg.load_docs()
+    assert len(docs) == 2
+    assert docs[0].id == "opencmkg:disease:冠心病"
+    assert docs[0].quality_tier == "opencmkg"
+    assert docs[0].source == "OpenCMKG"
+    assert docs[0].license
+    opencmkg.reset()
+
+
+def test_opencmkg_missing_file_yields_empty(monkeypatch, tmp_path):
+    """文件缺失/损坏：第二知识源降级为空，不影响第一知识源。"""
+    from backend.knowledge import opencmkg
+    monkeypatch.setattr(opencmkg, "_DOCS_FILE",
+                        str(tmp_path / "不存在.json"))
+    opencmkg.reset()
+    assert opencmkg.load_docs() == []
+    opencmkg.reset()
+
+
+def test_rrf_weights_rank_sources(monkeypatch):
+    """加权 RRF：低权重来源排在同等位置的高权重来源之后。"""
+    d1 = _doc("p1", "知识库条目", "人工整理")
+    d2 = _doc("e1", "OpenCMKG条目", "开源图谱")
+    r1 = [(d1, 1.0)]           # 两路都是对方 rank=1
+    r2 = [(d2, 1.0)]
+    fused_heavy = hybrid.reciprocal_rank_fusion([r1, r2], weights=(1.0, 0.1))
+    assert fused_heavy[0][0].id == "p1"
+    fused_light = hybrid.reciprocal_rank_fusion([r1, r2], weights=(0.1, 1.0))
+    assert fused_light[0][0].id == "e1"
+
+
+def test_yaml_quota_keeps_primary_in_topk():
+    """YAML 配额：第一知识源有可靠命中但被第二知识源挤掉时，补进 top_k。"""
+    primary = [_doc("p1", "失眠", "失眠，夜间难以入睡，睡眠质量下降")]
+    extras = [
+        _doc("e1", "失眠症候", "失眠，睡眠质量差，入睡困难"),
+        _doc("e2", "睡眠障碍", "失眠多梦，睡眠障碍"),
+        _doc("e3", "入睡困难", "失眠，入睡困难，夜间易醒"),
+    ]
+    retriever = hybrid.HybridRetriever(
+        primary, extra_docs=extras, extra_weight=0.7,
+        candidate_k=20, bm25_min_score=0.0,
+    )
+    hits = retriever.search("失眠", top_k=3)
+    ids = [d.id for d, _ in hits]
+    assert len(hits) == 3
+    assert "p1" in ids          # 配额保证人工条目在场（排名可被 OpenCMKG 占据，但必须有人工条）
+
+
+def test_opencmkg_switch_controls_second_source(monkeypatch, tmp_path):
+    """开关：默认关 = get_retriever 不带第二知识源；打开 = 带上且可被检索到。"""
+    import json as _json
+    from backend import config
+    from backend.knowledge import opencmkg
+    path = tmp_path / "rag_documents.json"
+    path.write_text(_json.dumps({"documents": [
+        {"id": "opencmkg:disease:草原病", "kind": "disease", "key": "草原病",
+         "name": "草原病", "aliases": ["草原病"],
+         "text": "关联症状：皮疹；就诊科室：皮肤科"},
+    ]}, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(opencmkg, "_DOCS_FILE", str(path))
+    opencmkg.reset()
+    hybrid.reset()
+
+    kb = smart_doctor.load_knowledge()
+
+    monkeypatch.setattr(config, "RAG_OPENCMKG_ENABLED", False)
+    hybrid.reset()
+    retriever_off = hybrid.get_retriever(kb)
+    assert retriever_off._extra_docs == []
+
+    monkeypatch.setattr(config, "RAG_OPENCMKG_ENABLED", True)
+    hybrid.reset()
+    retriever_on = hybrid.get_retriever(kb)
+    assert len(retriever_on._extra_docs) == 1
+    assert retriever_on._extra_docs[0].id == "opencmkg:disease:草原病"
+
+    # 行为断言：合成小语料用低阈值，确认 OpenCMKG 条目能真正被检索命中
+    from backend.knowledge import corpus as _corpus
+    primary = _corpus.build_docs(kb)
+    probe = hybrid.HybridRetriever(
+        primary, extra_docs=retriever_on._extra_docs, extra_weight=0.7,
+        bm25_min_score=0.0,
+    )
+    hits = probe.search("草原病", top_k=3)
+    assert any(d.id.startswith("opencmkg:") for d, _ in hits)
+    opencmkg.reset()
+    hybrid.reset()
+
+
+def test_opencmkg_failure_falls_back_to_yaml(monkeypatch):
+    """第二知识源加载失败：仅 YAML，不连累检索。"""
+    from backend import config
+    from backend.knowledge import opencmkg
+    monkeypatch.setattr(config, "RAG_OPENCMKG_ENABLED", True)
+
+    def boom():
+        raise RuntimeError("rag_documents.json 损坏")
+    monkeypatch.setattr(opencmkg, "load_docs", boom)
+    hybrid.reset()
+    hits = hybrid.search(smart_doctor.load_knowledge(), "头痛", top_k=3)
+    assert isinstance(hits, list)
+    hybrid.reset()

@@ -4,6 +4,13 @@
 RRF。默认尝试 BGE adapter；未安装依赖、模型加载/建索引/查询失败时，模块
 确定性回退到现有 BM25。
 
+双知识源（2026-09 设计评审）：
+- 第一知识源 YAML（约 91 条，人工整理、可信度高）——权重 1.0；
+- 第二知识源 OpenCMKG（约 1.5 万条检索文档，覆盖面大、质量等级低，
+  knowledge/opencmkg.py）——默认关闭（``RAG_OPENCMKG_ENABLED``），开启后
+  按 ``RAG_OPENCMKG_WEIGHT`` 加权参与 RRF，且当 YAML 有可靠命中时，
+  top_k 至少保留一条人工证据，避免 OpenCMKG 占满结果。
+
 论文对应：BGE-M3/FlagEmbedding（语义召回）+ RAG-Fusion 的 RRF 排名
 融合 + CRAG 的相关性门控思想。这里不采用 CRAG 的开放网页搜索：医疗语境中
 证据不足应拒答，而不是自动扩大到不受控来源。
@@ -15,7 +22,7 @@ import threading
 from typing import Any, Dict, List, Optional, Protocol, Sequence, Tuple
 
 from backend import config
-from backend.knowledge import corpus
+from backend.knowledge import corpus, opencmkg, retrieval
 from backend.knowledge.retrieval import BM25Index
 
 _RRF_K = 60
@@ -101,43 +108,104 @@ class BGEEncoder:
 def reciprocal_rank_fusion(
     rankings: Sequence[Sequence[Tuple[corpus.Doc, float]]],
     *, rrf_k: int = _RRF_K,
+    weights: Sequence[float] = (),
 ) -> List[Tuple[corpus.Doc, float]]:
-    """融合不同分数尺度的排名；同一文档在多路出现会自然加分。"""
+    """融合不同分数尺度的排名；同一文档在多路出现会自然加分。
+
+    weights：与 rankings 一一对应的来源权重（默认全 1.0）——用于压制
+    低质量知识源（如 OpenCMKG）对排名的淹没。
+    """
+    if weights and len(weights) != len(rankings):
+        raise ValueError("weights 与 rankings 长度不一致")
     scores: Dict[str, float] = {}
     docs: Dict[str, corpus.Doc] = {}
-    for ranking in rankings:
+    for i, ranking in enumerate(rankings):
+        w = weights[i] if weights else 1.0
         for rank, (doc, _raw_score) in enumerate(ranking, 1):
             docs[doc.id] = doc
-            scores[doc.id] = scores.get(doc.id, 0.0) + 1.0 / (rrf_k + rank)
+            scores[doc.id] = scores.get(doc.id, 0.0) + w / (rrf_k + rank)
     ordered = sorted(scores, key=scores.get, reverse=True)
     return [(docs[doc_id], scores[doc_id] * 100) for doc_id in ordered]
 
 
 class HybridRetriever:
-    """BM25 + 可选 dense；任一 dense 故障均在模块内降级。"""
+    """BM25 + 可选 dense；可选第二知识源（OpenCMKG），默认不启用。"""
 
     def __init__(self, docs: Sequence[corpus.Doc], *,
                  encoder: Optional[Encoder] = None,
                  dense_min_score: float = 0.58,
-                 candidate_k: int = 20):
+                 candidate_k: int = 20,
+                 bm25_min_score: Optional[float] = None,
+                 extra_docs: Sequence[corpus.Doc] = (),
+                 extra_weight: float = 0.7):
         self.docs = list(docs)
         self._bm25 = BM25Index(self.docs)
         self._dense = (DenseIndex(self.docs, encoder, dense_min_score)
                        if encoder is not None else None)
         self._candidate_k = max(3, candidate_k)
+        # 检索阈值可调（默认用 retrieval.DEFAULT_MIN_SCORE 的 1.5；
+        # 测试用合成小语料时按需调低，生产路径不传即保持默认）
+        self._bm25_min_score = (bm25_min_score if bm25_min_score is not None
+                                else retrieval.DEFAULT_MIN_SCORE)
+
+        # 第二知识源：独立建索引，融合时按来源加权（默认关 = 空）
+        self._extra_docs = list(extra_docs)
+        self._extra_weight = float(extra_weight)
+        self._extra_bm25 = (BM25Index(self._extra_docs)
+                            if self._extra_docs else None)
+        self._extra_dense = (
+            DenseIndex(self._extra_docs, encoder, dense_min_score)
+            if self._extra_docs and encoder is not None else None)
 
     def search(self, query: str, top_k: int = 3) -> List[Tuple[corpus.Doc, float]]:
-        rankings: List[List[Tuple[corpus.Doc, float]]] = [
-            self._bm25.search(query, top_k=self._candidate_k)
+        primary_rankings: List[List[Tuple[corpus.Doc, float]]] = [
+            self._bm25.search(query, top_k=self._candidate_k,
+                              min_score=self._bm25_min_score)
         ]
         if self._dense is not None:
             try:
-                rankings.append(self._dense.search(query, self._candidate_k))
+                primary_rankings.append(self._dense.search(query, self._candidate_k))
             except Exception as exc:  # noqa: BLE001 - 运行时故障必须降级
                 print(f"[rag] BGE 查询失败，回退 BM25：{exc}", flush=True)
                 self._dense = None
-        fused = reciprocal_rank_fusion(rankings)
-        return fused[:top_k]
+
+        rankings: List[List[Tuple[corpus.Doc, float]]] = list(primary_rankings)
+        weights: List[float] = [1.0] * len(primary_rankings)
+        if self._extra_bm25 is not None:
+            try:
+                rankings.append(self._extra_bm25.search(
+                    query, top_k=self._candidate_k,
+                    min_score=self._bm25_min_score))
+                weights.append(self._extra_weight)
+            except Exception as exc:  # noqa: BLE001 - 第二知识源任何时候都不能连累检索
+                print(f"[rag] OpenCMKG BM25 检索失败，弃用：{exc}", flush=True)
+                self._extra_bm25 = None
+        if self._extra_dense is not None:
+            try:
+                rankings.append(self._extra_dense.search(query, top_k=self._candidate_k))
+                weights.append(self._extra_weight)
+            except Exception as exc:  # noqa: BLE001
+                print(f"[rag] OpenCMKG BGE 查询失败，弃用：{exc}", flush=True)
+                self._extra_dense = None
+
+        fused = reciprocal_rank_fusion(rankings, weights=weights)
+        candidates = fused[: self._candidate_k]
+
+        # YAML 配额（设计评审）：第一知识源有可靠命中但被第二知识源挤掉时，
+        # 把最强的人工条目补进 top_k，避免 OpenCMKG 占满前三。
+        # 注意在**完整 fused 列表**里找人工条目——只看 candidates 的话，
+        # 当人工条目掉出 candidate_k（1.5 万条语料下可能发生）配额会静默失效。
+        primary_ids = {d.id for d in self.docs}
+        if fused and not any(d.id in primary_ids for d, _ in candidates[:top_k]):
+            primary_hits = [(d, s) for d, s in fused if d.id in primary_ids]
+            if primary_hits:
+                final = list(candidates[:top_k])
+                if len(final) == top_k:
+                    final[-1] = primary_hits[0]
+                else:
+                    final.append(primary_hits[0])
+                candidates = final
+        return candidates[:top_k]
 
 
 _LOCK = threading.Lock()
@@ -160,13 +228,23 @@ def get_retriever(kb: Dict[str, Any]) -> HybridRetriever:
         if _RETRIEVER is None:
             docs = corpus.build_docs(kb)
             from backend.knowledge import tokenize
-            tokenize.prepare(corpus.aliases_of(docs))
+            aliases = corpus.aliases_of(docs)
+            extra_docs: List[corpus.Doc] = []
+            if config.RAG_OPENCMKG_ENABLED:
+                try:
+                    extra_docs = opencmkg.load_docs()
+                except Exception as exc:  # noqa: BLE001 - 第二知识源故障必须降级
+                    print(f"[rag] OpenCMKG 不可用，仅 YAML：{exc}", flush=True)
+                aliases = [*aliases, *corpus.aliases_of(extra_docs)]
+            tokenize.prepare(aliases)
             encoder = _optional_encoder()
             try:
                 _RETRIEVER = HybridRetriever(
                     docs, encoder=encoder,
                     dense_min_score=config.RAG_DENSE_MIN_SCORE,
                     candidate_k=config.RAG_CANDIDATE_K,
+                    extra_docs=extra_docs,
+                    extra_weight=config.RAG_OPENCMKG_WEIGHT,
                 )
             except Exception as exc:  # noqa: BLE001 - 建索引失败必须降级
                 if encoder is None:
@@ -174,6 +252,8 @@ def get_retriever(kb: Dict[str, Any]) -> HybridRetriever:
                 print(f"[rag] BGE 建索引失败，回退 BM25：{exc}", flush=True)
                 _RETRIEVER = HybridRetriever(
                     docs, candidate_k=config.RAG_CANDIDATE_K,
+                    extra_docs=extra_docs,
+                    extra_weight=config.RAG_OPENCMKG_WEIGHT,
                 )
         return _RETRIEVER
 

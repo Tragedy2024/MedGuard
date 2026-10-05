@@ -86,10 +86,18 @@ for _p in (os.path.join(_PROJECT_ROOT, ".env"),
            os.path.join(os.path.dirname(_PROJECT_ROOT), ".env")):
     _load_env_file(_p)
 
+# ── 测试隔离（2026-09 代码评审）────────────────────────────────
+# MEDGUARD_TESTING=1（由 tests/conftest.py 在导入任何 backend 模块前自动注入）
+# 时，无论机器上是否存在真实 .env，都清空 LLM 配置并关闭 BGE——
+# 保证 pytest 永不联网、结果确定可复现，演示与生产不受影响。
+_TESTING = os.environ.get("MEDGUARD_TESTING", "0").lower() in {
+    "1", "true", "yes", "on",
+}
+
 
 # ── LLM（自然语言 → SQL 的翻译环节）──────────────────────────────
 # 注意：审计环节（医盾）零 LLM，这条配置只影响「翻译」，不影响安全声明。
-LLM_API_KEY = os.environ.get("OPENAI_API_KEY") or ""
+LLM_API_KEY = (os.environ.get("OPENAI_API_KEY") or "") if not _TESTING else ""
 LLM_API_BASE = os.environ.get("OPENAI_API_BASE") or "https://api.deepseek.com/v1"
 LLM_MODEL = os.environ.get("MODEL_NAME") or "deepseek-v4-pro"
 
@@ -98,9 +106,9 @@ LLM_MODEL = os.environ.get("MODEL_NAME") or "deepseek-v4-pro"
 # BGE 使用延迟加载：首次真正检索时才初始化；未安装 FlagEmbedding 则立即降级。
 # 权重首次使用会下载，之后可完全离线运行。小型 CPU 演示优先 bge-small-zh-v1.5；有 GPU
 # 或需要多语言/长文本时可换成 BAAI/bge-m3。
-RAG_DENSE_ENABLED = os.environ.get("MEDGUARD_RAG_DENSE", "1").lower() in {
+RAG_DENSE_ENABLED = (os.environ.get("MEDGUARD_RAG_DENSE", "1").lower() in {
     "1", "true", "yes", "on",
-}
+}) and not _TESTING
 RAG_DENSE_MODEL = os.environ.get(
     "MEDGUARD_RAG_DENSE_MODEL", "BAAI/bge-small-zh-v1.5"
 )
@@ -110,10 +118,26 @@ RAG_DENSE_MODEL = os.environ.get(
 RAG_DENSE_MIN_SCORE = float(os.environ.get("MEDGUARD_RAG_DENSE_MIN_SCORE", "0.58"))
 RAG_CANDIDATE_K = max(3, int(os.environ.get("MEDGUARD_RAG_CANDIDATE_K", "20")))
 
-# ── 问答缓存 ─────────────────────────────────────────────────────
-# 系统自动积累的「问法 → 查询计划」缓存。演示时先查它（离线、确定性、
-# 毫秒级），未命中再调 LLM。预热方式就是提前跑几次查询。
-QUERY_CACHE_FILE = os.environ.get(
-    "MEDGUARD_QUERY_CACHE", os.path.join(DEMO_DIR, "query_cache.json")
+# ── OpenCMKG 第二知识源（默认关）────────────────────────────────
+# 第一知识源 YAML 约 91 条（人工整理、可信度高）；OpenCMKG 约 1.5 万条
+# 检索文档（覆盖面大、质量等级低，见 knowledge/opencmkg.py）。开启后按
+# 来源加权 RRF 融合（YAML 1.0、OpenCMKG 取 0.6～0.8），且 YAML 有可靠命中
+# 时 top_k 至少保留一条人工证据。检索只召回事实，不参与直接诊断。
+RAG_OPENCMKG_ENABLED = os.environ.get("MEDGUARD_RAG_OPENCMKG", "0").lower() in {
+    "1", "true", "yes", "on",
+}
+# 权重直接进 RRF 求和：越界值钳制到 [0, 1]，防止负数/超权污染排名
+RAG_OPENCMKG_WEIGHT = min(max(float(os.environ.get(
+    "MEDGUARD_RAG_OPENCMKG_WEIGHT", "0.7")), 0.0), 1.0)
+
+# ── 问答缓存（2026-09 评审拆分：预置只读 + 运行时学习）────────────
+# 预置演示缓存：随仓库跟踪、**只读**（演示问法打磨过的计划）；
+# 运行时学习缓存：写在 data/（gitignore），新问法在这里累计。
+# 拆分后跑演示/测试不会再改动跟踪文件、把 git 弄脏。
+PRESET_QUERY_CACHE = os.environ.get(
+    "MEDGUARD_QUERY_CACHE_PRESET", os.path.join(DEMO_DIR, "query_cache.json")
+)
+LEARNED_QUERY_CACHE = os.environ.get(
+    "MEDGUARD_QUERY_CACHE", os.path.join(DATA_DIR, "query_cache_learned.json")
 )
 QUERY_CACHE_PER_TOKEN = int(os.environ.get("MEDGUARD_QUERY_CACHE_LIMIT", "10"))

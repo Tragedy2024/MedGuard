@@ -108,8 +108,8 @@
 backend/scripts/build_dataset_tables.py      抽取脚本（随仓库交付）
         │  读 OpenCMKG 的原始三元组
         ▼
-backend/demo/symptom_departments.json        症状 6305 个 · 470 KB
-backend/demo/disease_facts.json              疾病 7508 个 · 2.4 MB
+backend/demo/symptom_departments.json        症状 6227 个 · 465 KB
+backend/demo/disease_facts.json              疾病 7495 个 · 2.4 MB
 ```
 
 **抽取逻辑在代码里，不是在文档里声称。** 任何人下载 OpenCMKG 后跑一遍脚本，
@@ -140,9 +140,11 @@ backend/demo/disease_facts.json              疾病 7508 个 · 2.4 MB
 ### 诚实的边界
 
 - **只给候选科室，不给唯一答案。** 实测数据集推导的 top1 准确率 65%、top3 85%，
-  因此界面呈现前 3 名及各自的相关疾病数——比给一个会错三分之一的答案更诚实。
-- **急诊横幅已移除。** 它原先由**自写**的分诊等级驱动，而数据集没有这个字段。
-  测试里保留了一条用例把这个损失**钉住**，而不是假装它还在。
+  因此界面呈现候选科室列表（数据集投票前 5 名）及各自的相关疾病数——
+  比给一个会错三分之一的答案更诚实。
+- **急诊横幅由知识库 acuity 分级与红旗规则层共同决定**（见「红旗规则层」一节）：
+  检验解读命中危重及以上档位、或任何路径命中红旗词（胸痛等），都会弹横幅；
+  红旗层独立于 LLM 与知识图谱，命中即无条件升级。
 - **数据集含中成药名**（玉泉颗粒、脑立清丸等），与演示库的现代药不重合——
   那是数据集的原样内容，未作筛选。
 - **许可**：OpenCMKG 为「**仅学术研究，不得商用**」。本项目非商用、不公开。
@@ -174,6 +176,25 @@ MEDGUARD_RAG_DENSE_MODEL=BAAI/bge-small-zh-v1.5
 
 阈值必须以项目自己的中文医疗金标集校准；相关性分数不是医学正确性评分。
 检索低于阈值时返回空证据，不会为了凑满 top-k 而强行注入无关上下文。
+
+### OpenCMKG 第二知识源（默认关，可选的召回扩充）
+
+清洗后的 OpenCMKG（约 1.5 万条检索文档：疾病/症状/检查/科室，**不含药物与
+治疗**，见 `knowledge/opencmkg.py`）可纳入混合召回：
+
+```bash
+MEDGUARD_RAG_OPENCMKG=1
+MEDGUARD_RAG_OPENCMKG_WEIGHT=0.7   # 来源权重：YAML 1.0、OpenCMKG 0.6～0.8
+```
+
+开启后 BM25/BGE 各自对两套语料召回，按来源权重做 RRF 融合；YAML 有可靠命中
+时 top_k 至少保留一条人工证据。OpenCMKG 只贡献**事实召回**、不参与直接诊断；
+检索文档由 `build_dataset_tables.py --export-docs` 从固定 SHA-256 的原始三元组
+生成。关闭（默认）时行为与纯 YAML 检索完全一致。
+
+检索质量有金标评测支撑：66 条四类问法、四路配置对照（纯 BM25 / +BGE /
++OpenCMKG / 全量混合）见 [`docs/research/2026-10-04-retrieval-eval.md`](docs/research/2026-10-04-retrieval-eval.md)，
+复现：`python scripts/eval_retrieval.py --all`。
 
 ## 快速开始
 
@@ -314,7 +335,7 @@ MedGuard/
 │   │   ├── deps.py            ★ 算法层唯一访问点（load_policy / audit_plan）
 │   │   ├── llm_nl2sql.py      自然语言 → 查询计划（缓存未命中时才走）
 │   │   ├── smart_doctor.py    智慧医生：意图识别 + 医盾取数 + 知识库三块
-│   │   │                      + acuity 分诊等级（决定急诊横幅）+ AI 兜底
+│   │   │                      + acuity 分诊等级与红旗规则层（决定急诊横幅）+ AI 兜底
 │   │   ├── query_cache.py     「问法 → 计划」缓存
 │   │   ├── credentials.py     口令哈希（PBKDF2）+ 令牌签名（HMAC-SHA256）
 │   │   ├── security.py        HTTP 层身份强制：验签、管理员校验
@@ -329,7 +350,7 @@ MedGuard/
 │   │   ├── smart_knowledge.yaml       ★ 智慧医生知识库（检验分档/症状/疾病）
 │   │   └── queries.json       预设查询库（医护 4 + 病患 5）
 │   ├── vendor/nl2sql/         内置算法层（改动记录见 VENDOR-PATCHES.md）
-│   ├── tests/                 217 项
+│   ├── tests/                 275 项
 │   └── docs/api-contract/     中文契约说明
 ├── frontend/
 │   └── src/
@@ -349,16 +370,20 @@ MedGuard/
 ## 测试
 
 ```bash
-cd backend && python -m pytest tests/ -q        # 217 项，约 18 秒
+cd backend && python -m pytest tests/ -q        # 275 项
 cd frontend && npx tsc -b                       # 类型检查
 cd frontend && npm run visual                   # 视觉核查，截图 + 收集控制台报错
 ```
 
-**217 项后端测试**覆盖层一准入、演示库 seed 锚点、SSA 策略完整性（防 fail-open 缺口）、
-智慧医生（意图识别与歧义引导 / 三块结构 / 层一只读本人 / **acuity 分诊等级** /
+**275 项后端测试**覆盖层一准入、演示库 seed 锚点、SSA 策略完整性（防 fail-open 缺口）、
+智慧医生（意图识别与歧义引导 / 三块结构 / 层一只读本人 / **红旗规则层** /
 **AI 兜底**）、算法层适配、六组路由契约，以及**演示数据校验**——9 条预设查询逐条断言
 「是否放行 / 最少事件数 / 期望的降级等级」。后者是阻塞性的：
 演示库触发失败 = 视频录不出来。
+
+> **测试隔离**：`tests/conftest.py` 自动注入 `MEDGUARD_TESTING=1`——无论机器上
+> 是否存在真实 `.env`，`pytest` 都**永不联网**（清空 LLM 配置、关闭 BGE 语义检索），
+> 约 20 秒跑完、结果可复现。真实 API 只在人工演示/自由提问时生效。
 
 安全报告另有**按账号隔离**的断言：医生与患者各自只看到自己发起的查询，
 越权读/导出别人的报告 id 一律 404。账号侧则钉住**令牌必须验签**——

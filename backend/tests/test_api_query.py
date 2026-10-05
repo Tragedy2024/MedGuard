@@ -104,19 +104,6 @@ def test_metrics_count_audit_only_not_execution(client):
     assert m["elapsed_ms"] >= 0
 
 
-@pytest.fixture
-def isolated_cache(tmp_path, monkeypatch):
-    """把问答缓存指向临时文件。
-
-    必须隔离：QUERY_CACHE_FILE 默认指向 demo/query_cache.json，那是演示要
-    预热的真文件——测试往里写会污染演示内容。
-    """
-    from backend import config
-    path = str(tmp_path / "query_cache.json")
-    monkeypatch.setattr(config, "QUERY_CACHE_FILE", path)
-    return path
-
-
 def test_direct_rejects_empty_question(client, isolated_cache):
     r = client.post("/api/query/direct", json={
         "token": STAFF, "datasource_id": "regional_health", "question": "   "})

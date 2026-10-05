@@ -1,0 +1,66 @@
+{"q": "我的血糖结果正常吗", "category": "yaml", "expect": ["血糖"]}
+{"q": "帮我看下肝功能化验单", "category": "yaml", "expect": ["肝功能"]}
+{"q": "糖化血红蛋白高不高", "category": "yaml", "expect": ["糖化血红蛋白"]}
+{"q": "血常规有没有问题", "category": "yaml", "expect": ["血常规"]}
+{"q": "尿酸是多少", "category": "yaml", "expect": ["尿酸"]}
+{"q": "促甲状腺激素正常吗", "category": "yaml", "expect": ["促甲状腺激素"]}
+{"q": "阿司匹林有什么要注意的", "category": "yaml", "expect": ["阿司匹林"]}
+{"q": "二甲双胍怎么吃", "category": "yaml", "expect": ["二甲双胍"]}
+{"q": "氨氯地平有什么作用", "category": "yaml", "expect": ["氨氯地平"]}
+{"q": "奥美拉唑饭前还是饭后吃", "category": "yaml", "expect": ["奥美拉唑"]}
+{"q": "布洛芬能长期吃吗", "category": "yaml", "expect": ["布洛芬"]}
+{"q": "阿托伐他汀的副作用", "category": "yaml", "expect": ["阿托伐他汀"]}
+{"q": "美托洛尔什么情况下不能吃", "category": "yaml", "expect": ["美托洛尔"]}
+{"q": "高血压患者日常注意什么", "category": "yaml", "expect": ["高血压"]}
+{"q": "糖尿病饮食怎么控制", "category": "yaml", "expect": ["糖尿病"]}
+{"q": "冠心病是什么病", "category": "yaml", "expect": ["冠心病"]}
+{"q": "哮喘发作怎么处理", "category": "yaml", "expect": ["哮喘"]}
+{"q": "痛风的饮食禁忌", "category": "yaml", "expect": ["痛风"]}
+{"q": "骨质疏松怎么补钙", "category": "yaml", "expect": ["骨质疏松"]}
+{"q": "过敏性鼻炎怎么缓解", "category": "yaml", "expect": ["过敏性鼻炎"]}
+{"q": "心内科有哪些医生", "category": "yaml", "expect": ["心血管内科"]}
+{"q": "神经内科看什么病", "category": "yaml", "expect": ["神经内科"]}
+{"q": "胸痛", "category": "yaml", "expect": ["胸痛"]}
+{"q": "头晕是什么原因", "category": "yaml", "expect": ["头晕"]}
+{"q": "失眠怎么办", "category": "yaml", "expect": ["失眠"]}
+{"q": "便秘怎么调理", "category": "yaml", "expect": ["便秘"]}
+{"q": "最近总是睡不着", "category": "colloquial", "expect": ["失眠"]}
+{"q": "胸口憋得慌", "category": "colloquial", "expect": ["胸痛"]}
+{"q": "帕金森病是什么病", "category": "colloquial", "expect": ["帕金森病"]}
+{"q": "帕金森病挂什么科", "category": "colloquial", "expect": ["帕金森病"]}
+{"q": "荨麻疹反复发作怎么办", "category": "colloquial", "expect": ["荨麻疹"]}
+{"q": "颈椎病会引起手麻吗", "category": "colloquial", "expect": ["颈椎病"]}
+{"q": "腰椎间盘突出怎么保守治疗", "category": "colloquial", "expect": ["腰椎间盘突出"]}
+{"q": "偏头痛怎么缓解", "category": "colloquial", "expect": ["偏头痛"]}
+{"q": "抑郁症有哪些表现", "category": "colloquial", "expect": ["抑郁症"]}
+{"q": "焦虑症怎么治", "category": "colloquial", "expect": ["焦虑症"]}
+{"q": "阿尔茨海默病早期症状", "category": "colloquial", "expect": ["阿尔茨海默病"]}
+{"q": "中耳炎耳朵疼怎么办", "category": "colloquial", "expect": ["中耳炎"]}
+{"q": "湿疹痒得厉害", "category": "colloquial", "expect": ["湿疹"]}
+{"q": "牙周炎怎么预防", "category": "colloquial", "expect": ["牙周炎"]}
+{"q": "痔疮便血怎么办", "category": "colloquial", "expect": ["痔疮"]}
+{"q": "癫痫发作时怎么办", "category": "colloquial", "expect": ["癫痫"]}
+{"q": "慢性咽炎老不好", "category": "colloquial", "expect": ["慢性咽炎"]}
+{"q": "贫血吃什么好", "category": "colloquial", "expect": ["贫血"]}
+{"q": "腹泻拉肚子", "category": "colloquial", "expect": ["腹泻"]}
+{"q": "恶心呕吐是怎么回事", "category": "colloquial", "expect": ["恶心"]}
+{"q": "今天天气怎么样", "category": "no_evidence", "expect": []}
+{"q": "帮我订一张电影票", "category": "no_evidence", "expect": []}
+{"q": "红烧肉怎么做", "category": "no_evidence", "expect": []}
+{"q": "推荐几首好听的歌", "category": "no_evidence", "expect": []}
+{"q": "明天会下雨吗", "category": "no_evidence", "expect": []}
+{"q": "北京有哪些景点", "category": "no_evidence", "expect": []}
+{"q": "汽车多久保养一次", "category": "no_evidence", "expect": []}
+{"q": "高考数学怎么复习", "category": "no_evidence", "expect": []}
+{"q": "帮我写一段代码", "category": "no_evidence", "expect": []}
+{"q": "股票行情怎么样", "category": "no_evidence", "expect": []}
+{"q": "我胸痛", "category": "emergency", "expect": [], "redflag": "剧烈胸痛"}
+{"q": "突然喘不上气", "category": "emergency", "expect": [], "redflag": "呼吸困难"}
+{"q": "他昏迷了", "category": "emergency", "expect": [], "redflag": "意识障碍"}
+{"q": "大出血止不住", "category": "emergency", "expect": [], "redflag": "大出血"}
+{"q": "突然晕倒", "category": "emergency", "expect": [], "redflag": "意识障碍"}
+{"q": "胸口剧痛", "category": "emergency", "expect": [], "redflag": "剧烈胸痛"}
+{"q": "全身严重过敏", "category": "emergency", "expect": [], "redflag": "严重过敏"}
+{"q": "失去意识怎么办", "category": "emergency", "expect": [], "redflag": "意识障碍"}
+{"q": "抽搐不停", "category": "emergency", "expect": [], "redflag": "意识障碍"}
+{"q": "咯血不止", "category": "emergency", "expect": [], "redflag": "大出血"}

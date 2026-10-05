@@ -13,13 +13,20 @@
 
 演示前"热身"的方式就是提前跑几次查询：命中即更新计数，未命中则调模型
 生成后写回。
+
+**双文件设计（2026-09 代码评审，防仓库变脏）**：
+- 预置演示缓存（`demo/query_cache.json`，git 跟踪，**只读**）——演示问法的
+  打磨过计划；命中不写回，绝不被运行时改动；
+- 运行时学习缓存（`data/query_cache_learned.json`，gitignore，**可写**）——
+  新问法翻译成功后在这里累计（含命中计数/最近使用时间）。
+  拆分后跑演示/测试不会再改动跟踪文件。
 """
 import json
 import os
 import re
 import threading
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from backend import config
 
@@ -42,8 +49,7 @@ def _empty() -> Dict[str, Any]:
     return {"version": 1, "entries": {}}
 
 
-def _read() -> Dict[str, Any]:
-    path = config.QUERY_CACHE_FILE
+def _read_file(path: str) -> Dict[str, Any]:
     if not os.path.exists(path):
         return _empty()
     try:
@@ -57,12 +63,32 @@ def _read() -> Dict[str, Any]:
         return _empty()
 
 
-def _write(data: Dict[str, Any]) -> None:
-    path = config.QUERY_CACHE_FILE
+def _read_merged() -> Tuple[Dict[str, Any], Dict[str, str]]:
+    """预置 + 学习合并读取；返回 (entries, 每条目来源)。
+
+    provenance: key -> "preset" | "learned"。预置条目优先（同名键不被
+    学习条目覆盖）；预置条目只读，只有 learned 条目允许写回。
+    """
+    preset = _read_file(config.PRESET_QUERY_CACHE)["entries"]
+    learned = _read_file(config.LEARNED_QUERY_CACHE)["entries"]
+    merged: Dict[str, Any] = {}
+    provenance: Dict[str, str] = {}
+    for k, v in learned.items():
+        merged[k] = v
+        provenance[k] = "learned"
+    for k, v in preset.items():
+        merged[k] = v           # 预置优先：同名键以预置为准
+        provenance[k] = "preset"
+    return merged, provenance
+
+
+def _write_learned(entries: Dict[str, Any]) -> None:
+    path = config.LEARNED_QUERY_CACHE
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+        json.dump({"version": 1, "entries": entries}, f,
+                  ensure_ascii=False, indent=2)
     os.replace(tmp, path)   # 原子替换，避免演示中途写坏文件
 
 
@@ -117,8 +143,8 @@ def lookup(question: str, token_type: str,
         return None
 
     with _LOCK:
-        data = _read()
-        entry = data["entries"].get(key)
+        entries, provenance = _read_merged()
+        entry = entries.get(key)
         if not entry:
             return None
 
@@ -144,9 +170,14 @@ def lookup(question: str, token_type: str,
                 if lit.strip("'") != (subject_id or ""):
                     return None
 
-        entry["hits"] = int(entry.get("hits", 0)) + 1
-        entry["last_used"] = time.strftime("%Y-%m-%dT%H:%M:%S")
-        _write(data)
+        # 命中计数只写回**学习缓存**；预置缓存只读，命中不碰跟踪文件
+        # （否则跑一次演示 git 就脏）。预置条目的 hits 是静态演示资产。
+        if provenance.get(key) == "learned":
+            learned = _read_file(config.LEARNED_QUERY_CACHE)["entries"]
+            if key in learned:
+                learned[key]["hits"] = int(learned[key].get("hits", 0)) + 1
+                learned[key]["last_used"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+                _write_learned(learned)
 
     return [dict(s) for s in plan]
 
@@ -159,7 +190,7 @@ def store(question: str, plan: List[Dict[str, Any]], token_type: str,
         return
 
     with _LOCK:
-        data = _read()
+        data = _read_file(config.LEARNED_QUERY_CACHE)   # 新问法只进学习缓存
         entries = data["entries"]
         prev = entries.get(key) or {}
         types = set(prev.get("token_types") or [])
@@ -179,13 +210,12 @@ def store(question: str, plan: List[Dict[str, Any]], token_type: str,
             entry["subject_id"] = subject_id or ""
         entries[key] = entry
         _evict(entries, token_type, config.QUERY_CACHE_PER_TOKEN)
-        _write(data)
+        _write_learned(entries)
 
 
 def stats() -> Dict[str, Any]:
-    """给管理员看缓存现状：多少条、命中分布。"""
-    data = _read()
-    entries = data["entries"]
+    """给管理员看缓存现状：多少条、命中分布（预置 + 学习合并）。"""
+    entries, _ = _read_merged()
     return {
         "count": len(entries),
         "entries": [

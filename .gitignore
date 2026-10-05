@@ -29,6 +29,8 @@ build/
 # 匹配不到 backend/data/。团队规范 §4.4 要求 .db 一律不入库。
 **/data/*.db
 **/data/*.db-journal
+# 运行时学习缓存（预置演示缓存 demo/query_cache.json 仍跟踪、只读）
+**/data/query_cache_learned.json
 # 令牌签名密钥（backend/credentials.py 首次运行时生成）。
 # **绝不入库**：它一泄露，任何人都能签发以假乱真的令牌，签名就等于没有。
 # 团队共享请走群消息/密码管理器，或各自用 MEDGUARD_TOKEN_SECRET 覆盖。

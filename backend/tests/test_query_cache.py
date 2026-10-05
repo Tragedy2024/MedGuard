@@ -9,14 +9,6 @@ import pytest
 from backend import config, query_cache
 
 
-@pytest.fixture
-def cache_file(tmp_path, monkeypatch):
-    path = str(tmp_path / "query_cache.json")
-    monkeypatch.setattr(config, "QUERY_CACHE_FILE", path)
-    monkeypatch.setattr(config, "QUERY_CACHE_PER_TOKEN", 3)
-    return path
-
-
 def _plan(n: int = 1):
     return [{"id": i, "description": f"步骤{i}", "sql": f"SELECT {i}"} for i in range(n)]
 
@@ -161,3 +153,49 @@ def test_shipped_demo_cache_records_its_subject_bindings():
         assert bound == has_field, (
             f"「{question}」的绑定状态与 subject_id 字段不一致："
             f"写死了主体={bound}，记录了主体={has_field}")
+
+
+# ── 双文件拆分（2026-09 评审）：预置只读 + 运行时学习 ─────────────
+
+def test_preset_wins_and_is_never_written(cache_file, tmp_path):
+    """同名键预置优先；命中预置条目时预置文件必须一个字节不变。"""
+    import json as _json
+    from backend import config
+    preset = config.PRESET_QUERY_CACHE
+    with open(preset, "w", encoding="utf-8") as f:
+        _json.dump({"version": 1, "entries": {
+            "同名问法": {"plan": [{"id": 0, "sql": "SELECT 'preset'"}],
+                        "token_types": ["staff"], "hits": 0},
+        }}, f, ensure_ascii=False)
+    with open(cache_file, "w", encoding="utf-8") as f:
+        _json.dump({"version": 1, "entries": {
+            "同名问法": {"plan": [{"id": 0, "sql": "SELECT 'learned'"}],
+                        "token_types": ["staff"], "hits": 5},
+            "只有学习": {"plan": [{"id": 0, "sql": "SELECT 1"}],
+                        "token_types": ["staff"], "hits": 0},
+        }}, f, ensure_ascii=False)
+
+    got = query_cache.lookup("同名问法", "staff")
+    assert got and "preset" in got[0]["sql"]
+
+    before = open(preset, "rb").read()
+    query_cache.lookup("同名问法", "staff")      # 命中预置
+    assert open(preset, "rb").read() == before   # 只读：不被计数写回
+
+    query_cache.lookup("只有学习", "staff")      # 命中学习条目 → 计数写回学习文件
+    entries = _json.load(open(cache_file, encoding="utf-8"))["entries"]
+    assert entries["只有学习"]["hits"] == 1
+
+
+def test_store_only_writes_learned_cache(cache_file):
+    """store 只写学习缓存；预置文件（不存在或存在）都不得被创建/修改。"""
+    import os as _os
+    from backend import config
+    preset = config.PRESET_QUERY_CACHE
+    before = open(preset, "rb").read() if _os.path.exists(preset) else b"__missing__"
+
+    _store("一条新学到的问法", _plan(), "staff")
+
+    after = open(preset, "rb").read() if _os.path.exists(preset) else b"__missing__"
+    assert after == before                      # 预置文件状态不变（甚至不被创建）
+    assert query_cache.lookup("一条新学到的问法", "staff") is not None

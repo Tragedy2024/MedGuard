@@ -43,6 +43,10 @@ class Doc:
     aliases: Tuple[str, ...]
     text: str
     source: str = ""
+    source_title: str = ""
+    source_version: str = ""
+    license: str = ""
+    quality_tier: str = "curated"
 
 
 def _join(*parts: Any) -> str:

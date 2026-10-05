@@ -21,7 +21,9 @@ curl http://localhost:8000/api/datasources          # 应返回 regional_health
 curl http://localhost:8000/api/metrics/detection    # 检测效能（论文实测数字）
 ```
 
-跑测试：`python -m pytest tests/ -v`（217 项，含演示数据校验）。
+跑测试：`python -m pytest tests/ -v`（275 项，含演示数据校验）。
+测试由 `tests/conftest.py` 强制隔离（MEDGUARD_TESTING=1）：无论是否有真实 `.env`，
+pytest 永不联网、不加载 BGE，约 20 秒跑完、结果可复现。
 
 ## 给前端同学的对接材料
 
@@ -78,10 +80,10 @@ python -c "from demo.seed import build_database; from backend import config; imp
 python -m pytest tests/ -v
 ```
 
-217 项测试覆盖：层一准入（纯函数）、演示库 seed 锚点、SSA 策略完整性
+275 项测试覆盖：层一准入（纯函数）、演示库 seed 锚点、SSA 策略完整性
 （防 fail-open 缺口）、算法层适配（含最终答案 AVG 误伤还原）、
 六个路由契约、**演示数据校验**（9 条预设查询全部按预期触发——阻塞性）、
-以及智慧医生（意图路由 / acuity 分诊等级 / AI 兜底输出形态）。
+以及智慧医生（意图路由 / 检验 acuity 分级与红旗规则层 / AI 兜底输出形态）。
 
 **安全报告按账号隔离**（`reports` 表存 `account`）：`/api/reports` 三个端点
 要求必填 query 参数 `token_type`（外加 `exp`/`sig` 验签），不传 422，
@@ -110,22 +112,25 @@ MedGuard/
 │   ├── db.py               # 平台元数据库（medguard.db：users + reports）
 │   ├── credentials.py      # 口令哈希（PBKDF2）+ 令牌签名（HMAC-SHA256）
 │   ├── security.py         # HTTP 层身份强制：verified() / require_admin()
-│   ├── smart_doctor.py     # 智慧医生：意图识别 + 取数 + 知识库 + acuity + AI 兜底
+│   ├── smart_doctor.py     # 智慧医生：意图识别 + 取数 + 知识库 + acuity/红旗规则层 + AI 兜底
 │   ├── schemas.py          # ★ 前后端契约（Pydantic，字段名即契约）
 │   ├── knowledge/          # 知识检索（RAG 的检索那一步）
 │   │   ├── corpus.py       #   把知识库展平成统一文档（索引**含正文**）
 │   │   ├── tokenize.py     #   jieba 分词 + 用户词典（词典来自语料 aliases）
-│   │   └── retrieval.py    #   BM25（手写，无第三方依赖）
+│   │   ├── retrieval.py    #   BM25（手写，无第三方依赖）
+│   │   ├── hybrid.py       #   混合检索：BM25 + 可选 BGE + 来源加权 RRF（对外唯一接口 search）
+│   │   └── opencmkg.py     #   第二知识源适配器：读 demo/rag_documents.json（默认关）
 │   ├── routers/            # auth / datasources / policies / query / reports / smart_doctor
 │   └── main.py             # FastAPI 装配（含启动时预热分词器）
 ├── demo/
 │   ├── seed.py             # 建 5 表 + 一眼假数据（random.Random(42)）
 │   ├── ssa/regional_health.yaml  # 手写策略（含跨域规则）
 │   ├── smart_knowledge.yaml      # 智慧医生知识库 v2（id/aliases/provenance/relations）
+│   ├── rag_documents.json        # OpenCMKG 检索文档（build_dataset_tables.py --export-docs 生成）
 │   └── queries.json        # 预设查询库（医护 4 + 病患 5）
-├── tests/                  # 250 项
-├── scripts/                # 启动脚本
-└── data/                   # 运行时生成（gitignore）
+├── tests/                  # 275 项（含 data/retrieval_gold.jsonl 检索金标集）
+├── scripts/                # 启动脚本 + build_dataset_tables.py（数据生成/清洗）+ eval_retrieval.py（检索评测）
+└── data/                   # 运行时生成（gitignore；含学习缓存 query_cache_learned.json）
 ```
 
 > ⚠️ **`knowledge/` 只服务于「为生成找相关段落」**（RAG 的检索）。"判断用户在
@@ -143,9 +148,12 @@ MedGuard/
 | 演示账号与口令 | `backend/db.py` 的 `_DEMO_USERS` / `_DEMO_PASSWORD`。**只在 users 表为空时种一次**，删掉之后不会再被重启建回来 |
 | 令牌有效期 / 口令轮数 | `backend/credentials.py` 的 `TOKEN_TTL_SEC` / `_PBKDF2_ROUNDS` |
 | 令牌签名密钥 | 环境变量 `MEDGUARD_TOKEN_SECRET`；不设则首次运行生成并持久化到 `data/.token_secret`（**已 gitignore，绝不入库**——泄了它签名就等于没有） |
-| 智慧医生的检验分档/症状/疾病词条 | `demo/smart_knowledge.yaml`（**v2**：每个条目必须有 `id` / `aliases` / `provenance`，疾病还可写 `relations`）。**每条分档与每个症状都必须显式写 `acuity`**（1 濒危／2 危重／3 急症／4 非急症），它决定 `advice.urgent` 是否弹急诊横幅；`tests/test_smart_knowledge.py` 有 14 项结构守卫，**漏一个即失败** |
+| 智慧医生的检验分档/症状/疾病词条 | `demo/smart_knowledge.yaml`（**v2**：每个条目必须有 `id` / `aliases` / `provenance`，疾病还可写 `relations`）。**每条分档与每个症状都必须显式写 `acuity`**（1 濒危／2 危重／3 急症／4 非急症）；检验档位命中 1/2 级弹急诊横幅，红旗规则层（`backend/redflags.py`）命中则无条件升级——两者共同决定 `advice.urgent`；`tests/test_smart_knowledge.py` 有 14 项结构守卫，**漏一个即失败** |
 | 让知识库听懂更多说法 | **加 `aliases`，不要加检索**。实体识别是别名字面匹配；11 个口语问法（发烧／睡不着／肚子疼…）就是这么修好的。⚠️ 单字别名要慎用——`糖` 会让「糖尿病怎么办」被血糖抢走（见 `test_single_char_aliases_do_not_steal_disease_questions`） |
-| RAG 检索的召回/精度 | `backend/knowledge/retrieval.py` 的 `DEFAULT_MIN_SCORE` / `min_matches`。**刻意精度优先**：语料没有的话题宁可留空，也不硬凑上下文给模型 |
+| RAG 检索的召回/精度 | `backend/knowledge/retrieval.py` 的 `DEFAULT_MIN_SCORE` / `min_matches`。**刻意精度优先**：语料没有的话题宁可留空，也不硬凑上下文给模型。阈值依据见 `docs/research/2026-10-04-retrieval-eval.md`（金标 66 条四路对照） |
+| 第二知识源（OpenCMKG） | 开关 `MEDGUARD_RAG_OPENCMKG`（默认 0）+ 权重 `MEDGUARD_RAG_OPENCMKG_WEIGHT`（钳制 [0,1]，默认 0.7）。检索文档由 `scripts/build_dataset_tables.py --export-docs` 生成（固定 SHA-256 校验）；关闭时行为与纯 YAML 检索一致 |
+| 问答缓存（预置/学习拆分） | 预置演示缓存 `demo/query_cache.json`（**只读**，随仓库跟踪）；运行时学习缓存走 `MEDGUARD_QUERY_CACHE`（默认 `data/query_cache_learned.json`，gitignore）。跑演示不再弄脏 git |
+| 检索评测 | `scripts/eval_retrieval.py --all`（四路配置对照）；金标集 `tests/data/retrieval_gold.jsonl`。改阈值/权重后先跑评测再改文档数字 |
 | 预设演示问题 | `demo/queries.json`（含 `{subject_id}` 占位符） |
 | 演示库表结构与数据 | `demo/seed.py` + `demo/ssa/regional_health.yaml`（已互相校验，改一处必改另一处） |
 | API 契约（字段名） | `backend/schemas.py` —— 这即契约变更，前端需重新生成类型 |
