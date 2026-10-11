@@ -1,0 +1,1 @@
+{"documents": [{"id": "opencmkg:disease:冠心病", "kind": "disease", "key": "冠心病", "name": "冠心病", "aliases": ["冠心病"], "text": "关联症状：胸痛；就诊科室：心血管内科"}, {"id": "opencmkg:symptom:胸痛", "kind": "symptom", "key": "胸痛", "name": "胸痛", "aliases": ["胸痛"], "text": "关联疾病：冠心病"}]}
