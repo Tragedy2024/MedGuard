@@ -42,6 +42,10 @@ build/
 # 31.7MB 截图、并间接导致 .git 膨胀到 341MB。用通配避免再犯。
 .visual-out/
 .visual-out-*/
+# 本地临时依赖安装目录与移动端视觉核查输出。前者可用 pip 随时重装，
+# 后者是截图存档——都不是源码。曾整体误入 "final" 提交（192 个文件）。
+.tmpdeps/
+.visual-mobile/
 
 
 # IDE
