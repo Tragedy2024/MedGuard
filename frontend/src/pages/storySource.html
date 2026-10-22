@@ -1,0 +1,291 @@
+<a class="skip-link" href="#main">跳到主要内容</a>
+<canvas id="gl" aria-hidden="true"></canvas>
+<canvas id="motes" aria-hidden="true"></canvas>
+
+<div class="page-veil" id="pageVeil" aria-hidden="true"><div class="veil-label"><span>正在进入安全域</span></div></div>
+
+<header class="site-nav" id="siteNav" data-od-id="home-nav">
+  <a class="brand" href="#top" aria-label="MedGuard 医盾，回到开头">
+    <span class="brand-mark" aria-hidden="true">盾</span>
+    <span class="brand-words"><strong>MEDGUARD / 医盾</strong><small>可信医疗信息入口</small></span>
+  </a>
+  <nav class="nav-links" aria-label="主导航">
+    <a href="#problem">问题</a>
+    <a href="#platform">平台</a>
+    <a href="#data">数据</a>
+    <a href="#security">安全</a>
+    <a class="nav-entry" href="/login" data-transition data-transition-label="正在进入登录页" data-od-id="home-nav-login">登录平台 <span aria-hidden="true">↗</span></a>
+  </nav>
+</header>
+
+<nav class="chapter-rail" aria-label="故事章节">
+  <a href="#top" data-chapter-link="top" aria-label="01 入口"><span>01</span><i></i><b>入口</b></a>
+  <a href="#problem" data-chapter-link="problem" aria-label="02 噪声"><span>02</span><i></i><b>噪声</b></a>
+  <a href="#pivot" data-chapter-link="pivot" aria-label="03 重构"><span>03</span><i></i><b>重构</b></a>
+  <a href="#platform" data-chapter-link="platform" aria-label="04 平台"><span>04</span><i></i><b>平台</b></a>
+  <a href="#data" data-chapter-link="data" aria-label="05 数据"><span>05</span><i></i><b>数据</b></a>
+  <a href="#security" data-chapter-link="security" aria-label="06 安全"><span>06</span><i></i><b>安全</b></a>
+</nav>
+
+<main id="main">
+  <section class="hero" id="top" aria-labelledby="hero-title">
+    <div class="hero-copy">
+      <p class="eyebrow" data-reveal><span class="eyebrow-dot"></span>可信医疗信息入口 · 为真实就医场景而建</p>
+      <h1 id="hero-title">
+        <span class="line" style="--d: 30ms">当健康出现疑问，</span>
+        <span class="line" style="--d: 170ms">答案不该</span>
+        <span class="line" style="--d: 310ms">淹没在<em>噪声</em>里。</span>
+      </h1>
+      <p class="hero-lead" data-reveal style="--delay: .5s">
+        医学知识、个人报告、科室方向与院内服务，被分散在太多入口。MedGuard 医盾把它们重新组织成一条可信、清楚、受到安全保护的路径。
+      </p>
+      <div class="hero-actions" data-reveal style="--delay: .64s">
+        <a class="primary-action" href="/login" data-transition data-transition-label="正在进入平台" data-od-id="home-primary-cta">
+          进入平台 <span class="action-arrow" aria-hidden="true">↗</span>
+        </a>
+        <a class="quiet-link" href="#problem">先读这个故事 <span aria-hidden="true">↓</span></a>
+      </div>
+    </div>
+
+    <aside class="proof-card" aria-label="一次可信查询的演示结果" data-reveal style="--delay: .78s">
+      <div class="proof-head">
+        <span>一次可信查询 / LIVE EXAMPLE</span>
+        <span class="proof-status">审计通过 · L0</span>
+      </div>
+      <p class="proof-question">“糖尿病患者产生了多少费用？”</p>
+      <div class="proof-number">36,600.50<small>元</small></div>
+      <div class="proof-rule"></div>
+      <div class="proof-meta">
+        <div><span>数据来源</span><strong>医院主库</strong></div>
+        <div><span>安全审计</span><strong>3 ms · 0 事件</strong></div>
+        <div><span>覆盖患者</span><strong>8 位 · 演示数据</strong></div>
+        <div><span>结果形态</span><strong>汇总统计</strong></div>
+      </div>
+      <p class="proof-note">演示数据仅用于展示查询链路，不含真实患者信息。</p>
+    </aside>
+
+    <div class="hero-foot">
+      <a class="scroll-cue" href="#problem">向下，进入故事的六个章节 <span aria-hidden="true">↓</span></a>
+      <button class="live-chip" id="motionHome" type="button" aria-pressed="false"><i aria-hidden="true"></i><span id="gpuStatus">实时生成 · WEBGL2</span></button>
+    </div>
+  </section>
+
+  <section class="chapter problem" id="problem" data-chapter="problem" aria-labelledby="problem-title">
+    <div class="chapter-inner">
+      <header class="section-head" data-reveal>
+        <div>
+          <p class="section-index">02 / 06 · 背景</p>
+          <h2 id="problem-title">信息很多，<br>但<em>下一步</em>并不清楚。</h2>
+        </div>
+        <p class="section-lead">搜索结果在增加，判断成本也在增加。用户真正需要的不是更多链接，而是一个能说明来源、边界和下一步的答案。</p>
+      </header>
+
+      <div class="problem-ledger">
+        <article class="problem-row" data-reveal>
+          <span class="problem-num">01</span>
+          <div>
+            <h3>答案很多，可信的很少</h3>
+            <p>医学科普、患者经验、营销内容与过时资料混在一起。更新时间、适用人群和证据来源常常缺席，越是着急的时候，越难判断该相信哪一条。</p>
+          </div>
+          <div class="problem-signal" aria-hidden="true">
+            <div class="signal-line">
+              <i style="--h:12px"></i><i style="--h:24px"></i><i style="--h:9px"></i><i style="--h:30px"></i><i style="--h:16px"></i><i style="--h:22px"></i><i class="hot" style="--h:38px"></i><i style="--h:14px"></i><i style="--h:27px"></i><i style="--h:10px"></i><i style="--h:20px"></i><i style="--h:7px"></i>
+            </div>
+            <p class="signal-caption">10,000+ 条结果 / 3 个来源不明</p>
+          </div>
+        </article>
+
+        <article class="problem-row" data-reveal>
+          <span class="problem-num">02</span>
+          <div>
+            <h3>权威信息，藏在分散的系统里</h3>
+            <p>疾病知识、检验解读、药品说明与院内记录分散在不同入口。即使找到了权威来源，也往往不知道它是否适用于自己的报告与就诊场景。</p>
+          </div>
+          <div class="problem-signal" aria-hidden="true">
+            <div class="broken-link"><span>知识库</span><i></i><span>个人报告</span></div>
+            <p class="signal-caption">来源 × 适用范围 × 更新时间：缺失</p>
+          </div>
+        </article>
+
+        <article class="problem-row" data-reveal>
+          <span class="problem-num">03</span>
+          <div>
+            <h3>与医院的联系，不够及时稳定</h3>
+            <p>用户查完信息之后，仍要回到电话、公众号、院内系统之间反复确认。知识查询和下一步行动之间，缺一条稳定的连接。</p>
+          </div>
+          <div class="problem-signal" aria-hidden="true">
+            <div class="broken-link"><span>院内系统</span><i></i><span>用户端</span></div>
+            <p class="signal-caption">断点：时间、入口、身份边界</p>
+          </div>
+        </article>
+      </div>
+
+      <div class="problem-quote" data-reveal>
+        <strong>问题不是“没有信息”，<br>而是没有一条可以走完的路。</strong>
+        <p>从提出问题、核对来源，到理解自己的数据、知道下一步去哪里——每一段都需要重新建立信任。MedGuard 医盾从这条断开的路径开始。</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="pivot" id="pivot" data-chapter="pivot" aria-labelledby="pivot-title">
+    <div class="chapter-inner">
+      <p class="eyebrow" data-reveal>03 / 06 · 重构</p>
+      <h2 id="pivot-title" data-reveal>把散落的答案，<br>接成一条<em>可验证</em>的路径。</h2>
+      <p class="pivot-copy" data-reveal>先确认问题，再检索依据；先审计查询计划，再执行数据访问。<br>每一个结论都能回到来源，每一次访问都留在边界之内。</p>
+      <div class="pivot-mark" data-reveal aria-hidden="true">
+        <span class="pivot-line left"></span>
+        <b>盾</b>
+        <span class="pivot-line right"></span>
+      </div>
+      <div class="pivot-tags" data-reveal>
+        <span>统一入口</span><span>来源可见</span><span>权限受控</span><span>审计可回看</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="chapter platform" id="platform" data-chapter="platform" aria-labelledby="platform-title">
+    <div class="chapter-inner">
+      <header class="section-head" data-reveal>
+        <div>
+          <p class="section-index">04 / 06 · 平台</p>
+          <h2 id="platform-title">一个入口，<br>连接问题与<em>下一步</em>。</h2>
+        </div>
+        <p class="section-lead">不是再做一个搜索框，而是把知识查询、报告理解、就医方向与院内数据服务放进同一条链路。四类需求，共用一套来源标注与安全边界。</p>
+      </header>
+
+      <div class="flow-grid">
+        <article class="flow-node" data-reveal data-od-id="platform-node-question">
+          <span>01 / ASK</span>
+          <h3>自然语言提问</h3>
+          <p>不会写 SQL 也能问。系统识别问题、检索已收录问法，再把回答组织成可读的结果。</p>
+        </article>
+        <article class="flow-node" data-reveal style="--delay: .08s" data-od-id="platform-node-knowledge">
+          <span>02 / KNOWLEDGE</span>
+          <h3>先找依据，再回答</h3>
+          <p>知识库与开源数据提供事实基础；院内记录只在授权范围内参与回答，并与 AI 解读分开标注。</p>
+        </article>
+        <article class="flow-node" data-reveal style="--delay: .16s" data-od-id="platform-node-safety">
+          <span>03 / SAFETY</span>
+          <h3>查询执行前先审计</h3>
+          <p>层一准入判断访问边界，层二审计检查中间结果暴露。审计阶段不调用模型，也不访问数据库。</p>
+        </article>
+        <article class="flow-node" data-reveal style="--delay: .24s" data-od-id="platform-node-action">
+          <span>04 / ACTION</span>
+          <h3>把答案接到服务</h3>
+          <p>科室、医生与院内服务在同一处更新，让“知道了”继续走到“下一步去哪里”。</p>
+        </article>
+      </div>
+
+      <div class="platform-note" data-reveal>
+        <strong>统一入口，<br>不等于统一答案。</strong>
+        <p>院内数据、医院审核知识库、OpenCMKG 开源数据与 AI 生成内容，在界面上始终分开标注。用户看到的不是一团“智能回答”，而是一条可以追问、可以核对、可以回到来源的证据链。</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="chapter data-section" id="data" data-chapter="data" aria-labelledby="data-title">
+    <div class="chapter-inner">
+      <header class="data-head" data-reveal>
+        <div>
+          <p class="section-index">05 / 06 · 数据底座</p>
+          <h2 id="data-title">开源数据，<br>先被理解，<br>才被使用。</h2>
+        </div>
+        <p class="data-source">
+          <strong>SOURCE / DATASET</strong>
+          基于 OpenCMKG 开放医学知识图谱做清洗、别名归一、结构化与产品适配。学术研究用途；抽取脚本随仓库交付，可复现、可审计。扩展语料默认不启用，需通过医学安全评估。
+        </p>
+      </header>
+
+      <div class="data-board" data-reveal>
+        <div class="board-head">
+          <span>DATASET WORKLOAD / 数据规模</span>
+          <span>柱高为对数刻度 · 悬停或聚焦查看</span>
+        </div>
+        <div class="data-stage" id="dataStage">
+          <div class="data-floor" aria-hidden="true"></div>
+          <div class="data-columns" id="dataColumns">
+            <button class="data-col" type="button" style="--h: 82px; --bar: oklch(78% .032 190); --d: 60ms" data-note="核心知识：91 条 YAML 条目，覆盖检验、药品与疾病结构，供受控检索使用。" aria-label="核心知识 91 条" data-od-id="dataset-column-core">
+              <span class="data-value">91</span>
+              <span class="data-name">核心知识</span>
+              <span class="data-unit">YAML 条目</span>
+              <span class="data-bar" aria-hidden="true"></span>
+            </button>
+            <button class="data-col" type="button" style="--h: 236px; --bar: oklch(70% .050 190); --d: 140ms" data-note="症状映射：6,227 条症状—科室候选关系，用于导诊覆盖扩展，最终判断仍由临床知识库承担。" aria-label="症状映射 6227 条" data-od-id="dataset-column-symptom">
+              <span class="data-value">6,227</span>
+              <span class="data-name">症状映射</span>
+              <span class="data-unit">结构化数据</span>
+              <span class="data-bar" aria-hidden="true"></span>
+            </button>
+            <button class="data-col" type="button" style="--h: 248px; --bar: oklch(60% .060 190); --d: 220ms" data-note="疾病事实：7,495 条疾病相关事实，来自 OpenCMKG 关系三元组的清洗与归一化。" aria-label="疾病事实 7495 条" data-od-id="dataset-column-disease">
+              <span class="data-value">7,495</span>
+              <span class="data-name">疾病事实</span>
+              <span class="data-unit">结构化数据</span>
+              <span class="data-bar" aria-hidden="true"></span>
+            </button>
+            <button class="data-col" type="button" style="--h: 334px; --bar: oklch(81% .042 85); --d: 300ms" data-note="扩展文档：15,305 条可选检索语料，属于第二知识源，默认关闭，需完成医学安全评估后再决定是否启用。" aria-label="扩展检索文档 15305 条" data-od-id="dataset-column-open">
+              <span class="data-value">15,305</span>
+              <span class="data-name">扩展文档</span>
+              <span class="data-unit">可选检索语料</span>
+              <span class="data-bar" aria-hidden="true"></span>
+            </button>
+          </div>
+        </div>
+        <div class="data-readout" aria-live="polite">
+          <strong id="datasetReadoutTitle">DATASET / 4 层知识规模</strong>
+          <span id="datasetReadout">悬停柱体，查看每一层数据的用途与边界。</span>
+        </div>
+      </div>
+
+      <div class="data-process" data-reveal>
+        <div><span>01 / EXTRACT</span><strong>抽取</strong><small>从开放关系三元组中提取可用事实</small></div>
+        <div><span>02 / CLEAN</span><strong>清洗</strong><small>去污染、别名归一、来源标记</small></div>
+        <div><span>03 / INDEX</span><strong>结构化</strong><small>建立可检索、可回看的索引</small></div>
+        <div><span>04 / ADAPT</span><strong>产品适配</strong><small>把数据结构接到真实问法上</small></div>
+        <div class="data-tests"><span>QUALITY / 验证</span><strong>313</strong><small>后端自动化测试覆盖查询、安全与服务链路</small></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="chapter security" id="security" data-chapter="security" aria-labelledby="security-title">
+    <div class="chapter-inner security-grid">
+      <div class="security-copy" data-reveal>
+        <p class="section-index">06 / 06 · 安全</p>
+        <h2 id="security-title">答案抵达之前，<br>先经过一道<em>静态安全门</em>。</h2>
+        <p class="lead">医盾在查询执行前审计查询计划：判断访问边界，检查中间结果是否暴露了不需要的受控列。它不调用模型，也不访问数据库，输出是确定性的。</p>
+        <div class="security-metrics">
+          <div><em>审计阶段</em><strong>0</strong><span>LLM 调用</span></div>
+          <div><em>审计阶段</em><strong>0</strong><span>数据库访问</span></div>
+          <div><em>单次审计</em><strong>1–9<small>ms</small></strong><span>实测耗时</span></div>
+        </div>
+      </div>
+
+      <div class="gate-card" data-reveal style="--delay: .12s" aria-label="查询计划安全审计流程">
+        <div class="gate-head"><span>QUERY PLAN / 安全审计</span><span class="gate-static">静态分析</span></div>
+        <ol class="gate-list">
+          <li class="gate-step"><i aria-hidden="true"></i><span>自然语言问题</span><small>输入</small></li>
+          <li class="gate-step"><i aria-hidden="true"></i><span>生成查询计划</span><small>不执行</small></li>
+          <li class="gate-step pass"><i aria-hidden="true"></i><span>层一 · 准入判断</span><small>通过</small></li>
+          <li class="gate-step pass"><i aria-hidden="true"></i><span>层二 · 中间结果审计</span><small>0 事件</small></li>
+          <li class="gate-step"><i aria-hidden="true"></i><span>执行查询</span><small>仅通过后</small></li>
+        </ol>
+        <p class="gate-foot"><strong>边界说明：</strong>审计指标只统计安全审计阶段；查询本身仍需访问主库取数。评估集越权拦截率（EX）为 62–77%，并非 100% 安全；小样本聚合推断不在当前防御范围内。</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="closing" aria-labelledby="closing-title">
+    <p class="eyebrow" data-reveal>MEDGUARD / 入口</p>
+    <h2 id="closing-title" data-reveal>让下一次查询，<br>从一个<em>可信</em>的入口开始。</h2>
+    <a class="primary-action" href="/login" data-transition data-transition-label="正在进入登录页" data-reveal data-od-id="home-bottom-cta">
+      进入 MedGuard 医盾 <span class="action-arrow" aria-hidden="true">↗</span>
+    </a>
+    <p class="closing-note" data-reveal>平台提供医学信息检索与就医辅助，不替代执业医师的诊断、处方和紧急医疗服务。演示数据不含真实患者信息。</p>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="site-footer-inner">
+    <p>MedGuard 医盾 · 医患信息数据服务云平台。开源数据来源：OpenCMKG（学术研究用途）。院内记录仅限授权范围访问，查询过程可回看。</p>
+    <div class="footer-meta"><span>SECURE QUERY</span><span>ZERO LLM / ZERO DB AUDIT</span><span>© 2026</span></div>
+  </div>
+</footer>

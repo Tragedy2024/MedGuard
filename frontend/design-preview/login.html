@@ -1,0 +1,679 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#e7ece5" />
+<meta name="description" content="登录 MedGuard 医盾，进入受安全审计保护的医疗信息工作区。" />
+<title>登录 · MedGuard 医盾</title>
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="assets/base.css" />
+<style>
+  .auth-page { min-height: 100svh; background: var(--bg); }
+  .auth-shell {
+    min-height: 100svh;
+    display: grid;
+    grid-template-columns: minmax(0, 1.04fr) minmax(420px, .96fr);
+  }
+
+  .auth-story {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-height: 100svh;
+    padding: 34px clamp(28px, 4.8vw, 76px) 28px;
+    overflow: hidden;
+    background:
+      linear-gradient(135deg, color-mix(in oklch, var(--surface) 74%, var(--bg)), color-mix(in oklch, var(--accent-wash) 60%, var(--bg)));
+    border-right: 1px solid var(--border);
+  }
+  .auth-story::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(circle at 80% 18%, color-mix(in oklch, var(--sand-soft) 52%, transparent), transparent 32%),
+      linear-gradient(180deg, transparent 55%, color-mix(in oklch, var(--accent-wash) 45%, transparent));
+  }
+  .auth-story-top { position: relative; z-index: 3; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+  .auth-story-top .eyebrow { color: var(--muted); }
+  .auth-story-copy { position: relative; z-index: 3; margin-top: auto; margin-bottom: auto; padding: clamp(54px, 10vh, 110px) 0 84px; max-width: 670px; }
+  .auth-story-copy h1 {
+    margin: 20px 0 0;
+    font-size: clamp(48px, 5.6vw, 84px);
+    line-height: 1.02;
+    letter-spacing: -0.045em;
+    max-width: 8.2em;
+  }
+  .auth-story-copy h1 em { color: var(--accent-deep); }
+  .auth-story-copy .lead { margin: 28px 0 0; max-width: 31em; font-size: 16px; }
+  .auth-pillars { display: flex; flex-wrap: wrap; gap: 10px 20px; margin-top: 36px; }
+  .auth-pillars span {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    color: var(--fg-soft);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.06em;
+  }
+  .auth-pillars span::before { content: ''; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); }
+  .auth-story-foot { position: relative; z-index: 3; display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding-top: 20px; border-top: 1px solid color-mix(in oklch, var(--border-strong) 52%, transparent); }
+  .auth-story-foot p { margin: 0; max-width: 46em; color: var(--muted); font-size: 13px; line-height: 1.7; text-wrap: pretty; }
+  .auth-story-foot .story-code { color: var(--faint); font-family: var(--font-mono); font-size: 11.5px; letter-spacing: 0.08em; white-space: nowrap; }
+  .story-foot-break { display: none; }
+
+  .auth-orbit {
+    position: absolute;
+    z-index: 1;
+    right: clamp(-260px, -14vw, -100px);
+    top: 50%;
+    width: min(720px, 64vw);
+    aspect-ratio: 1;
+    transform: translate3d(calc(var(--orbit-x, 0) * 8px), calc(-50% + var(--orbit-y, 0) * 8px), 0);
+    transition: transform 500ms var(--ease);
+    pointer-events: none;
+    opacity: 0.82;
+  }
+  .orbit-ring {
+    position: absolute;
+    inset: 0;
+    border: 1px solid color-mix(in oklch, var(--accent) 22%, transparent);
+    border-radius: 50%;
+  }
+  .orbit-ring:nth-child(2) { inset: 15%; border-color: color-mix(in oklch, var(--border-strong) 60%, transparent); }
+  .orbit-ring:nth-child(3) { inset: 31%; border-color: color-mix(in oklch, var(--accent) 14%, transparent); }
+  .orbit-core {
+    position: absolute;
+    left: 50%; top: 20%;
+    width: 112px; height: 124px;
+    transform: translate(-50%, -50%);
+    display: grid;
+    place-items: center;
+    background: var(--fg);
+    color: var(--bg);
+    font-family: var(--font-display);
+    font-size: 36px;
+    clip-path: polygon(50% 0, 94% 14%, 88% 73%, 50% 100%, 12% 73%, 6% 14%);
+    box-shadow: 0 30px 80px color-mix(in oklch, var(--fg) 18%, transparent);
+  }
+  .orbit-core::after {
+    content: '';
+    position: absolute;
+    inset: -13px;
+    border: 1px solid color-mix(in oklch, var(--accent) 30%, transparent);
+    clip-path: inherit;
+  }
+  .orbit-node {
+    position: absolute;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 10px;
+    border: 1px solid color-mix(in oklch, var(--border-strong) 58%, transparent);
+    border-radius: 999px;
+    background: color-mix(in oklch, var(--surface-raised) 55%, transparent);
+    color: var(--fg-soft);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.04em;
+    backdrop-filter: blur(8px);
+    white-space: nowrap;
+  }
+  .orbit-node::before { content: ''; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); }
+  .orbit-node.n1 { left: 6%; top: 6%; }
+  .orbit-node.n2 { left: 42%; top: 6%; }
+  .orbit-node.n3 { left: 8%; bottom: 9%; }
+  .orbit-node.n4 { left: 44%; bottom: 9%; }
+  #authMotes { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; opacity: .65; mix-blend-mode: multiply; }
+
+  .auth-panel {
+    position: relative;
+    min-height: 100svh;
+    display: grid;
+    place-items: center;
+    padding: 88px clamp(24px, 4.6vw, 74px) 30px;
+    background: color-mix(in oklch, var(--bg) 78%, var(--surface));
+  }
+  .auth-top {
+    position: absolute;
+    top: 30px; left: clamp(24px, 4.6vw, 74px); right: clamp(24px, 4.6vw, 74px);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+  }
+  .auth-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    min-height: 44px;
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 12.5px;
+    transition: color 150ms var(--ease);
+  }
+  .auth-back:hover { color: var(--fg); }
+  .auth-back span { font-family: var(--font-mono); font-size: 13px; }
+  .auth-top .eyebrow { font-size: 11px; letter-spacing: 0.12em; }
+
+  .login-wrap { width: min(100%, 452px); }
+  .login-intro h2 {
+    margin: 0;
+    font-size: clamp(40px, 4.2vw, 52px);
+    line-height: 1.05;
+    letter-spacing: -0.035em;
+  }
+  .login-intro p { margin: 15px 0 0; max-width: 31em; color: var(--muted); font-size: 14px; line-height: 1.75; text-wrap: pretty; }
+  .login-form { margin-top: 30px; }
+  .field { margin-bottom: 20px; }
+  .field-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 9px; }
+  .field label { color: var(--fg-soft); font-size: 13.5px; font-weight: 600; }
+  .field-head small { color: var(--muted); font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.03em; transition: color 160ms var(--ease); }
+  .field:focus-within .field-head small { color: var(--accent-deep); }
+  .field-control { position: relative; }
+  .field input {
+    width: 100%;
+    height: 54px;
+    padding: 0 15px;
+    border: 1px solid var(--border-strong);
+    border-radius: 10px;
+    background: color-mix(in oklch, var(--surface-raised) 70%, transparent);
+    color: var(--fg);
+    font-size: 15px;
+    outline: none;
+    transition: border-color 150ms var(--ease), box-shadow 150ms var(--ease), background-color 150ms var(--ease);
+  }
+  .field input::placeholder { color: var(--faint); }
+  .field input:hover { border-color: color-mix(in oklch, var(--accent) 36%, var(--border-strong)); }
+  .field input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px color-mix(in oklch, var(--accent) 12%, transparent);
+    background: var(--surface-raised);
+  }
+  .field input[aria-invalid='true'] { border-color: var(--danger); }
+  .field input[aria-invalid='true']:focus { box-shadow: 0 0 0 4px color-mix(in oklch, var(--danger) 10%, transparent); }
+  .field.has-toggle input { padding-right: 74px; }
+  .password-toggle {
+    position: absolute;
+    right: 6px; top: 50%;
+    transform: translateY(-50%);
+    min-width: 58px; height: 42px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 11.5px;
+    cursor: pointer;
+    transition: background-color 150ms var(--ease), color 150ms var(--ease);
+  }
+  .password-toggle:hover { background: var(--surface-sunk); color: var(--fg); }
+  .field-error { margin: 7px 0 0; color: var(--danger); font-size: 12px; line-height: 1.5; }
+  .field-hint { margin: 8px 0 0; color: var(--muted); font-size: 11.5px; line-height: 1.6; }
+
+  .form-alert {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    margin: 0 0 16px;
+    padding: 11px 13px;
+    border: 1px solid color-mix(in oklch, var(--danger) 26%, var(--border));
+    border-radius: 9px;
+    background: var(--danger-soft);
+    color: var(--danger);
+    font-size: 12.5px;
+    line-height: 1.6;
+  }
+  .form-alert::before {
+    content: '!';
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    width: 17px; height: 17px;
+    margin-top: 1px;
+    border: 1px solid currentColor;
+    border-radius: 50%;
+    font-family: var(--font-mono);
+    font-size: 10px;
+  }
+  .form-alert[hidden] { display: none; }
+
+  .login-submit { width: 100%; margin-top: 4px; min-height: 56px; }
+  .login-submit .spinner {
+    width: 14px; height: 14px;
+    border: 1.5px solid color-mix(in oklch, var(--on-accent) 34%, transparent);
+    border-top-color: var(--on-accent);
+    border-radius: 50%;
+    animation: spin 700ms linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .login-status { min-height: 18px; margin: 11px 0 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
+
+  .demo-block { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--border); }
+  .demo-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+  .demo-head strong { font-size: 12px; font-weight: 550; color: var(--fg-soft); }
+  .demo-head span { color: var(--muted); font-size: 11.5px; }
+  .demo-head code { font-family: var(--font-mono); font-size: 10.5px; color: var(--fg-soft); background: var(--surface-sunk); padding: 2px 5px; border-radius: 4px; }
+  .demo-list { display: flex; flex-direction: column; gap: 8px; }
+  .demo-option {
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: center;
+    width: 100%;
+    min-height: 60px;
+    padding: 9px 12px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: color-mix(in oklch, var(--surface) 40%, transparent);
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 150ms var(--ease), background-color 150ms var(--ease), transform 150ms var(--ease);
+  }
+  .demo-option:hover { border-color: var(--border-strong); background: var(--surface); }
+  .demo-option[aria-pressed='true'] {
+    border-color: var(--accent);
+    background: color-mix(in oklch, var(--accent-wash) 72%, var(--surface));
+  }
+  .demo-option:active { transform: translateY(1px); }
+  .demo-avatar {
+    display: grid;
+    place-items: center;
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    background: var(--surface-sunk);
+    color: var(--fg-soft);
+    font-family: var(--font-display);
+    font-size: 14px;
+  }
+  .demo-option[aria-pressed='true'] .demo-avatar { background: var(--accent); color: var(--on-accent); }
+  .demo-copy { min-width: 0; }
+  .demo-copy strong { display: block; font-size: 13px; font-weight: 550; color: var(--fg); }
+  .demo-copy small { display: block; margin-top: 3px; color: var(--muted); font-size: 12px; }
+  .demo-account { color: var(--muted); font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.04em; }
+
+  .login-foot {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    margin-top: 20px;
+    color: var(--muted);
+    font-size: 11.5px;
+    line-height: 1.65;
+  }
+  .login-foot svg { flex: 0 0 auto; width: 14px; height: 16px; margin-top: 1px; color: var(--accent-deep); }
+  .login-disclaimer { margin: 10px 0 0; color: var(--muted); font-size: 11.5px; line-height: 1.65; text-wrap: pretty; }
+
+  .motion-toggle {
+    margin-top: 12px;
+    min-height: 44px;
+    padding: 0 13px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    transition: color 150ms var(--ease), border-color 150ms var(--ease), background-color 150ms var(--ease);
+  }
+  .motion-toggle:hover { color: var(--fg); border-color: var(--border-strong); background: var(--surface); }
+
+  @media (max-width: 1180px), (max-height: 820px) {
+    .orbit-node { display: none; }
+  }
+  @media (max-width: 1040px) {
+    .auth-shell { grid-template-columns: 1fr; }
+    .auth-story { min-height: 0; padding-bottom: 64px; }
+    .auth-story-copy { padding: 54px 0 28px; }
+    .auth-story-copy h1 { font-size: clamp(46px, 8vw, 72px); }
+    .auth-orbit { width: 520px; right: -160px; top: 52%; opacity: .58; }
+    .auth-story-foot { max-width: 640px; }
+    .auth-panel { min-height: 0; padding-top: 88px; padding-bottom: 60px; }
+    .auth-top { position: relative; top: auto; left: auto; right: auto; width: min(100%, 452px); margin: 0 auto 30px; }
+    .auth-panel { display: block; }
+    .login-wrap { margin: 0 auto; }
+  }
+  @media (max-width: 640px) {
+    .auth-story { padding: 26px 22px 42px; }
+    .auth-story-top .eyebrow { display: none; }
+    .auth-story-copy { padding-top: 42px; }
+    .auth-story-copy h1 { font-size: clamp(42px, 12vw, 56px); }
+    .auth-story-copy .lead { font-size: 14.5px; }
+    .auth-pillars { gap: 8px 14px; margin-top: 26px; }
+    .auth-story-foot { flex-direction: column; align-items: flex-start; gap: 10px; }
+    .story-foot-break { display: inline; }
+    .story-code { display: none; }
+    .auth-orbit { width: 390px; right: -190px; top: 62%; opacity: .42; }
+    .orbit-core { display: none; }
+    .orbit-node.n3, .orbit-node.n4 { display: none; }
+    .auth-panel { padding: 26px 22px 46px; }
+    .auth-top { margin-bottom: 24px; }
+    .login-intro h2 { font-size: 40px; }
+    .field input { font-size: 16px; }
+    .demo-option { grid-template-columns: 32px minmax(0, 1fr); }
+    .demo-account { display: none; }
+  }
+</style>
+</head>
+<body class="auth-page">
+<a class="skip-link" href="#login-form">跳到登录表单</a>
+<div class="page-veil" id="pageVeil" aria-hidden="true"><div class="veil-label"><span>正在进入安全域</span></div></div>
+
+<main class="auth-shell">
+  <section class="auth-story" id="authStory" aria-labelledby="auth-story-title">
+    <div class="auth-story-top">
+      <a class="brand" href="index.html" data-transition data-transition-label="正在返回故事" aria-label="返回 MedGuard 首页">
+        <span class="brand-mark" aria-hidden="true">盾</span>
+        <span class="brand-words"><strong>MEDGUARD / 医盾</strong><small>可信医疗信息入口</small></span>
+      </a>
+      <p class="eyebrow">SECURE ACCESS / 01</p>
+    </div>
+
+    <div class="auth-story-copy">
+      <p class="eyebrow" data-reveal><span class="eyebrow-dot"></span>身份决定入口 · 令牌决定范围</p>
+      <h1 id="auth-story-title" data-reveal>让每一次查询，<br>都从<em>可信</em>开始。</h1>
+      <p class="lead" data-reveal>同一个问题，医生看到所辖患者的汇总，患者只看到本人记录。登录之后，身份与数据边界同时生效。</p>
+      <div class="auth-pillars" data-reveal>
+        <span>医院签发令牌</span><span>查询计划先审计</span><span>结果可回到来源</span>
+      </div>
+    </div>
+
+    <div class="auth-orbit" id="authOrbit" aria-hidden="true">
+      <span class="orbit-ring"></span><span class="orbit-ring"></span><span class="orbit-ring"></span>
+      <span class="orbit-core">盾</span>
+      <span class="orbit-node n1">医院主库</span>
+      <span class="orbit-node n2">审核知识库</span>
+      <span class="orbit-node n3">安全审计</span>
+      <span class="orbit-node n4">下一步服务</span>
+    </div>
+    <canvas id="authMotes" aria-hidden="true"></canvas>
+
+    <div class="auth-story-foot">
+      <p>MedGuard 医盾提供医学信息检索与就医辅助，<br class="story-foot-break">不替代执业医师的诊断、处方和紧急医疗服务。</p>
+      <span class="story-code">NO SELF-SIGNUP / © 2026</span>
+    </div>
+  </section>
+
+  <section class="auth-panel" aria-labelledby="login-title">
+    <div class="auth-top">
+      <a class="auth-back" href="index.html" data-transition data-transition-label="正在返回故事"><span aria-hidden="true">←</span> 返回故事</a>
+      <p class="eyebrow">PLATFORM LOGIN</p>
+    </div>
+
+    <div class="login-wrap">
+      <header class="login-intro" data-reveal>
+        <h2 id="login-title">欢迎回来。</h2>
+        <p>使用医院信息科分配的账号进入工作区。演示环境可直接选择下方任一身份。</p>
+      </header>
+
+      <form class="login-form" id="login-form" novalidate data-reveal style="--delay: .08s">
+        <div class="field">
+          <div class="field-head"><label for="account">账号</label><small>ACCOUNT</small></div>
+          <div class="field-control">
+            <input id="account" name="account" type="text" autocomplete="username" placeholder="请输入医院分配账号" aria-describedby="account-error" />
+          </div>
+          <p class="field-error" id="account-error" hidden></p>
+        </div>
+
+        <div class="field has-toggle">
+          <div class="field-head"><label for="password">密码</label><small>PASSWORD</small></div>
+          <div class="field-control">
+            <input id="password" name="password" type="password" autocomplete="current-password" placeholder="请输入密码" aria-describedby="password-error" />
+            <button class="password-toggle" id="passwordToggle" type="button" aria-label="显示密码" aria-pressed="false">显示</button>
+          </div>
+          <p class="field-error" id="password-error" hidden></p>
+          <p class="field-hint">没有自助注册。账号由医院信息科统一开通。</p>
+        </div>
+
+        <div class="form-alert" id="formAlert" role="alert" hidden></div>
+        <button class="primary-action login-submit" id="loginSubmit" type="submit" data-od-id="login-submit">
+          <span id="submitLabel">安全登录</span>
+          <span class="action-arrow" aria-hidden="true">↗</span>
+        </button>
+        <p class="login-status" id="loginStatus" role="status" aria-live="polite"></p>
+      </form>
+
+      <section class="demo-block" aria-labelledby="demo-title" data-reveal style="--delay: .16s">
+        <div class="demo-head">
+          <strong id="demo-title">演示身份</strong>
+          <span>点一下自动填入 · 密码 <code>medguard</code></span>
+        </div>
+        <div class="demo-list" id="demoList">
+          <button class="demo-option" type="button" data-account="doctor" aria-pressed="false">
+            <span class="demo-avatar" aria-hidden="true">医</span>
+            <span class="demo-copy"><strong>医生001 · 心内科</strong><small>所辖患者群体 · 汇总与明细</small></span>
+            <span class="demo-account">doctor</span>
+          </button>
+          <button class="demo-option" type="button" data-account="patient" aria-pressed="false">
+            <span class="demo-avatar" aria-hidden="true">患</span>
+            <span class="demo-copy"><strong>患者001</strong><small>本人病历 · 报告与就医方向</small></span>
+            <span class="demo-account">patient</span>
+          </button>
+          <button class="demo-option" type="button" data-account="admin" aria-pressed="false">
+            <span class="demo-avatar" aria-hidden="true">管</span>
+            <span class="demo-copy"><strong>信息科管理员</strong><small>全院数据与安全策略</small></span>
+            <span class="demo-account">admin</span>
+          </button>
+        </div>
+      </section>
+
+      <div class="login-foot">
+        <svg viewBox="0 0 16 19" fill="none" aria-hidden="true"><path d="M8 1.2 14 3.6v4.9c0 4-2.7 6.9-6 8.3-3.3-1.4-6-4.3-6-8.3V3.6L8 1.2Z" stroke="currentColor" stroke-width="1.2"/><path d="m5.3 8.7 1.8 1.8 3.6-3.9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>登录令牌由服务端签发。界面不保存明文口令，会话在关闭标签页后结束。</span>
+      </div>
+      <p class="login-disclaimer">演示账号与数据均为虚构，不含真实患者信息。<br>平台不替代执业医师的诊断与紧急医疗服务。</p>
+      <button class="motion-toggle" id="motionToggle" type="button" aria-pressed="false">暂停背景动效</button>
+    </div>
+  </section>
+</main>
+
+<script>
+(() => {
+  'use strict';
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let paused = reduce;
+  let wakeMotes = null;
+  const accounts = {
+    doctor: { role: 'staff', name: '医生001 · 心内科', scope: '所辖患者群体' },
+    patient: { role: 'patient', name: '患者001', scope: '本人病历' },
+    admin: { role: 'admin', name: '信息科管理员', scope: '全院数据与安全策略' },
+  };
+  const DEMO_PASSWORD = 'medguard';
+
+  const form = document.getElementById('login-form');
+  const accountInput = document.getElementById('account');
+  const passwordInput = document.getElementById('password');
+  const accountError = document.getElementById('account-error');
+  const passwordError = document.getElementById('password-error');
+  const formAlert = document.getElementById('formAlert');
+  const status = document.getElementById('loginStatus');
+  const submit = document.getElementById('loginSubmit');
+  const submitLabel = document.getElementById('submitLabel');
+  const passwordToggle = document.getElementById('passwordToggle');
+  const demoButtons = Array.from(document.querySelectorAll('.demo-option'));
+
+  const setError = (input, el, message) => {
+    if (message) {
+      input.setAttribute('aria-invalid', 'true');
+      el.textContent = message;
+      el.hidden = false;
+    } else {
+      input.removeAttribute('aria-invalid');
+      el.textContent = '';
+      el.hidden = true;
+    }
+  };
+
+  const clearErrors = () => {
+    setError(accountInput, accountError, '');
+    setError(passwordInput, passwordError, '');
+    formAlert.hidden = true;
+    status.textContent = '';
+  };
+
+  const selectDemo = (key) => {
+    const account = accounts[key] ? key : 'doctor';
+    accountInput.value = account;
+    passwordInput.value = DEMO_PASSWORD;
+    demoButtons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.account === account)));
+    clearErrors();
+    accountInput.focus({ preventScroll: true });
+  };
+
+  demoButtons.forEach((button) => {
+    button.addEventListener('click', () => selectDemo(button.dataset.account));
+  });
+
+  passwordToggle.addEventListener('click', () => {
+    const showing = passwordInput.type === 'text';
+    passwordInput.type = showing ? 'password' : 'text';
+    passwordToggle.textContent = showing ? '显示' : '隐藏';
+    passwordToggle.setAttribute('aria-label', showing ? '显示密码' : '隐藏密码');
+    passwordToggle.setAttribute('aria-pressed', String(!showing));
+    passwordInput.focus({ preventScroll: true });
+  });
+
+  [accountInput, passwordInput].forEach((input) => {
+    input.addEventListener('input', () => {
+      if (input === accountInput) setError(accountInput, accountError, '');
+      else setError(passwordInput, passwordError, '');
+      formAlert.hidden = true;
+      status.textContent = '';
+      demoButtons.forEach((button) => button.setAttribute('aria-pressed', 'false'));
+    });
+  });
+
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    clearErrors();
+    const account = accountInput.value.trim().toLowerCase();
+    const password = passwordInput.value;
+    let invalid = false;
+
+    if (!account) {
+      setError(accountInput, accountError, '请输入账号');
+      invalid = true;
+    }
+    if (!password) {
+      setError(passwordInput, passwordError, '请输入密码');
+      invalid = true;
+    }
+    if (invalid) {
+      (account ? passwordInput : accountInput).focus();
+      return;
+    }
+
+    if (!accounts[account] || password !== DEMO_PASSWORD) {
+      formAlert.textContent = '账号或密码不正确。演示账号请选择下方任一身份。';
+      formAlert.hidden = false;
+      status.textContent = '登录未通过，请核对账号与密码。';
+      return;
+    }
+
+    const user = accounts[account];
+    sessionStorage.setItem('medguard.demo.session', JSON.stringify({
+      account,
+      displayName: user.name,
+      scope: user.scope,
+      role: user.role,
+      loginAt: Date.now(),
+    }));
+
+    submit.disabled = true;
+    submitLabel.textContent = '正在验证身份';
+    submit.querySelector('.action-arrow').outerHTML = '<span class="spinner" aria-hidden="true"></span>';
+    status.textContent = '正在核验令牌与权限边界……';
+
+    window.setTimeout(() => {
+      if (window.MG && typeof window.MG.navigate === 'function') {
+        window.MG.navigate('console.html', '正在进入安全工作区');
+      } else {
+        window.location.href = 'console.html';
+      }
+    }, reduce ? 80 : 760);
+  });
+
+  /* 左侧轨道随指针轻微偏移，不做自动旋转。 */
+  const story = document.getElementById('authStory');
+  const orbit = document.getElementById('authOrbit');
+  if (story && orbit && !reduce) {
+    story.addEventListener('pointermove', (event) => {
+      const rect = story.getBoundingClientRect();
+      const x = (event.clientX - rect.left) / rect.width - 0.5;
+      const y = (event.clientY - rect.top) / rect.height - 0.5;
+      orbit.style.setProperty('--orbit-x', x.toFixed(2));
+      orbit.style.setProperty('--orbit-y', y.toFixed(2));
+    }, { passive: true });
+    story.addEventListener('pointerleave', () => {
+      orbit.style.setProperty('--orbit-x', '0');
+      orbit.style.setProperty('--orbit-y', '0');
+    });
+  }
+
+  /* 左侧微尘。 */
+  const canvas = document.getElementById('authMotes');
+  if (canvas) {
+    const ctx = canvas.getContext('2d');
+    let w = 0, h = 0, dots = [], running = false;
+    const resize = () => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      w = canvas.clientWidth;
+      h = canvas.clientHeight;
+      canvas.width = Math.floor(w * dpr);
+      canvas.height = Math.floor(h * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      dots = Array.from({ length: 34 }, () => ({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        r: .6 + Math.random() * 1.2,
+        a: .05 + Math.random() * .12,
+        vx: (Math.random() - .5) * .06,
+        vy: -.04 - Math.random() * .07,
+      }));
+    };
+    window.addEventListener('resize', resize);
+    resize();
+    const draw = () => {
+      if (paused) { running = false; return; }
+      running = true;
+      ctx.clearRect(0, 0, w, h);
+      for (const dot of dots) {
+        dot.x += dot.vx;
+        dot.y += dot.vy;
+        if (dot.y < -8) { dot.y = h + 8; dot.x = Math.random() * w; }
+        if (dot.x < -8) dot.x = w + 8;
+        if (dot.x > w + 8) dot.x = -8;
+        ctx.beginPath();
+        ctx.fillStyle = `rgba(38, 58, 53, ${dot.a})`;
+        ctx.arc(dot.x, dot.y, dot.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      requestAnimationFrame(draw);
+    };
+    wakeMotes = () => {
+      if (!running) requestAnimationFrame(draw);
+    };
+    draw();
+  }
+
+  /* 背景动效可暂停。 */
+  const motionToggle = document.getElementById('motionToggle');
+  const applyPaused = () => {
+    document.documentElement.classList.toggle('motion-paused', paused);
+    motionToggle.setAttribute('aria-pressed', String(paused));
+    motionToggle.textContent = paused ? '恢复背景动效' : '暂停背景动效';
+  };
+  applyPaused();
+  motionToggle.addEventListener('click', () => {
+    paused = !paused;
+    applyPaused();
+    if (!paused && wakeMotes) wakeMotes();
+  });
+})();
+</script>
+<script src="assets/base.js"></script>
+</body>
+</html>

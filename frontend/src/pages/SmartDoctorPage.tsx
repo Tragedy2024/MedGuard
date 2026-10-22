@@ -1,39 +1,29 @@
 /**
- * 智慧医生——面向患者的「可信就医助手」（智慧医生.docx）。
+ * 智慧医生——面向患者的「可信就医助手」。
  *
- * 布局按需求文档：左侧约 70% 多轮问答与结果，右侧约 30% 当前使用的数据、
- * 建议操作、信息来源。患者登录后的默认页（见 App.tsx 路由）。
+ * 布局沿用静态稿：左侧多轮问答与结果，右侧当前使用的数据、来源与能力边界。
+ * 患者登录后的默认页（见 App.tsx 路由）。
  *
  * 每一块回答都带**来源标注**，这是产品差异点：
  *   院内数据   → 「来源：医院主库」（经医盾层一准入 + 层二审计，只读本人）
  *   通俗解读   → 「来源：医院审核知识库」
  *   下一步建议 → 「来源：医院审核知识库」
  */
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { askSmartDoctor } from '../api/smartDoctor'
 import type { SmartDoctorResponse } from '../api/models'
 import { AliasProvider, useAliases } from '../store/aliases'
 import { useAuth } from '../store/auth'
 import { errorText } from '../api/client'
+import { AdmissionPanel } from '../components/AdmissionPanel'
 import { DegradationBadge } from '../components/DegradationBadge'
 
 const DATASOURCE = 'regional_health'
 
-/**
- * 四个任务入口（docx 原文）。
- *
- * 任务分两类：
- * - 直接可查的任务（看懂报告 / 用药）→ 点击即发送问法；
- * - 需要患者提供信息才能回答的任务（挂什么科 / 了解疾病）→ 点击后
- *   聚焦输入框并提示示例，由患者**自己**描述症状或疾病——不能替患者
- *   编一个症状（"我不舒服"点下去就直接报心血管内科是假演示）。
- */
 interface Task {
   key: string
   label: string
-  /** 可直接发送的问法；与 prompt 二选一 */
   question?: string
-  /** 需患者自己描述时的示例提示；与 question 二选一 */
   prompt?: string
 }
 
@@ -53,9 +43,7 @@ const TASKS: Task[] = [
 ]
 
 const SOURCE_DATA = '医院主库'
-const SOURCE_KB = '医院审核知识库'
 const SOURCE_AI = 'AI 智能导诊'
-/** 症状导诊与疾病条目的事实来源——开源数据集，非本项目自撰。 */
 const SOURCE_DATASET = 'OpenCMKG 开源数据集'
 
 interface Message {
@@ -80,12 +68,21 @@ function SmartDoctor() {
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [taskHint, setTaskHint] = useState<string | null>(null)
-  const endRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    const el = scrollRef.current
+    if (!el) return
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+  }, [messages, running])
+
+  useEffect(() => {
+    const field = inputRef.current
+    if (!field) return
+    field.style.height = 'auto'
+    field.style.height = `${Math.min(field.scrollHeight, 110)}px`
+  }, [text])
 
   if (!session) return null
 
@@ -95,10 +92,6 @@ function SmartDoctor() {
     setError(null)
     setTaskHint(null)
     // 把**上一轮的识别结果**交给后端，用来解析「它」「那个」这类指代。
-    //
-    // 传的是已解析的 {intent, entity} 而不是上一轮的原话：链式追问才不会
-    // 一轮轮退化——「我的血糖结果正常吗」→「它正常吗」→「严重吗」，
-    // 若每轮都传原话，第二轮回解析「它正常吗」同样拿不到实体，第三轮就断了。
     const prev = messages.filter((m) => m.role === 'doctor' && m.resp).at(-1)?.resp
     const context = prev
       ? { intent: prev.intent, entity: prev.entity ?? null }
@@ -139,189 +132,176 @@ function SmartDoctor() {
     void ask(q)
   }
 
+  const submitOnEnter = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return
+    event.preventDefault()
+    event.currentTarget.form?.requestSubmit()
+  }
+
   const lastResp = messages.filter((m) => m.role === 'doctor').at(-1)?.resp
-  const denied = lastResp !== undefined && !lastResp.admission.passed
-  // 契约里 rows / columns / actions 是**可选**字段（后端用 default_factory
-  // 声明，OpenAPI 就不把它们标成必填）。统一在这里兜底，免得每处调用都写
-  // 一遍 `?? []`，也免得漏掉一处就白屏。
   const lastRows = lastResp?.data?.rows ?? []
   const lastColumns = lastResp?.data?.columns ?? []
   const lastActions = lastResp?.advice?.actions ?? []
 
   return (
-    <div className="page smart-doctor">
-      <div className="sd-head">
-        <h2>智慧医生</h2>
-        <p className="hint">
-          面向患者的可信就医助手：回答由两块合成——<strong>医院主库的本人数据</strong>
-          （经医盾安全审计，只读取您本人的记录）与<strong>医院审核知识库</strong>的通俗解读。
-          两个来源分开标注，不混为一谈。
-        </p>
+    <section className="view is-active" aria-labelledby="doctorTitle">
+      <div className="view-head">
+        <div className="view-head-copy">
+          <h2 id="doctorTitle">记录与解释，分开呈现。</h2>
+          <p className="view-sub">
+            医院记录、审核知识库与导诊建议分开显示；通俗解释不会被写成诊断，也不会改动处方。
+          </p>
+        </div>
+        <div className="view-head-aside"><span className="quiet-badge">来源分离 · 演示患者</span></div>
       </div>
 
-      <div className="sd-layout">
-        {/* ── 左栏：多轮问答与结果 ── */}
-        <div className="sd-chat">
-          {messages.length === 0 && (
-            <div className="sd-welcome">
-              <p className="sd-welcome-title">您可以从下面几个任务开始，或直接输入您的问题：</p>
-              <div className="sd-tasks">
-                {TASKS.map((t) => (
-                  <button
-                    key={t.key}
-                    className="sd-task"
-                    onClick={() => onTask(t)}
-                    disabled={running}
-                  >
-                    {t.label}
-                  </button>
-                ))}
+      <div className="doctor-layout">
+        <section className="chat-card" aria-labelledby="chatTitle">
+          <div className="chat-head">
+            <div className="chat-id">
+              <span className="chat-avatar" aria-hidden="true">盾</span>
+              <div>
+                <strong id="chatTitle">MedGuard 智慧医生</strong>
+                <small>医院审核知识库 · 回答可回到来源</small>
               </div>
             </div>
-          )}
+            <span className="chat-subject">{session.displayName} · 演示</span>
+          </div>
 
-          {taskHint && (
-            <div className="sd-task-hint" role="status">
-              {taskHint}
-            </div>
-          )}
+          <div className="chat-scroll" ref={scrollRef} role="log" aria-live="polite" aria-label="智慧医生对话">
+            <p className="chat-date">演示会话 · 所有记录均为虚构测试数据</p>
 
-          {messages.map((m, i) =>
-            m.role === 'user' ? (
-              <div key={i} className="sd-msg sd-msg-user">
-                {m.text}
+            {messages.length === 0 && (
+              <div className="sd-welcome">
+                <p className="sd-welcome-title">您可以从下面几个任务开始，或直接输入您的问题：</p>
+                <div className="sd-tasks chat-start-grid">
+                  {TASKS.map((t) => (
+                    <button key={t.key} className="sd-task chat-chip" type="button"
+                            onClick={() => onTask(t)} disabled={running}>
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
               </div>
-            ) : m.resp ? (
-              <div key={i} className="sd-msg sd-msg-doctor">
-                <AnswerView resp={m.resp} aliasOf={aliasOf} inlineAlias={inlineAlias} />
+            )}
+
+            {taskHint && <div className="sd-task-hint" role="status">{taskHint}</div>}
+
+            {messages.map((m, i) =>
+              m.role === 'user' ? (
+                <div key={i} className="msg is-user">
+                  <span className="msg-avatar" aria-hidden="true">我</span>
+                  <div className="msg-main">
+                    <div className="msg-who">您</div>
+                    <div className="msg-bubble"><p>{m.text}</p></div>
+                  </div>
+                </div>
+              ) : m.resp ? (
+                <div key={i} className="msg">
+                  <span className="msg-avatar" aria-hidden="true">盾</span>
+                  <div className="msg-main">
+                    <div className="msg-who">智慧医生</div>
+                    <div className="msg-bubble">
+                      <AnswerView resp={m.resp} aliasOf={aliasOf} inlineAlias={inlineAlias} />
+                    </div>
+                  </div>
+                </div>
+              ) : null,
+            )}
+
+            {running && (
+              <div className="msg" role="status" aria-live="polite">
+                <span className="msg-avatar" aria-hidden="true">盾</span>
+                <div className="msg-main">
+                  <div className="msg-bubble">
+                    <span className="typing" aria-label="正在为您解读">
+                      <i /><i /><i />
+                    </span>
+                  </div>
+                </div>
               </div>
-            ) : null,
-          )}
+            )}
 
-          {running && (
-            <div className="loading" role="status" aria-live="polite">
-              正在为您解读……
-            </div>
-          )}
+            {error && <div className="alert-error">{error}</div>}
+          </div>
 
-          {/* 追问入口。
-              原先这四个任务入口只在 messages.length === 0 时渲染——患者问过
-              第一句之后它们就**消失了**，此后再想问别的只能靠打字回忆。
-              「还能问什么」是产品该主动告诉患者的事，不该让他去猜；
-              所以首轮之后改为一行常驻的紧凑入口。 */}
           {messages.length > 0 && (
-            <div className="sd-followup">
+            <div className="sd-followup chat-suggestions">
               <span className="sd-followup-label">还可以问我</span>
               {TASKS.map((t) => (
-                <button
-                  key={t.key}
-                  className="sd-task"
-                  onClick={() => onTask(t)}
-                  disabled={running}
-                >
+                <button key={t.key} className="sd-task chat-chip" type="button"
+                        onClick={() => onTask(t)} disabled={running}>
                   {t.label}
                 </button>
               ))}
             </div>
           )}
-          {error && <div className="alert-error">{error}</div>}
-          {denied && (
-            <div className="admission admission-deny">
-              <div className="admission-refusal">
-                {lastResp?.admission.reason ?? '该查询涉及其他患者信息，无法提供。'}
-              </div>
-            </div>
-          )}
-          <div ref={endRef} />
-        </div>
 
-        {/* ── 右栏：数据 / 建议操作 / 信息来源 ── */}
-        <aside className="sd-side">
-          <section className="sd-card">
-            <h4>本次使用的数据</h4>
+          <form className="chat-composer sd-ask" onSubmit={submit}>
+            <label className="sr-only" htmlFor="chatInput">向智慧医生提问</label>
+            <textarea
+              ref={inputRef}
+              id="chatInput"
+              rows={1}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={submitOnEnter}
+              placeholder={taskHint ?? '例如：我的血糖结果正常吗？接下来怎么办？'}
+              disabled={running}
+            />
+            <button className="chat-send" type="submit" disabled={running || !text.trim()} aria-label="发送问题">↗</button>
+          </form>
+          <p className="chat-note">回答只基于演示记录与审核知识库，不替代执业医师的诊断、处方和紧急医疗服务。</p>
+        </section>
+
+        <aside className="doctor-aside" aria-label="回答来源与任务">
+          <section className="aside-card">
+            <h3>本次使用的数据</h3>
             {lastResp?.data && lastRows.length > 0 ? (
               <>
-                <p className="hint">
+                <p>
                   <span className="sd-source-tag">{SOURCE_DATA}</span>
                   共 {lastRows.length} 条本人记录
                 </p>
                 <DegradationBadge degradation={lastResp.degradation} />
-                {lastResp.degradation.message_cn && (
-                  <p className="hint">{lastResp.degradation.message_cn}</p>
-                )}
-                <p className="hint">
-                  列名：{lastColumns.map((c) => aliasOf(c)).join('、')}
-                </p>
+                {lastResp.degradation.message_cn && <p>{lastResp.degradation.message_cn}</p>}
+                <p>列名：{lastColumns.map((c) => aliasOf(c)).join('、')}</p>
               </>
             ) : (
-              <p className="hint">本回答不涉及院内数据，仅使用知识库内容。</p>
+              <p>本回答不涉及院内数据，仅使用知识库内容。</p>
             )}
           </section>
 
-          <section className="sd-card">
-            <h4>建议操作</h4>
+          <section className="aside-card">
+            <h3>建议操作</h3>
             {lastActions.length > 0 ? (
               <ul className="sd-actions">
-                {lastActions.map((a, i) => (
-                  <li key={i}>{a}</li>
-                ))}
+                {lastActions.map((a, i) => <li key={i}>{a}</li>)}
               </ul>
             ) : (
-              <p className="hint">暂无特殊建议。</p>
+              <p>暂无特殊建议。</p>
             )}
           </section>
 
-          <section className="sd-card">
-            <h4>信息来源</h4>
-            <ul className="sd-sources">
-              <li>
-                <span className="sd-source-tag">{SOURCE_DATA}</span>
-                <span className="sd-source-desc">
-                  您的院内数据，查询计划经医盾层一准入与层二安全审计，只读取本人记录。
-                </span>
-              </li>
-              <li>
-                <span className="sd-source-tag">{SOURCE_DATASET}</span>
-                <span className="sd-source-desc">
-                  就诊科室建议与疾病条目取自开源中文医学知识图谱 OpenCMKG，
-                  <strong>非本项目自撰</strong>；抽取脚本随仓库交付，可复现、可审计。
-                </span>
-              </li>
-              <li>
-                <span className="sd-source-tag">{SOURCE_KB}</span>
-                <span className="sd-source-desc">
-                  检验数值分档与用药说明来自本项目的仿真知识库（演示数据）。
-                </span>
-              </li>
-              <li>
-                <span className="sd-source-tag">{SOURCE_AI}</span>
-                <span className="sd-source-desc">
-                  通俗解读与下一步建议由大模型生成，<strong>未经人工审核</strong>，仅供参考。
-                </span>
-              </li>
+          <section className="aside-card">
+            <h3>回答从哪里来</h3>
+            <p>每个回答都按来源拆分，方便你分辨“记录写了什么”和“这意味着什么”。</p>
+            <ul className="source-list">
+              <li className="source-item"><span>医院主库 · 本人记录</span><small>限定</small></li>
+              <li className="source-item"><span>医院审核知识库</span><small>91 条核心</small></li>
+              <li className="source-item"><span>{SOURCE_DATASET}</span><small>可追溯</small></li>
+              <li className="source-item"><span>{SOURCE_AI}</span><small>仅作提示</small></li>
             </ul>
-            <p className="hint">
-              对结果有疑问，请携带报告咨询您的主治医生或医院信息科。
-            </p>
+            <p className="source-caption">未命中审核知识的问题会明确说“不知道”，不会用相似文本拼出确定答案。</p>
+          </section>
+
+          <section className="aside-card aside-boundary">
+            <h3>能力边界</h3>
+            <p>智慧医生不处理急诊分诊，不判断未上传的检查，不修改处方。胸痛、呼吸困难、意识改变等情况请立即拨打急救电话或前往急诊。</p>
           </section>
         </aside>
       </div>
-
-      <form className="ask-bar sd-ask" onSubmit={submit}>
-        <input
-          ref={inputRef}
-          type="text"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder={taskHint ?? '例如：我的血糖结果正常吗？接下来怎么办？'}
-          aria-label="向智慧医生提问"
-          disabled={running}
-        />
-        <button type="submit" disabled={running || !text.trim()}>
-          提问
-        </button>
-      </form>
-    </div>
+    </section>
   )
 }
 
@@ -335,50 +315,32 @@ function AnswerView({
   aliasOf: (q: string) => string
   inlineAlias: (t: string) => string | null
 }) {
-  // 层一拒绝：只展示固定拒绝文案（由父组件兜底渲染，这里也防一手）
   if (!resp.admission.passed) {
-    return (
-      <div className="sd-block">
-        <p className="sd-refusal">
-          {resp.admission.reason ?? '该查询涉及其他患者信息，无法提供。'}
-        </p>
-      </div>
-    )
+    return <AdmissionPanel admission={resp.admission} />
   }
 
-  // 契约里这几个数组是可选字段（后端 default_factory），统一兜底。
   const rows = resp.data?.rows ?? []
   const columns = resp.data?.columns ?? []
   const items = resp.interpretation?.items ?? []
   const actions = resp.advice?.actions ?? []
 
   return (
-    <div className="sd-answer">
-      {/* 块一：院内数据 */}
+    <div className="answer-block sd-answer">
       {resp.data && rows.length > 0 && (
-        <div className="sd-block">
-          <div className="sd-block-head">
-            <span className="sd-block-title">您的院内数据</span>
-            <span className="sd-source-tag">{SOURCE_DATA}</span>
-          </div>
-          <table className="result-table sd-table">
-            <thead>
-              <tr>
-                {columns.map((c) => (
-                  <th key={c}>{aliasOf(c)}</th>
+        <div className="answer-section source-hospital sd-block">
+          <h5>您的院内数据 <span className="sd-source-tag">{SOURCE_DATA}</span></h5>
+          <div className="data-table-wrap">
+            <table className="result-table sd-table">
+              <thead>
+                <tr>{columns.map((c) => <th key={c}>{aliasOf(c)}</th>)}</tr>
+              </thead>
+              <tbody>
+                {rows.map((row, i) => (
+                  <tr key={i}>{row.map((cell, j) => <td key={j}>{String(cell)}</td>)}</tr>
                 ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, i) => (
-                <tr key={i}>
-                  {row.map((cell, j) => (
-                    <td key={j}>{String(cell)}</td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+              </tbody>
+            </table>
+          </div>
           {resp.data.sql_after && (
             <details className="sd-sql">
               <summary>查看本次查询（经医盾审计）</summary>
@@ -388,14 +350,10 @@ function AnswerView({
         </div>
       )}
 
-      {/* 块二：通俗解读 */}
       {resp.interpretation && (
-        <div className="sd-block">
-          <div className="sd-block-head">
-            <span className="sd-block-title">{resp.interpretation.title}</span>
-            <span className="sd-source-tag">{resp.interpretation.source}</span>
-          </div>
-          {resp.interpretation.text && <p className="sd-text">{resp.interpretation.text}</p>}
+        <div className="answer-section source-plain sd-block">
+          <h5>{resp.interpretation.title} <span className="sd-source-tag">{resp.interpretation.source}</span></h5>
+          {resp.interpretation.text && <p>{resp.interpretation.text}</p>}
           {items.length > 0 && (
             <ul className="sd-items">
               {items.map((it, i) => (
@@ -408,22 +366,16 @@ function AnswerView({
         </div>
       )}
 
-      {/* 块三：下一步建议 */}
       {resp.advice && (
-        <div className="sd-block">
-          <div className="sd-block-head">
-            <span className="sd-block-title">下一步建议</span>
-            <span className="sd-source-tag">{resp.advice.source}</span>
-          </div>
+        <div className="answer-section source-next sd-block">
+          <h5>下一步建议 <span className="sd-source-tag">{resp.advice.source}</span></h5>
           {resp.advice.urgent && (
             <div className="sd-urgent">⚠ 请留意紧急情况：出现文中描述的重症信号请立即就医</div>
           )}
-          {resp.advice.text && <p className="sd-text">{resp.advice.text}</p>}
+          {resp.advice.text && <p>{resp.advice.text}</p>}
           {actions.length > 0 && (
             <ul className="sd-actions">
-              {actions.map((a, i) => (
-                <li key={i}>{a}</li>
-              ))}
+              {actions.map((a, i) => <li key={i}>{a}</li>)}
             </ul>
           )}
         </div>
@@ -440,29 +392,21 @@ function InterpretationRow({
   item: Record<string, unknown>
   aliasOf: (q: string) => string
 }) {
-  // 知识库检索来源行（RAG 的检索结果）。
-  // 放在最前面判：`ref_` 前缀与下面的 test_name / drug_name 不会冲突，
-  // 但先判更直白，也表明「这是另一类行，不是检验项也不是药品」。
   if (item.ref_title !== undefined) {
     return (
       <>
         <div className="sd-item-line">
           <strong>{String(item.ref_title)}</strong>
-          {item.ref_kind ? (
-            <span className="sd-item-label">{String(item.ref_kind)}</span>
-          ) : null}
+          {item.ref_kind ? <span className="sd-item-label">{String(item.ref_kind)}</span> : null}
         </div>
         <div className="sd-item-text sd-ref">
           {item.ref_excerpt ? <span>{String(item.ref_excerpt)}</span> : null}
-          {item.ref_source ? (
-            <span className="sd-ref-source">出处：{String(item.ref_source)}</span>
-          ) : null}
+          {item.ref_source ? <span className="sd-ref-source">出处：{String(item.ref_source)}</span> : null}
         </div>
       </>
     )
   }
 
-  // 检验解读行
   if (item.test_name !== undefined) {
     const name = String(item.test_name)
     const label = item.label ? String(item.label) : ''
@@ -481,7 +425,6 @@ function InterpretationRow({
     )
   }
 
-  // 用药行
   if (item.drug_name !== undefined) {
     const drug = String(item.drug_name)
     return (
@@ -493,27 +436,20 @@ function InterpretationRow({
             {item.route ? ` · ${String(item.route)}` : ''}
           </span>
         </div>
-        {item.purpose ? (
-          <div className="sd-item-text">用途：{String(item.purpose)}</div>
-        ) : null}
+        {item.purpose ? <div className="sd-item-text">用途：{String(item.purpose)}</div> : null}
         {item.usage ? <div className="sd-item-text">用法：{String(item.usage)}</div> : null}
-        {item.caution ? (
-          <div className="sd-item-text sd-caution">注意：{String(item.caution)}</div>
-        ) : null}
+        {item.caution ? <div className="sd-item-text sd-caution">注意：{String(item.caution)}</div> : null}
         {item.note ? <div className="sd-item-text sd-caution">提醒：{String(item.note)}</div> : null}
       </>
     )
   }
 
-  // 其他（fallback）：原样列出非空字段
   const entries = Object.entries(item).filter(([, v]) => v !== '' && v != null)
   return (
     <>
       {entries.map(([k, v]) => (
         <div key={k} className="sd-item-line">
-          <span className="sd-item-value">
-            {k}：{String(v)}
-          </span>
+          <span className="sd-item-value">{k}：{String(v)}</span>
         </div>
       ))}
     </>

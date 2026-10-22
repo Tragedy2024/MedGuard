@@ -1,0 +1,533 @@
+/* MedGuard · 迁移适配层
+   新版视觉基座加载在旧 design.css 之后。这里只做两件事：
+   1. 把旧组件仍在引用的令牌映射到新令牌；
+   2. 收拢旧组件的边框、圆角与色阶，使管理页与新工作区同源。
+   新增页面直接使用 styles/ 下的新类，不再依赖本文件。 */
+
+:root {
+  --brand: var(--accent-deep);
+  --brand-deep: var(--fg);
+  --brand-soft: var(--accent);
+  --brand-bg: var(--accent-wash);
+  --brand-rule: var(--accent-soft);
+  --on-brand: var(--on-accent);
+  --on-brand-dim: color-mix(in oklch, var(--on-accent) 76%, transparent);
+  --on-brand-line: color-mix(in oklch, var(--on-accent) 28%, transparent);
+
+  --paper: var(--bg);
+  --paper-raised: var(--surface-raised);
+  --paper-sunken: var(--surface-sunk);
+
+  --ink: var(--fg);
+  --ink-soft: var(--fg-soft);
+  --ink-faint: var(--faint);
+
+  --line: var(--border);
+  --rule-soft: var(--border);
+  --rule-strong: var(--border-strong);
+
+  --layer1: var(--danger);
+  --layer1-bg: var(--danger-soft);
+  --layer1-rule: color-mix(in oklch, var(--danger) 26%, var(--border));
+  --layer2: var(--warn);
+  --layer2-bg: var(--warn-soft);
+  --layer2-rule: color-mix(in oklch, var(--warn) 30%, var(--border));
+  --pass: var(--ok);
+  --pass-bg: var(--ok-soft);
+  --pass-rule: color-mix(in oklch, var(--ok) 24%, var(--border));
+}
+
+/* 旧焦点环使用品牌蓝；统一到深青，且保持键盘可见性。 */
+:focus-visible {
+  outline: 2px solid var(--accent-deep);
+  outline-offset: 3px;
+}
+
+/* 工作区导航使用链接语义（aria-current），复用按钮态视觉。 */
+.work-link[aria-current='page'] {
+  background: var(--surface-raised);
+  border-color: var(--border);
+  box-shadow: 0 5px 18px color-mix(in oklch, var(--fg) 4%, transparent);
+}
+.work-link[aria-current='page']::before {
+  content: '';
+  position: absolute;
+  left: 5px; top: 15px; bottom: 15px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+.work-link[aria-current='page'] .work-icon { color: var(--accent-deep); }
+.work-link[aria-current='page'] .work-copy strong { color: var(--fg); }
+
+button.side-switch {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.route-frame { animation: view-in 420ms var(--ease-soft) both; }
+
+/* ── 旧页面骨架 ───────────────────────────────────── */
+
+.page {
+  width: 100%;
+  max-width: var(--content);
+  margin: 0 auto;
+  gap: 18px;
+}
+
+.page > h2 {
+  padding: 0;
+  border: 0;
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: clamp(28px, 3.1vw, 38px);
+  font-weight: 600;
+  line-height: 1.14;
+  letter-spacing: -0.03em;
+}
+
+.page > h3 {
+  margin-top: 8px;
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.hint,
+.muted {
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.72;
+}
+.hint strong { color: var(--fg-soft); }
+
+.card,
+.panel,
+.empty-state,
+.metric,
+.schema-table,
+.policy-summary {
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: color-mix(in oklch, var(--surface) 62%, transparent);
+  box-shadow: none;
+}
+.card { padding: 20px 22px; }
+.panel { padding: 19px 21px; }
+.panel > h4 {
+  margin-bottom: 14px;
+  padding-bottom: 11px;
+  border-bottom: 1px solid var(--border);
+  color: var(--faint);
+}
+.panel-result { border-width: 1px; border-color: var(--border); }
+.panels { gap: 16px; }
+
+.empty-state {
+  padding: 46px 26px;
+  border-style: dashed;
+  border-color: var(--border-strong);
+}
+.empty-state button,
+.sticky-actions button {
+  border: 1px solid var(--accent);
+  border-radius: 9px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+.empty-state button:hover:not(:disabled),
+.sticky-actions button:hover:not(:disabled) {
+  border-color: var(--accent-hover);
+  background: var(--accent-hover);
+}
+
+.alert-error,
+.alert-warn,
+.admission {
+  border-radius: 11px;
+  padding: 15px 17px;
+}
+.alert-error {
+  border: 1px solid color-mix(in oklch, var(--danger) 26%, var(--border));
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 13px;
+}
+.alert-warn {
+  border: 1px solid color-mix(in oklch, var(--warn) 28%, var(--border));
+  background: var(--warn-soft);
+  color: color-mix(in oklch, var(--warn) 72%, var(--fg));
+}
+.loading {
+  color: var(--accent-deep);
+  font-family: var(--font-body);
+  font-size: 13.5px;
+  letter-spacing: 0;
+}
+
+/* ── 管理页表格与字段 ─────────────────────────────── */
+
+.schema-table { overflow: hidden; }
+.schema-table > summary {
+  border-bottom-color: var(--border);
+  background: color-mix(in oklch, var(--surface) 48%, transparent);
+}
+.schema-table > summary:hover { background: var(--accent-wash); }
+.schema-table[open] > summary { border-bottom: 1px solid var(--border); }
+.schema-table code,
+.policy-table code { color: var(--accent-deep); }
+.schema-alias,
+.col-alias { color: var(--fg-soft); }
+.schema-count,
+.col-type { color: var(--muted); }
+.schema-columns li { border-top: 1px solid var(--border); }
+
+.kv dd { color: var(--fg); }
+.kv-ok { color: var(--ok); }
+.kv-warn { color: color-mix(in oklch, var(--warn) 74%, var(--fg)); }
+.card > h3 { color: var(--fg-soft); font-size: 13.5px; font-weight: 600; }
+
+.domain-head h3 { color: var(--fg); font-family: var(--font-body); font-weight: 600; }
+.domain-total { color: var(--muted); }
+.domain-fields li {
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: color-mix(in oklch, var(--surface) 50%, transparent);
+  color: var(--fg-soft);
+}
+.domain-note { color: var(--muted); }
+
+.metrics-grid { gap: 12px; }
+.metric {
+  padding: 20px 16px;
+  text-align: left;
+}
+.metric-value { color: var(--accent-deep); font-family: var(--font-display); font-size: 42px; }
+.metric-name { color: var(--fg-soft); }
+.metric-detail { color: var(--muted); }
+
+.policy-summary { padding: 14px 16px; }
+.summary-item strong { color: var(--fg); }
+.row-unlabeled > td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
+.sticky-actions button { padding: 11px 22px; }
+.sticky-actions button:disabled {
+  border-color: var(--border-strong);
+  background: transparent;
+  color: var(--faint);
+}
+
+/* 管理员/患者表单仍使用旧 .field；让它们与登录页输入框同一尺度。 */
+.field input:not([type='radio']),
+.field select {
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  background: color-mix(in oklch, var(--surface-raised) 72%, transparent);
+}
+.field input:not([type='radio']):focus,
+.field select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in oklch, var(--accent) 12%, transparent);
+}
+.field-label { color: var(--fg-soft); }
+
+/* 角色单选：登录页的 .field input 会伸满整行，这里恢复为正常单选尺寸。 */
+.role-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 24px;
+  margin: 4px 0 2px;
+}
+.role-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg-soft);
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.role-options input[type='radio'] {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  margin: 0;
+  border-radius: 50%;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* ── 查询结果与审计件 ─────────────────────────────── */
+
+.result-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: transparent;
+  font-size: 13.5px;
+}
+.result-table th,
+.result-table td {
+  padding: 11px 13px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+.result-table th {
+  background: var(--surface-sunk);
+  border-bottom: 1px solid var(--border);
+  color: var(--fg-soft);
+  font-weight: 500;
+}
+.result-col { color: var(--fg-soft); font-size: 12.5px; }
+.result-col-raw { color: var(--faint); font-size: 10px; }
+.result-table tbody tr:hover { background: color-mix(in oklch, var(--accent-wash) 30%, transparent); }
+.result-empty {
+  padding: 18px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 11px;
+  background: color-mix(in oklch, var(--surface) 42%, transparent);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.badge {
+  border-width: 1px;
+  border-radius: 4px;
+  font-size: 10.5px;
+}
+.admission-pass {
+  border: 1px solid color-mix(in oklch, var(--ok) 24%, var(--border));
+  background: var(--ok-soft);
+}
+.admission-deny {
+  border: 1px solid color-mix(in oklch, var(--danger) 28%, var(--border));
+  background: var(--danger-soft);
+}
+.admission-refusal { color: var(--danger); font-size: 17px; }
+.admission-verdict { font-size: 18px; }
+
+.degradation-message,
+.deny-note {
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-sunk);
+  color: var(--fg-soft);
+  font-size: 13px;
+}
+.result-body .degradation-message {
+  max-width: none;
+  margin-top: 12px;
+  padding: 13px 15px;
+}
+
+.console-head h3 {
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: clamp(23px, 2.4vw, 30px);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.next-steps {
+  padding: 18px 20px;
+  border: 1px solid color-mix(in oklch, var(--accent) 22%, var(--border));
+  border-radius: 12px;
+  background: color-mix(in oklch, var(--accent-wash) 56%, transparent);
+}
+.next-steps > h4 {
+  margin-bottom: 12px;
+  color: var(--accent-deep);
+  font-family: var(--font-body);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+
+/* 审计指标：旧版是深色通栏，新版改为浅色证据条。 */
+.metrics-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 22px;
+  padding: 13px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in oklch, var(--surface) 58%, transparent);
+  color: var(--muted);
+  font-size: 12px;
+}
+.metrics-bar strong {
+  margin-left: 4px;
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+}
+.metrics-scope {
+  padding: 4px 8px;
+  border: 1px solid color-mix(in oklch, var(--accent) 24%, var(--border));
+  border-radius: 4px;
+  background: var(--accent-wash);
+  color: var(--accent-deep);
+  font-family: var(--font-body);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.metrics-note { margin-left: auto; color: var(--muted); }
+.metrics-export { color: var(--accent-deep); border-bottom-color: var(--accent-soft); }
+.metrics-export:hover { border-bottom-color: var(--accent-deep); }
+.metrics-caveat { color: var(--muted); }
+.metrics-caveat strong { color: var(--fg-soft); }
+
+/* ── 智慧医生：旧 .sd-* 组件并入新对话卡 ───────────── */
+
+/* 旧版把每段回答做成独立卡片；新版只在气泡内保留来源色左侧竖线。 */
+.answer-section.sd-block {
+  padding: 0 0 0 11px;
+  border: 0;
+  border-left: 2px solid var(--border-strong);
+  border-radius: 0;
+  background: transparent;
+}
+.answer-section.sd-block.source-hospital { border-left-color: var(--accent); }
+.answer-section.sd-block.source-plain { border-left-color: var(--sand); }
+.answer-section.sd-block.source-next { border-left-color: var(--fg-soft); }
+.answer-section.sd-block + .answer-section.sd-block { margin-top: 2px; }
+.answer-section .sd-source-tag {
+  padding: 1px 7px;
+  background: var(--accent-wash);
+  color: var(--accent-deep);
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.answer-section.source-plain .sd-source-tag {
+  background: var(--sand-soft);
+  color: color-mix(in oklch, var(--warn) 68%, var(--fg));
+}
+.answer-section.source-next .sd-source-tag {
+  background: var(--surface-sunk);
+  color: var(--fg-soft);
+}
+
+.chat-scroll .sd-welcome {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.chat-scroll .sd-welcome-title {
+  margin-bottom: 12px;
+  color: var(--fg-soft);
+  font-size: 13.5px;
+}
+.chat-scroll .sd-tasks { gap: 8px; }
+.chat-scroll .sd-task { text-align: left; }
+.chat-scroll .sd-task-hint {
+  margin: 0 0 14px;
+  padding: 9px 12px;
+  border: 1px solid color-mix(in oklch, var(--accent) 22%, var(--border));
+  background: var(--accent-wash);
+  color: var(--accent-deep);
+  font-size: 12.5px;
+}
+
+/* 追问行沿用紧凑胶囊，压过旧版 .sd-followup .sd-task 的圆角与内边距。 */
+.sd-followup.chat-suggestions { padding: 8px 19px 0; }
+.sd-followup.chat-suggestions .sd-task {
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fg-soft);
+  font-size: 12px;
+}
+.sd-followup.chat-suggestions .sd-task:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: var(--surface);
+  color: var(--fg);
+  box-shadow: none;
+}
+.sd-followup-label { color: var(--faint); }
+
+.chat-scroll .sd-item-text { color: var(--fg-soft); }
+.chat-scroll .sd-item { border-top-color: var(--border); }
+.chat-scroll .sd-item-value { color: var(--muted); }
+.chat-scroll .sd-table { margin-bottom: 8px; }
+.chat-scroll .sd-sql pre {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-sunk);
+  color: var(--fg-soft);
+}
+.chat-scroll .sd-urgent {
+  border-color: color-mix(in oklch, var(--danger) 24%, var(--border));
+  border-radius: 7px;
+}
+.chat-scroll .sd-actions { margin-top: 7px; }
+.chat-scroll .sd-actions li::marker { color: var(--accent); }
+
+.doctor-aside .aside-card > .sd-source-tag { margin-right: 5px; }
+.doctor-aside .sd-actions { margin-top: 8px; padding-left: 17px; font-size: 13px; line-height: 1.7; }
+.doctor-aside .degradation-badge,
+.doctor-aside .badge { margin-top: 8px; }
+
+/* ── 安全报告：旧 .report-list 的布局规则需要让位给新列表 ── */
+
+.report-list {
+  display: block;
+  gap: 0;
+  max-height: calc(100svh - 318px);
+  padding: 0;
+}
+.report-list button.report-select {
+  display: block;
+  width: 100%;
+  gap: 0;
+  padding: 13px 15px;
+  border: 0;
+  border-left: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+.report-list button.report-select:hover {
+  border-color: transparent;
+  border-left-color: var(--border-strong);
+  background: color-mix(in oklch, var(--surface) 62%, transparent);
+}
+.report-list button.report-select[aria-pressed='true'] {
+  border-width: 0;
+  border-left: 2px solid var(--accent);
+  background: var(--surface-raised);
+}
+.report-detail {
+  display: block;
+  gap: 0;
+}
+.report-detail .console-head h3 { font-size: clamp(22px, 2.2vw, 28px); }
+/* 报告详情只有 ~760px 宽；两栏事件卡会把中文标题挤成竖排。 */
+.report-detail .panels { grid-template-columns: minmax(0, 1fr); }
+.report-detail .panel { min-width: 0; }
+
+/* 旧 report-q / report-time 在新行内仍要可读。 */
+.report-q { color: var(--fg-soft); font-size: 13.5px; }
+.report-time { color: var(--muted); font-family: var(--font-mono); font-size: 10.5px; }
+
+/* 新页面里由 React 控制的 hidden 必须压过 display:grid/flex。 */
+[hidden] { display: none !important; }
+
+/* 移动端：管理页标题缩小，避免与新顶栏争夺层级。 */
+@media (max-width: 700px) {
+  .page > h2 { font-size: clamp(25px, 7vw, 32px); }
+  .page { gap: 15px; }
+  .card { padding: 17px; }
+  .panel { padding: 16px; }
+  .metrics-bar { gap: 12px 16px; }
+  .metrics-note { margin-left: 0; width: 100%; }
+}

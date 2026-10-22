@@ -65,61 +65,87 @@ function Reports() {
 
   if (error) {
     return (
-      <div className="page">
-        <h2>安全事件报告</h2>
+      <section className="view is-active">
+        <div className="view-head">
+          <div className="view-head-copy">
+            <h2>安全事件报告</h2>
+            <p className="view-sub">每次查询的完整安全证据。审计过程记录在这里。</p>
+          </div>
+        </div>
         <div className="alert-error">{error}</div>
-      </div>
+      </section>
     )
   }
 
   return (
-    <div className="page">
-      <h2>安全事件报告</h2>
-      <p className="hint">
-        每次查询的完整安全证据。查询控制台只呈现问题与结果，审计过程记录在这里。
-      </p>
+    <section className="view is-active" aria-labelledby="reportsTitle">
+      <div className="view-head">
+        <div className="view-head-copy">
+          <h2 id="reportsTitle">审计证据，可以逐条回看。</h2>
+          <p className="view-sub">
+            查询控制台只呈现问题与结果；准入判定、分解方案、安全事件与 SQL 改写记录在这里。
+          </p>
+        </div>
+        <div className="view-head-aside">
+          <span className="quiet-badge">{reports.length} 份记录 · 只读</span>
+        </div>
+      </div>
 
       {reports.length === 0 ? (
-        <p className="hint">暂无记录。到查询控制台提一次问试试。</p>
+        <div className="result-empty">
+          <p>暂无记录。到可信问答提一次问，这里会留下对应的安全证据。</p>
+        </div>
       ) : (
-        <div className="report-split">
-          <aside className="report-list" aria-label="查询记录">
-            {reports.map((r) => (
-              <button
-                key={r.id}
-                type="button"
-                className={detail?.id === r.id ? 'active' : ''}
-                aria-current={detail?.id === r.id ? 'true' : undefined}
-                onClick={() => select(r.id)}
-              >
-                <span className="report-q">{r.question}</span>
-                <span className="report-meta">
-                  <DegradationBadge
-                    degradation={{
-                      level: r.degradation_level,
-                      label: '',
-                      message: '',
-                      message_cn: '',
-                    }}
-                  />
-                  <span className="report-sub">{TOKEN_TEXT[r.token_type] ?? r.token_type}</span>
-                  <span className="report-sub">{r.event_count} 事件</span>
-                </span>
-                <span className="report-time">{beijingTime(r.created_at)}</span>
-              </button>
-            ))}
+        <div className="reports-layout">
+          <aside className="report-list-card">
+            <div className="report-list-head">
+              <strong>查询记录</strong>
+              <span>最新在前 · {reports.length} 条</span>
+            </div>
+            <div className="report-list" aria-label="查询记录">
+              {reports.map((r) => (
+                <div className="report-item" key={r.id}>
+                  <button
+                    type="button"
+                    className="report-select"
+                    aria-pressed={detail?.id === r.id}
+                    onClick={() => select(r.id)}
+                  >
+                    <span className="report-item-top">
+                      <span className="report-id">#{String(r.id).padStart(4, '0')}</span>
+                      <span className="report-time">{beijingTime(r.created_at)}</span>
+                    </span>
+                    <span className="report-q">{r.question}</span>
+                    <span className="report-item-bottom">
+                      <DegradationBadge
+                        degradation={{
+                          level: r.degradation_level,
+                          label: '',
+                          message: '',
+                          message_cn: '',
+                        }}
+                      />
+                      <span className="report-sub">{TOKEN_TEXT[r.token_type] ?? r.token_type}</span>
+                      <span className="report-sub">{r.event_count} 事件</span>
+                    </span>
+                  </button>
+                </div>
+              ))}
+            </div>
           </aside>
 
-          <section className="report-detail" aria-live="polite">
-            {detail ? (
-              <ReportBody detail={detail} token={session.token} />
-            ) : (
-              <p className="hint">加载中…</p>
-            )}
-          </section>
+          {detail ? (
+            <ReportBody detail={detail} token={session.token} />
+          ) : (
+            <section className="report-detail" aria-live="polite">
+              <div className="report-detail-body">
+                <p className="hint">正在读取审计证据…</p>
+              </div>
+            </section>
+          )}
         </div>
       )}
-    </div>
+    </section>
   )
 }
 
@@ -129,89 +155,108 @@ function ReportBody({ detail, token }: { detail: ReportDetail; token: Token }) {
   const denied = !d.admission.passed
 
   return (
-    <>
-      <div className="console-head">
-        <h3>{d.question}</h3>
-        <DegradationBadge degradation={d.degradation} />
-      </div>
-
-      {denied ? (
-        <>
-          {/* 被拒绝时，拒答文案本身就是答案 */}
-          <AdmissionPanel admission={d.admission} />
-          <div className="deny-note">
-            查询在执行前被拒绝——未访问数据库，未产生结果集。
+    <section className="report-detail" aria-live="polite">
+      <header className="report-detail-head">
+        <div className="report-detail-top">
+          <div>
+            <p className="eyebrow">SECURITY RECORD / {String(detail.id).padStart(4, '0')}</p>
+            <h2>{d.question}</h2>
+            <div className="report-detail-meta">
+              <span>{TOKEN_TEXT[detail.token_type] ?? detail.token_type} 发起</span>
+              <span>{beijingTime(detail.created_at)}</span>
+              <span>{d.events.length} 个安全事件</span>
+              <DegradationBadge degradation={d.degradation} />
+            </div>
           </div>
-        </>
-      ) : (
-        <>
-          {/* 答案优先：与控制台同一套信息层级 */}
-          {d.result && (
-            <section className="panel panel-result">
-              <h4>查询结果</h4>
-              <ResultTable result={d.result} />
+          <a className="report-export" href={exportReportUrl(token, detail.id)} download>
+            导出完整记录
+          </a>
+        </div>
+      </header>
+
+      <div className="report-detail-body">
+        {denied ? (
+          <>
+            {/* 被拒绝时，拒答文案本身就是答案 */}
+            <AdmissionPanel admission={d.admission} />
+            <div className="deny-note">
+              查询在执行前被拒绝——未访问数据库，未产生结果集。
+            </div>
+          </>
+        ) : (
+          <>
+            {/* 答案优先：与控制台同一套信息层级 */}
+            {d.result && (
+              <section className="report-section">
+                <h3>查询结果</h3>
+                <ResultTable result={d.result} />
+              </section>
+            )}
+
+            {d.degradation.message_cn && (
+              <div className="degradation-message">{d.degradation.message_cn}</div>
+            )}
+
+            <section className="report-section">
+              <h3>安全说明</h3>
+              <AdmissionPanel admission={d.admission} />
             </section>
-          )}
 
-          {d.degradation.message_cn && (
-            <div className="degradation-message">{d.degradation.message_cn}</div>
-          )}
+            <div className="panels">
+              <section className="panel">
+                <h4>分解方案</h4>
+                <PlanPanel plan={d.plan} events={d.events} />
+              </section>
 
-          <h4 className="section-label">安全说明</h4>
+              <section className="panel">
+                <h4>
+                  安全事件 <span className="count">{d.events.length}</span>
+                </h4>
+                {d.events.length === 0 ? (
+                  <p className="hint">未发现中间结果暴露。</p>
+                ) : (
+                  d.events.map((e, i) => <EventCard key={i} event={e} />)
+                )}
 
-          <AdmissionPanel admission={d.admission} />
+                {d.rewrite.applied > 0 && (
+                  <details className="tech-detail tech-detail-block">
+                    <summary>技术详情 · 改写日志（{d.rewrite.applied} 处）</summary>
+                    <ul className="rewrite-log">
+                      {d.rewrite.log.map((line, i) => (
+                        <li key={i}>{line}</li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+              </section>
+            </div>
+          </>
+        )}
 
-          <div className="panels">
-            <section className="panel">
-              <h4>分解方案</h4>
-              <PlanPanel plan={d.plan} events={d.events} />
-            </section>
-
-            <section className="panel">
-              <h4>
-                安全事件 <span className="count">{d.events.length}</span>
-              </h4>
-              {d.events.length === 0 ? (
-                <p className="hint">未发现中间结果暴露。</p>
-              ) : (
-                d.events.map((e, i) => <EventCard key={i} event={e} />)
-              )}
-
-              {d.rewrite.applied > 0 && (
-                <details className="tech-detail tech-detail-block">
-                  <summary>技术详情 · 改写日志（{d.rewrite.applied} 处）</summary>
-                  <ul className="rewrite-log">
-                    {d.rewrite.log.map((line, i) => (
-                      <li key={i}>{line}</li>
-                    ))}
-                  </ul>
-                </details>
-              )}
-            </section>
+        <div className="audit-grid">
+          <div className="audit-cell">
+            <span>审计耗时</span>
+            <strong>{d.metrics.elapsed_ms} ms</strong>
           </div>
-        </>
-      )}
+          <div className="audit-cell">
+            <span>LLM 调用</span>
+            <strong className={d.metrics.llm_calls === 0 ? 'is-zero' : undefined}>{d.metrics.llm_calls}</strong>
+          </div>
+          <div className="audit-cell">
+            <span>数据库访问</span>
+            <strong className={d.metrics.db_access === 0 ? 'is-zero' : undefined}>{d.metrics.db_access}</strong>
+          </div>
+          <div className="audit-cell">
+            <span>审计结论</span>
+            <strong>{denied ? '已拒绝' : '已通过'}</strong>
+          </div>
+        </div>
 
-      <div className="metrics-bar">
-        <span className="metrics-scope">审计阶段</span>
-        <span>
-          耗时 <strong>{d.metrics.elapsed_ms} ms</strong>
-        </span>
-        <span>
-          LLM 调用 <strong>{d.metrics.llm_calls}</strong>
-        </span>
-        <span>
-          数据库访问 <strong>{d.metrics.db_access}</strong>
-        </span>
-        <a className="metrics-export" href={exportReportUrl(token, detail.id)} download>
-          导出完整记录
-        </a>
+        <p className="metrics-caveat">
+          以上指标只统计<strong>安全审计</strong>那一段：医盾是纯静态分析，不调模型、不碰数据库。
+          查询本身仍需以只读方式访问主库取数——那是执行环节，不计入本指标。
+        </p>
       </div>
-      <p className="metrics-caveat">
-        以上三项只统计<strong>安全审计</strong>那一段：医盾是纯静态分析，
-        不调模型、不碰数据库。查询本身仍需访问主库取数——那是执行环节，
-        不计入本指标。
-      </p>
-    </>
+    </section>
   )
 }

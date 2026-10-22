@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="MedGuard 医盾">
+  <rect width="64" height="64" rx="14" fill="#d9e2da"/>
+  <path d="M32 10 51 17v16c0 10-8 17-19 21-11-4-19-11-19-21V17l19-7Z" fill="#263a35"/>
+  <text x="32" y="39" text-anchor="middle" font-family="Songti SC, SimSun, Georgia, serif" font-size="23" font-weight="600" fill="#eef2ea">盾</text>
+</svg>

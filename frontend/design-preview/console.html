@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#e7ece5" />
+<meta name="description" content="MedGuard 医盾安全工作区：可信问答、智慧医生与安全审计报告。" />
+<title>可信问答 · MedGuard 医盾</title>
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="assets/base.css" />
+<link rel="stylesheet" href="assets/console.css" />
+</head>
+<body class="console-page">
+<a class="skip-link" href="#workspaceMain">跳到工作区内容</a>
+<div class="page-veil" id="pageVeil" aria-hidden="true"><div class="veil-label"><span>正在切换页面</span></div></div>
+<div class="view-wash" id="viewWash" aria-hidden="true"></div>
+
+<div class="app-shell">
+  <div class="side-scrim" id="sideScrim" aria-hidden="true"></div>
+  <aside class="app-side" id="appSide" aria-label="工作区导航">
+    <div class="side-top">
+      <a class="brand" href="index.html" data-transition data-transition-label="正在返回故事" aria-label="返回 MedGuard 首页">
+        <span class="brand-mark" aria-hidden="true">盾</span>
+        <span class="brand-words"><strong>MEDGUARD / 医盾</strong><small>安全工作区</small></span>
+      </a>
+      <button class="side-close" id="sideClose" type="button" aria-label="关闭导航">×</button>
+    </div>
+
+    <p class="side-section">工作区</p>
+    <nav class="work-nav" aria-label="业务模块">
+      <button class="work-link" type="button" data-view="ask" aria-controls="view-ask" aria-selected="true">
+        <span class="work-index">01</span>
+        <span class="work-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5h16v11H9l-5 4v-15Z"/><path d="m8 10 2.2 2.1L15 8"/></svg></span>
+        <span class="work-copy"><strong>可信问答</strong><small>查询控制台</small></span>
+      </button>
+      <button class="work-link" type="button" data-view="doctor" aria-controls="view-doctor" aria-selected="false">
+        <span class="work-index">02</span>
+        <span class="work-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v5a4 4 0 0 0 8 0V3"/><path d="M10 15v2.5a4 4 0 0 0 8 0V15"/><circle cx="18" cy="12" r="3"/><path d="M4 3h4M14 3h4"/></svg></span>
+        <span class="work-copy"><strong>智慧医生</strong><small>记录与解释分离</small></span>
+      </button>
+      <button class="work-link" type="button" data-view="reports" aria-controls="view-reports" aria-selected="false">
+        <span class="work-index">03</span>
+        <span class="work-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6V3Z"/><path d="M14 3v5h5M9 12h6M9 16h6"/></svg></span>
+        <span class="work-copy"><strong>安全报告</strong><small>审计证据</small></span>
+        <span class="work-count" id="reportCount">3</span>
+      </button>
+    </nav>
+
+    <section class="scope-card" aria-labelledby="scopeLabel">
+      <div class="scope-head">
+        <span class="scope-label" id="scopeLabel">当前数据范围</span>
+        <span class="scope-badge" id="scopeBadge">只读</span>
+      </div>
+      <strong class="scope-name" id="scopeName">所辖患者群体</strong>
+      <p class="scope-desc" id="scopeDesc">汇总与去标识明细。不包含全量身份信息，不开放批量导出。</p>
+    </section>
+
+    <div class="side-foot">
+      <div class="side-user">
+        <span class="side-avatar" id="sideAvatar" aria-hidden="true">医</span>
+        <div><strong id="sideUserName">医生001 · 心内科</strong><small id="sideUserMeta">所辖患者群体</small></div>
+        <a class="side-switch" href="login.html" data-transition data-transition-label="正在退出安全域">切换</a>
+      </div>
+      <p class="side-note">演示环境 · 全部患者记录均为虚构测试数据。</p>
+    </div>
+  </aside>
+
+  <div class="app-main" id="appMain">
+    <header class="app-top">
+      <button class="menu-toggle" id="menuToggle" type="button" aria-label="打开导航" aria-controls="appSide" aria-expanded="false">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M2 5h14M2 9h14M2 13h14" stroke-linecap="round"/></svg>
+      </button>
+      <div class="top-context">
+        <p class="top-crumb">安全工作区</p>
+        <div class="top-title-row"><h1 id="topTitle">可信问答</h1><span class="live-status">审计在线</span></div>
+      </div>
+      <div class="top-right">
+        <div class="audit-meter" title="仅统计审计阶段，查询执行阶段仍会只读访问医院主库">
+          <span class="meter-label">审计层</span><strong>0</strong> LLM <i>/</i> <strong>0</strong> DB
+        </div>
+        <div class="top-user">
+          <span class="top-avatar" id="topAvatar" aria-hidden="true">医</span>
+          <div><strong id="topUserName">医生001 · 心内科</strong><small id="topUserMeta">staff · 演示</small></div>
+        </div>
+      </div>
+    </header>
+
+    <main class="app-content" id="workspaceMain" tabindex="-1">
+
+      <section class="view" id="view-ask" aria-labelledby="askTitle">
+        <div class="ask-head">
+          <div class="ask-head-copy">
+            <h2 id="askTitle">查找院内信息</h2>
+            <p class="ask-head-note">自然语言提问，系统先审计查询计划，通过后再只读访问主库。</p>
+          </div>
+          <span class="ask-scope">范围 · <strong id="askScope">所辖患者群体</strong></span>
+        </div>
+
+        <form id="queryForm" novalidate>
+          <div class="query-composer" id="queryComposer">
+            <span class="composer-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 4.2 4.2"/></svg>
+            </span>
+            <div class="composer-field">
+              <label class="composer-label" for="queryInput">输入问题 <span>支持自然语言，不必写 SQL</span></label>
+              <textarea id="queryInput" rows="1" placeholder="例如：统计各科室接诊量" aria-describedby="queryHelp"></textarea>
+            </div>
+            <button class="query-submit" id="querySubmit" type="submit">
+              <span id="querySubmitLabel">开始查询</span><span class="action-arrow" aria-hidden="true">↗</span>
+            </button>
+          </div>
+        </form>
+        <div class="query-help" id="queryHelp">
+          <span>审计阶段不调用模型、不访问数据库；结果查询以只读方式访问主库。</span>
+          <span class="kbd">ENTER 提交 · SHIFT + ENTER 换行</span>
+        </div>
+
+        <div class="preset-row">
+          <span class="preset-label">常用问法</span>
+          <div class="preset-list" id="presetList"></div>
+        </div>
+
+        <div class="result-shell" id="resultShell">
+          <div class="result-empty" id="resultEmpty">
+            <p>结果会显示在这里，并附上来源、审计过程与执行状态。</p>
+          </div>
+          <div class="result-panel" id="resultPanel" hidden aria-live="polite"></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-doctor" aria-labelledby="doctorTitle" hidden>
+        <div class="view-head">
+          <div class="view-head-copy">
+            <h2 id="doctorTitle">记录与解释，分开呈现。</h2>
+            <p class="view-sub">医院记录、审核知识库与导诊建议分开显示；通俗解释不会被写成诊断，也不会改动处方。</p>
+          </div>
+          <div class="view-head-aside"><span class="quiet-badge">来源分离 · 演示患者</span></div>
+        </div>
+
+        <div class="doctor-layout">
+          <section class="chat-card" aria-labelledby="chatTitle">
+            <div class="chat-head">
+              <div class="chat-id">
+                <span class="chat-avatar" aria-hidden="true">盾</span>
+                <div><strong id="chatTitle">MedGuard 智慧医生</strong><small>医院审核知识库 · 回答可回到来源</small></div>
+              </div>
+              <span class="chat-subject" id="chatSubject">患者001 · 演示</span>
+            </div>
+            <div class="chat-scroll" id="chatScroll" role="log" aria-live="polite" aria-label="智慧医生对话">
+              <p class="chat-date">演示会话 · 所有记录均为虚构测试数据</p>
+            </div>
+            <div class="chat-suggestions" id="chatChips" aria-label="可以这样问">
+              <button class="chat-chip" type="button" data-chat="我的血糖 6.3 偏高吗">血糖 6.3 偏高吗</button>
+              <button class="chat-chip" type="button" data-chat="头孢呋辛怎么吃">头孢呋辛怎么吃</button>
+              <button class="chat-chip" type="button" data-chat="腹部 MRI 报告怎么看">腹部 MRI 怎么看</button>
+              <button class="chat-chip" type="button" data-chat="心内科有哪些医生">心内科有哪些医生</button>
+            </div>
+            <form class="chat-composer" id="chatForm">
+              <label class="sr-only" for="chatInput">向智慧医生提问</label>
+              <textarea id="chatInput" rows="1" placeholder="描述你的问题，例如：我的血糖算高吗"></textarea>
+              <button class="chat-send" id="chatSend" type="submit" aria-label="发送问题">↗</button>
+            </form>
+            <p class="chat-note">回答只基于演示记录与审核知识库，不替代执业医师的诊断、处方和紧急医疗服务。</p>
+          </section>
+
+          <aside class="doctor-aside" aria-label="回答来源与任务">
+            <section class="aside-card">
+              <h3>回答从哪里来</h3>
+              <p>每个回答都按来源拆分，方便你分辨“记录写了什么”和“这意味着什么”。</p>
+              <ul class="source-list">
+                <li class="source-item"><span>医院主库 · 本人记录</span><small>限定</small></li>
+                <li class="source-item"><span>医院审核知识库</span><small>91 条核心</small></li>
+                <li class="source-item"><span>OpenCMKG 开放数据</span><small>可追溯</small></li>
+                <li class="source-item"><span>AI 智能导诊</span><small>仅作提示</small></li>
+              </ul>
+              <p class="source-caption">未命中审核知识的问题会明确说“不知道”，不会用相似文本拼出确定答案。</p>
+            </section>
+
+            <section class="aside-card aside-boundary">
+              <h3>能力边界</h3>
+              <p>智慧医生不处理急诊分诊，不判断未上传的检查，不修改处方。胸痛、呼吸困难、意识改变等情况请立即拨打急救电话或前往急诊。</p>
+            </section>
+          </aside>
+        </div>
+      </section>
+
+      <section class="view" id="view-reports" aria-labelledby="reportsTitle" hidden>
+        <div class="view-head">
+          <div class="view-head-copy">
+            <h2 id="reportsTitle">每次查询，都有审计记录。</h2>
+            <p class="view-sub">只显示当前账号发起的记录：查询计划、准入判断、审计指标与执行状态。</p>
+          </div>
+          <div class="view-head-aside"><span class="quiet-badge">仅当前账号</span></div>
+        </div>
+
+        <div class="reports-layout">
+          <section class="report-list-card" aria-labelledby="reportListTitle">
+            <div class="report-list-head">
+              <strong id="reportListTitle">审计记录</strong>
+              <span id="reportListMeta">3 条</span>
+            </div>
+            <ul class="report-list" id="reportList"></ul>
+          </section>
+          <section class="report-detail" id="reportDetail" aria-live="polite"></section>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="assets/base.js"></script>
+<script src="assets/console.js"></script>
+</body>
+</html>

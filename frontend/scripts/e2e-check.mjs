@@ -34,6 +34,14 @@ const BACKEND = resolve(REPO, 'backend')
 const EXPLICIT_BASE = process.env.BASE_URL
 const BASE = EXPLICIT_BASE ?? 'http://localhost:8000'
 const PASSWORD = 'medguard'
+/** 优先系统 Chrome；没装则用系统 Edge（两者都是 Chromium 内核）。 */
+const CHANNEL = process.env.PW_CHANNEL || (
+  existsSync(`${process.env.PROGRAMFILES}/Google/Chrome/Application/chrome.exe`) ||
+  existsSync(`${process.env['PROGRAMFILES(X86)']}/Google/Chrome/Application/chrome.exe`) ||
+  existsSync(`${process.env.LOCALAPPDATA}/Google/Chrome/Application/chrome.exe`)
+    ? 'chrome'
+    : 'msedge'
+)
 
 /** 层一拒答的固定文案。产品承诺「统一措辞、不遮掩、不误导」，故逐字断言。 */
 const DENY_TEXT = '该查询涉及其他患者信息，无法提供。'
@@ -331,7 +339,7 @@ async function apiChecks() {
 
 // ── 【界面】断言 ─────────────────────────────────────────────
 async function signIn(page, account) {
-  await page.goto(BASE + '/', { waitUntil: 'networkidle' })
+  await page.goto(BASE + '/login', { waitUntil: 'networkidle' })
   await page.evaluate(() => sessionStorage.clear())
   await page.reload({ waitUntil: 'networkidle' })
   await page.fill('input[autocomplete="username"]', account)
@@ -351,6 +359,23 @@ async function uiChecks(browser) {
     page.on('pageerror', (e) => errors.push(e.message))
     if (as) await signIn(page, as)
     return { ctx, page }
+  }
+
+  // ⓪ 未登录首页 → 点「进入平台」进入登录页（React 路由，不整页刷新）
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
+    const page = await ctx.newPage()
+    page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
+    page.on('pageerror', (e) => errors.push(e.message))
+    await page.goto(BASE + '/', { waitUntil: 'networkidle' })
+    try {
+      await page.getByRole('link', { name: /进入平台/ }).first().click()
+      await page.waitForSelector('input[autocomplete="username"]', { timeout: 4000 })
+      check('未登录首页进入登录页', new URL(page.url()).pathname === '/login', page.url())
+    } catch {
+      fail('未登录首页进入登录页', '4s 内未出现登录表单')
+    }
+    await ctx.close()
   }
 
   // ① 放行：医护点预置问题 → 出现结果表
@@ -380,7 +405,7 @@ async function uiChecks(browser) {
       checkEq('控制台 · 拒绝时不渲染结果表', n, 0)
       // 被拒绝后要给出出路——不能只留一句拒答让用户自己猜还能问什么
       await page.waitForSelector('.next-steps', { timeout: 4000 })
-      const btns = await page.locator('.next-steps .preset-bar button').count()
+      const btns = await page.locator('.next-steps .preset-chip').count()
       check('控制台 · 拒绝后给出可问清单', btns > 0, `${btns} 条`)
     } catch {
       fail('控制台 · 拒绝路径渲染', '8s 内未出现 .admission-refusal 或 .next-steps')
@@ -465,7 +490,7 @@ async function uiChecks(browser) {
     }))
     await signIn(page, 'patient')
     try {
-      await page.fill('.sd-ask input', '吃了他汀之后肌肉酸痛')
+      await page.fill('.sd-ask textarea', '吃了他汀之后肌肉酸痛')
       await page.click('.sd-ask button')
       await page.waitForSelector('.sd-ref', { timeout: 8000 })
       // 取整个条目（.sd-item）：标题在 .sd-item-line 里，与 .sd-ref 是兄弟节点，
@@ -507,10 +532,10 @@ async function uiChecks(browser) {
     })
     await signIn(page, 'patient')
     try {
-      await page.fill('.sd-ask input', '我的血糖结果正常吗')
+      await page.fill('.sd-ask textarea', '我的血糖结果正常吗')
       await page.click('.sd-ask button')
       await page.waitForTimeout(500)
-      await page.fill('.sd-ask input', '它正常吗')
+      await page.fill('.sd-ask textarea', '它正常吗')
       await page.click('.sd-ask button')
       await page.waitForTimeout(500)
       checkEq('智慧医生 · 首轮不带 context', seen[0]?.context ?? null, null)
@@ -548,7 +573,7 @@ async function uiChecks(browser) {
     }))
     await signIn(page, 'patient')
     try {
-      await page.fill('.sd-ask input', '怎么办理出院手续')
+      await page.fill('.sd-ask textarea', '怎么办理出院手续')
       await page.click('.sd-ask button')
       await page.waitForFunction(
         () => document.body.innerText.includes('换个问法试试'),
@@ -571,7 +596,7 @@ await ensureServer()
 let browser = null
 try {
   await apiChecks()
-  browser = await chromium.launch({ channel: 'chrome' })
+  browser = await chromium.launch({ channel: CHANNEL })
   await uiChecks(browser)
 } catch (e) {
   console.error(`\n[异常] ${e.message}`)

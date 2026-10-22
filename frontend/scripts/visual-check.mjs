@@ -9,13 +9,21 @@
  * 这类翻车。
  */
 import { chromium } from 'playwright'
-import { mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const BASE = process.env.BASE_URL ?? 'http://localhost:5173'
 const OUT = resolve(process.argv[2] ?? '../.visual-out')
 const VIEWPORT = { width: 1440, height: 900 }
 const PASSWORD = 'medguard'
+/** 优先系统 Chrome；没装则用系统 Edge（两者都是 Chromium 内核）。 */
+const CHANNEL = process.env.PW_CHANNEL || (
+  existsSync(`${process.env.PROGRAMFILES}/Google/Chrome/Application/chrome.exe`) ||
+  existsSync(`${process.env['PROGRAMFILES(X86)']}/Google/Chrome/Application/chrome.exe`) ||
+  existsSync(`${process.env.LOCALAPPDATA}/Google/Chrome/Application/chrome.exe`)
+    ? 'chrome'
+    : 'msedge'
+)
 
 mkdirSync(OUT, { recursive: true })
 
@@ -30,13 +38,25 @@ mkdirSync(OUT, { recursive: true })
  * }[]}
  */
 const SHOTS = [
-  { name: '00-login', path: '/' },
+  { name: '00-story', path: '/', height: 1200 },
+  { name: '00-login', path: '/login' },
   { name: '01-scope-doctor', path: '/', as: 'doctor', height: 1400 },
   // 患者登录后的默认页是「智慧医生」（App.tsx 的 / 按角色分支），
   // 病患版「可查范围」在 /scope。原先把这一条写成 path:'/'，截到的其实
   // 是智慧医生页，既名不副实、又让智慧医生页完全没有截图覆盖。
   { name: '02-scope-patient', path: '/scope', as: 'patient', height: 1400 },
   { name: '02b-smart-doctor', path: '/', as: 'patient', height: 1400 },
+  {
+    name: '02c-smart-doctor-answer',
+    path: '/',
+    as: 'patient',
+    height: 1400,
+    act: async (p) => {
+      await p.getByRole('button', { name: '帮我看懂检查报告' }).click()
+      await p.waitForSelector('.sd-item', { timeout: 12000 })
+      await p.waitForTimeout(500)
+    },
+  },
   { name: '03-datasource-admin', path: '/', as: 'admin', height: 1500 },
   { name: '04-policy', path: '/policy', as: 'admin', height: 1300 },
   {
@@ -75,8 +95,8 @@ const SHOTS = [
     as: 'doctor',
     height: 1000,
     act: async (p) => {
-      await p.fill('.ask-bar input', '全院各科室的门诊量分别是多少')
-      await p.click('.ask-bar button')
+      await p.fill('.query-composer textarea', '全院各科室的门诊量分别是多少')
+      await p.click('.query-submit')
       await p.waitForTimeout(900)
     },
   },
@@ -89,11 +109,11 @@ const SHOTS = [
   },
 
   // 安全报告：左列表 + 右详情（首次进入自动选中最新一条）
-  { name: '07-reports', path: '/reports', as: 'admin', height: 1600 },
+  { name: '07-reports', path: '/reports', as: 'doctor', height: 1600 },
   {
     name: '07b-reports-detail-sql',
     path: '/reports',
-    as: 'admin',
+    as: 'doctor',
     height: 1900,
     act: async (p) => {
       // 选一条**有分析内容**的记录——最新一条可能是 L3 拒绝（无分解方案），
@@ -119,7 +139,7 @@ const SHOTS = [
 ]
 
 async function signIn(page, account) {
-  await page.goto(BASE + '/', { waitUntil: 'networkidle' })
+  await page.goto(BASE + '/login', { waitUntil: 'networkidle' })
   await page.evaluate(() => sessionStorage.clear())
   await page.reload({ waitUntil: 'networkidle' })
   await page.fill('input[autocomplete="username"]', account)
@@ -128,7 +148,7 @@ async function signIn(page, account) {
   await page.waitForTimeout(300)
 }
 
-const browser = await chromium.launch({ channel: 'chrome' })
+const browser = await chromium.launch({ channel: CHANNEL })
 const errors = []
 
 for (const shot of SHOTS) {

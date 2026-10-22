@@ -115,14 +115,16 @@ export function UserAdminPage() {
 
           <div className="field">
             <span className="field-label">角色</span>
-            {ROLES.map((r) => (
-              <label key={r.value}>
-                <input type="radio" name="role" value={r.value}
-                       checked={role === r.value}
-                       onChange={() => setRole(r.value)} />
-                {' '}{r.label}
-              </label>
-            ))}
+            <div className="role-options">
+              {ROLES.map((r) => (
+                <label key={r.value}>
+                  <input type="radio" name="role" value={r.value}
+                         checked={role === r.value}
+                         onChange={() => setRole(r.value)} />
+                  <span>{r.label}</span>
+                </label>
+              ))}
+            </div>
             <p className="hint">{current.hint}</p>
           </div>
 
