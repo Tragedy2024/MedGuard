@@ -149,6 +149,11 @@ class DatasourceInfo(BaseModel):
     table_count: int
     column_count: int
     policy_ready: bool
+    # 就绪门禁（评审 B6）：schema 与 SSA 标注的差距 + 严格模式状态。
+    # 演示库恒为兼容模式（ready=True）；真实库严格模式下未标注即未就绪。
+    ready: bool = True
+    unlabeled_columns: List[str] = []
+    strict: bool = False
 
 
 class ReportSummary(BaseModel):
@@ -160,14 +165,30 @@ class ReportSummary(BaseModel):
     event_count: int
 
 
+class AuditDecision(BaseModel):
+    """审计—执行绑定证据（B5，2026-10 评审）。
+
+    证明「执行的就是审计通过的那份计划」：
+    - decision_id：一次查询决策的唯一标识（UUID hex）；
+    - plan_hashes：改写后计划每条子查询的**规范化** SQL 哈希（键为子查询 id）；
+    - executed_hash：实际执行的那条 SQL 的规范化哈希（空串 = 未执行）；
+    - executed_at：执行时刻（ISO-8601 UTC；空串 = 未执行）。
+    """
+    decision_id: str
+    plan_hashes: Dict[str, str] = {}
+    executed_hash: str = ""
+    executed_at: str = ""
+
+
 class ReportDetail(ReportSummary):
-    """报告详情 = 摘要字段 + 完整 QueryResponse 快照。
+    """报告详情 = 摘要字段 + 完整 QueryResponse 快照 + 审计决策绑定。
 
     `payload` 声明为 `QueryResponse` 而不是 `Dict[str, Any]`：它本来就是
     那次查询的完整响应（存库时就是 `resp.model_dump()`）。写成泛型字典会让
     安全报告页在 TS 里整页退化成 unknown——而那正是承载审计证据的核心页面。
     """
     payload: QueryResponse
+    decision: Optional[AuditDecision] = None  # 老库历史行没有，默认 None
 
 
 class SchemaColumn(BaseModel):

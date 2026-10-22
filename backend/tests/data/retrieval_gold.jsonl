@@ -64,3 +64,23 @@
 {"q": "失去意识怎么办", "category": "emergency", "expect": [], "redflag": "意识障碍"}
 {"q": "抽搐不停", "category": "emergency", "expect": [], "redflag": "意识障碍"}
 {"q": "咯血不止", "category": "emergency", "expect": [], "redflag": "大出血"}
+{"q": "高血压平时要注意什么", "category": "colloquial", "expect": ["高血压"]}
+{"q": "冠心病有哪些典型表现", "category": "colloquial", "expect": ["冠心病"]}
+{"q": "脑梗死是什么原因引起的", "category": "colloquial", "expect": ["脑梗死"]}
+{"q": "哮喘发作时该怎么处理", "category": "colloquial", "expect": ["哮喘"]}
+{"q": "肾炎有哪些早期症状", "category": "colloquial", "expect": ["肾炎"]}
+{"q": "肝硬化早期有什么症状", "category": "colloquial", "expect": ["肝硬化"]}
+{"q": "痛风发作时吃什么药", "category": "colloquial", "expect": ["痛风"]}
+{"q": "贫血的人吃什么补血", "category": "colloquial", "expect": ["贫血"]}
+{"q": "骨质疏松怎么预防", "category": "colloquial", "expect": ["骨质疏松"]}
+{"q": "前列腺增生有什么症状", "category": "colloquial", "expect": ["前列腺增生"]}
+{"q": "胆结石需要做手术吗", "category": "colloquial", "expect": ["胆结石"]}
+{"q": "痔疮犯了怎么办", "category": "colloquial", "expect": ["痔疮"]}
+{"q": "肩周炎怎么锻炼恢复", "category": "colloquial", "expect": ["肩周炎"]}
+{"q": "过敏性鼻炎怎么缓解", "category": "colloquial", "expect": ["过敏性鼻炎"]}
+{"q": "神经衰弱有哪些表现", "category": "colloquial", "expect": ["神经衰弱"]}
+{"q": "肺炎一般多久能好", "category": "colloquial", "expect": ["肺炎"]}
+{"q": "尿路感染有什么症状", "category": "colloquial", "expect": ["尿路感染"]}
+{"q": "偏头痛反复发作怎么办", "category": "colloquial", "expect": ["偏头痛"]}
+{"q": "糖尿病足怎么护理", "category": "colloquial", "expect": ["糖尿病足"]}
+{"q": "脂肪肝怎么调理", "category": "colloquial", "expect": ["脂肪肝"]}

@@ -171,6 +171,11 @@ _LAB_SIGNALS = ("报告", "结果", "检查", "化验", "指标", "正常吗", "
                 "参考范围", "检测")
 _DISEASE_SIGNALS = ("想了解", "是什么病", "这种病", "这个病", "了解一下",
                     "科普")
+# 2026-10 医学安全评测（C7）发现：「颈椎病一般做什么检查」被 _LAB_SIGNALS
+# 的「检查」抢成检验意图。这类**指向疾病的检查措辞**归疾病意图（带数据集
+# 扫描），单独的「我想做个体检」不受影响（无疾病名命中时仍走原路径）。
+_DISEASE_CHECK_SIGNALS = ("做什么检查", "做哪些检查", "怎么检查",
+                          "该做什么检查", "需要做什么检查")
 
 
 def _names_of(key: str, entry: Any) -> List[str]:
@@ -286,11 +291,21 @@ def parse_intent(question: str) -> Tuple[str, Optional[str]]:
         return INTENT_MEDICATION, None
 
     disease_hit = _find_disease(question, diseases)
+    disease_signaled = any(s in question for s in _DISEASE_SIGNALS)
+    disease_check_signaled = any(s in question for s in _DISEASE_CHECK_SIGNALS)
 
-    # 2) 出现「想了解 / 是什么病 / 科普」这类**疾病意图词**时，疾病优先。
-    #    否则「我想了解高血脂」会被 lab_tests 的「血脂」抢走。
-    if disease_hit and any(s in question for s in _DISEASE_SIGNALS):
-        return INTENT_DISEASE, disease_hit[1]
+    # 2) 出现「想了解 / 是什么病 / 科普」这类**疾病意图词**（或「做什么检查」
+    #    这类指向疾病的检查措辞）时，疾病优先。否则「我想了解高血脂」会被
+    #    lab_tests 的「血脂」抢走。
+    #    YAML 疾病优先；未命中时扫描数据集疾病名（7495 个，规范名精确
+    #    最长匹配、不模糊匹配）——补上「帕金森病」「颈椎病」这类常见病问法
+    #    （评审 A1）。
+    if disease_signaled or disease_check_signaled:
+        if disease_hit:
+            return INTENT_DISEASE, disease_hit[1]
+        dataset_name = dataset_kb.match_disease(question)
+        if dataset_name:
+            return INTENT_DISEASE, dataset_name
 
     # 3) 检查报告（命中检验项名，或出现"报告/结果/正常吗"等信号）
     tests = _find_entities(question, lab_tests)
@@ -802,7 +817,13 @@ def _apply_ai_fallback(base: Dict[str, Any], question: str) -> bool:
 
     **先检索、再生成**（RAG）：检索到的知识条目既进提示词（让答案有依据，
     而不是让模型凭空编），也回填到 `items`（让患者看见"这条回答参考了什么"）。
+
+    没有 API Key 时**直接短路、不做检索**（评审 A2a）：模型不可用则检索
+    结果无人消费，白付一轮 15 万条语料的检索开销（实测秒级），而且界面
+    上看不到任何差别。
     """
+    if not config.LLM_API_KEY:
+        return False
     refs = _retrieve_context(question)
     ai = ai_triage(question, refs=refs)
     if ai is None:

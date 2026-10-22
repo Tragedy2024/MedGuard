@@ -369,6 +369,37 @@ export interface components {
             bound_to_subject: boolean;
         };
         /**
+         * AuditDecision
+         * @description 审计—执行绑定证据（B5，2026-10 评审）。
+         *
+         *     证明「执行的就是审计通过的那份计划」：
+         *     - decision_id：一次查询决策的唯一标识（UUID hex）；
+         *     - plan_hashes：改写后计划每条子查询的**规范化** SQL 哈希（键为子查询 id）；
+         *     - executed_hash：实际执行的那条 SQL 的规范化哈希（空串 = 未执行）；
+         *     - executed_at：执行时刻（ISO-8601 UTC；空串 = 未执行）。
+         */
+        AuditDecision: {
+            /** Decision Id */
+            decision_id: string;
+            /**
+             * Plan Hashes
+             * @default {}
+             */
+            plan_hashes: {
+                [key: string]: string;
+            };
+            /**
+             * Executed Hash
+             * @default
+             */
+            executed_hash: string;
+            /**
+             * Executed At
+             * @default
+             */
+            executed_at: string;
+        };
+        /**
          * CrossDomainRule
          * @description 跨域关联规则。
          *
@@ -412,6 +443,21 @@ export interface components {
             column_count: number;
             /** Policy Ready */
             policy_ready: boolean;
+            /**
+             * Ready
+             * @default true
+             */
+            ready: boolean;
+            /**
+             * Unlabeled Columns
+             * @default []
+             */
+            unlabeled_columns: string[];
+            /**
+             * Strict
+             * @default false
+             */
+            strict: boolean;
         };
         /** DatasourceSchema */
         DatasourceSchema: {
@@ -667,7 +713,7 @@ export interface components {
         };
         /**
          * ReportDetail
-         * @description 报告详情 = 摘要字段 + 完整 QueryResponse 快照。
+         * @description 报告详情 = 摘要字段 + 完整 QueryResponse 快照 + 审计决策绑定。
          *
          *     `payload` 声明为 `QueryResponse` 而不是 `Dict[str, Any]`：它本来就是
          *     那次查询的完整响应（存库时就是 `resp.model_dump()`）。写成泛型字典会让
@@ -693,6 +739,7 @@ export interface components {
             /** Event Count */
             event_count: number;
             payload: components["schemas"]["QueryResponse"];
+            decision?: components["schemas"]["AuditDecision"] | null;
         };
         /** ReportSummary */
         ReportSummary: {

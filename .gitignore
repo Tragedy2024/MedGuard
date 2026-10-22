@@ -57,3 +57,9 @@ Thumbs.db
 # 这里，那是**工作区**不是交付物——曾经差点把 131KB 的审查 diff 一起推上去。
 # 确实需要随仓库保留的条目，用 `git add -f` 单独放行。
 .scratch/
+# 语料向量磁盘缓存（hybrid.py 生成，可随时用 BGE 重建；键绑定模型+文档哈希）
+# 不入库：体积大（1.5 万条约 30MB）且是纯派生物。
+**/data/dense_*.npy
+**/data/dense_*.meta.json
+# 评审工具留下的 pytest 缓存目录（本轮评审 P3）
+.pytest-review-*/

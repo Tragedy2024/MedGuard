@@ -138,6 +138,15 @@ cross_domain_rules:
   forbid_personal_level: true
   allow_aggregate_level: true
   reason: 临床记录与费用结算属不同安全域，个人级关联可推断特定疾病的治疗成本
+personal_identifier_columns:
+- patients.patient_id
+- patients.id_card
+- patients.phone
+- patients.address
+- patients.birth_date
+- visits.patient_id
+- clinical_records.patient_id
+- billing.patient_id
 review_notes: '标注依据：
 
   - id_card：唯一标识符，任何场景不得出现在 SELECT

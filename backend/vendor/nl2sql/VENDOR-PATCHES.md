@@ -55,6 +55,38 @@
 
 **上游同步提示**：从上游重新拷贝 `src/` 时，这个目录会一起带过来，需要再次删除。
 
+### 3. `src/ssa/loader.py` + `src/auditor/base.py` — 声明式个人标识列（个人级 JOIN 判定）
+
+**改动**（纯增量，未声明时行为与上游完全一致）：
+
+- `SSALabels` 新增字段 `personal_identifier_columns: Set[str]` 与判定方法
+  `is_personal_identifier()`；`load_ssa_data` 解析 SSA YAML 顶层键
+  `personal_identifier_columns`（列名列表，支持 `表.列` 全限定或裸列名）。
+- `auditor/base.py` 的 `_is_personal_level_join` 个人标识判定改为
+  "启发式命中 **或** SSA 显式声明"——两条路任一成立即视为个人级。
+
+**依据**：上游的 `is_personal_attribute` 是英文命名启发式（name/email/
+customer_id…），没有 patient_id、id_card 等**医疗标识**。医疗主键是系统内部
+标识，命名与英文习惯无关，靠名字猜会静默漏报——demo 复现：
+
+```sql
+SELECT c.patient_id, b.amount
+FROM clinical_records c
+JOIN billing b ON c.visit_id = b.visit_id
+```
+
+修复前不触发 `cross_domain_personal_join`（`is_personal_attribute`
+不命中即 L0 放行），尽管 SSA 已声明 `forbid_personal_level` 的跨域规则。
+修复后由 SSA 显式声明（演示策略 `regional_health.yaml` 已声明患者侧
+标识列），不依赖命名猜测，也不把 `*_id` 一刀切判为个人属性（避免
+visit_id / record_id 这类系统键误报）。
+
+**行为影响**：SSA 未声明 `personal_identifier_columns` 时输出与上游一致；
+声明后仅扩大个人级 JOIN 的检出范围。配套回归测试见
+`backend/tests/test_audit_personal_identifiers.py`。
+
+**上游同步提示**：从上游重新拷贝 `src/` 时两处改动都会丢失，需按本节重打。
+
 ---
 
 ## 未改但值得知道的事

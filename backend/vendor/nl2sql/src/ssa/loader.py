@@ -23,6 +23,33 @@ class SSALabels:
     column_labels: Dict[str, Dict[str, str]] = field(default_factory=dict)
     # column_labels[table_name][column_name] = "free"|"controlled"|"blocked"
     cross_domain_rules: List[CrossDomainRule] = field(default_factory=list)
+    # 显式声明为个人标识的列（"table.col" 全限定或裸列名）。与 name-pattern
+    # 启发式（ssa/ecl.py）并列参与个人级 JOIN 判定——医疗标识（patient_id /
+    # id_card 等）不依赖英文命名猜测。空集（未声明）时行为与上游一致。
+    personal_identifier_columns: Set[str] = field(default_factory=set)
+
+    def is_personal_identifier(self, qualified_col: str) -> bool:
+        """该列是否被 SSA 显式声明为个人标识。
+
+        语义（评审 P2，2026-10）：**全限定声明只精确匹配**；**裸列名声明
+        才全局匹配**（任何表的同名列都算）。这样「patients.patient_id」不会
+        把 unrelated.patient_id 也判成个人标识——那不会泄露数据，只会造成
+        不必要的 L2 降级。比较不区分大小写、忽略反引号。
+        """
+        col = qualified_col.replace("`", "").strip()
+        if not col:
+            return False
+        normalized = {
+            c.replace("`", "").strip()
+            for c in self.personal_identifier_columns
+        }
+        if col.lower() in {t.lower() for t in normalized}:
+            return True
+        bare = col.rsplit(".", 1)[-1]
+        return any(
+            "." not in t and t.lower() == bare.lower()
+            for t in normalized
+        )
 
     def columns_for_table(self, table: str) -> Dict[str, str]:
         """Return a table's labels using SQLite-style case-insensitive names."""
@@ -126,6 +153,10 @@ def load_ssa_data(db_id: str, data: Mapping[str, Any]) -> SSALabels:
             allow_aggregate_level=rule_data.get('allow_aggregate_level', True),
             reason=rule_data.get('reason', ''),
         ))
+
+    for raw in payload.get('personal_identifier_columns', []) or []:
+        if isinstance(raw, str) and raw.strip():
+            labels.personal_identifier_columns.add(raw.strip())
     return labels
 
 

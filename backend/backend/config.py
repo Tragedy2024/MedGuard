@@ -112,6 +112,19 @@ RAG_DENSE_ENABLED = (os.environ.get("MEDGUARD_RAG_DENSE", "1").lower() in {
 RAG_DENSE_MODEL = os.environ.get(
     "MEDGUARD_RAG_DENSE_MODEL", "BAAI/bge-small-zh-v1.5"
 )
+# 语料向量磁盘缓存（评审 A2b）：键绑定模型名 + 文档内容哈希，模型或语料
+# 一变自动重建；冷启动编码 1.5 万条（约 60-70 秒）只在首次发生。
+# 测试隔离下恒关——MEDGUARD_TESTING 不写、不读缓存文件。
+RAG_DENSE_CACHE = (os.environ.get("MEDGUARD_RAG_DENSE_CACHE", "1").lower() in {
+    "1", "true", "yes", "on",
+}) and not _TESTING
+
+# ── 数据源就绪门禁（评审 B6，2026-10）──────────────────────────
+# 严格模式（生产/真实医院数据源建议开启）：非演示数据源存在未标注表/列
+# 时禁止启用与查询（backend/readiness.py）。演示库恒为兼容模式。
+STRICT_DATASOURCES = os.environ.get("MEDGUARD_STRICT_DATASOURCES", "0").lower() in {
+    "1", "true", "yes", "on",
+} and not _TESTING
 # bge-small-zh-v1.5 在本项目 91 条语料上的实测分界：有效口语问法约
 # 0.62～0.73；泛问/天气约 0.40～0.45；未覆盖膝痛最高约 0.54。
 # 因而默认取 0.58。换模型或扩语料后必须用金标集重新校准。

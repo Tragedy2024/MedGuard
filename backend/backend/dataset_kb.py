@@ -129,6 +129,27 @@ def lookup_disease(name: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+def match_disease(question: str) -> Optional[str]:
+    """在疾病事实卡的名字里找「最长字面命中」的疾病名并返回。
+
+    只做规范名的精确包含匹配，不做前缀/拼音/模糊猜测——疾病侧没有现成
+    的口语别名库（rag_documents.json 的 aliases 只有规范名本身），错配
+    疾病比答不上来更糟。调用方（smart_doctor.parse_intent）只在明确的
+    疾病意图信号出现时才扫描，命中即作为疾病实体走事实卡路径，
+    不依赖 RAG / BGE / LLM。
+    """
+    if not question:
+        return None
+    diseases = _load(DISEASE_FILE).get("diseases") or {}
+    best: Optional[str] = None
+    for name in diseases:
+        if name and name in question and (
+            best is None or len(name) > len(best)
+        ):
+            best = name
+    return best
+
+
 def disease_fact_lines(facts: Dict[str, Any]) -> List[Dict[str, str]]:
     """把事实卡片转成界面用的条目（复用 answer 的 items 结构）。"""
     out: List[Dict[str, str]] = []

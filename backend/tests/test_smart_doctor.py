@@ -319,6 +319,22 @@ def test_ai_fallback_without_key_keeps_guide(demo_db, monkeypatch):
     assert "换个问法" in r["interpretation"]["title"]
 
 
+def test_ai_fallback_without_key_skips_retrieval(demo_db, monkeypatch):
+    """无 Key 时不得先检索再放弃（评审 A2a：检索结果无人消费，白付开销）。"""
+    from backend import config as _config
+    monkeypatch.setattr(_config, "LLM_API_KEY", "")
+    calls = []
+
+    def record(_question):
+        calls.append(_question)
+        return []
+
+    monkeypatch.setattr(smart_doctor, "_retrieve_context", record)
+    r = smart_doctor.ask("怎么办理出院手续", "P001")
+    assert calls == []
+    assert "换个问法" in r["interpretation"]["title"]
+
+
 def test_ai_call_failure_falls_back_to_guide(demo_db, monkeypatch):
     """模型调用抛异常 → 回退引导，绝不 500。"""
     from backend import config as _config

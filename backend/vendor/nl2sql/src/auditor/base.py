@@ -617,9 +617,14 @@ class SecurityAuditor:
         # Both sides contribute non-aggregated columns
         has_both = bool(left_cols) and bool(right_cols)
 
-        # At least one is a personal identifier
+        # At least one is a personal identifier. Declared SSA personal
+        # identifier columns are checked in addition to the name-pattern
+        # heuristic so that medical identifiers (patient_id, id_card, ...)
+        # do not depend on English name guessing. Additive: without any
+        # declaration the behavior is identical to upstream.
         has_personal = any(
-            is_personal_attribute(c) for c in (left_cols | right_cols)
+            is_personal_attribute(c) or self.ssa.is_personal_identifier(c)
+            for c in (left_cols | right_cols)
         )
 
         return has_both and has_personal

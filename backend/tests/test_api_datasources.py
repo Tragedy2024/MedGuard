@@ -66,3 +66,23 @@ def test_list_datasources_after_demo(client):
     assert len(data) == 1
     assert data[0]["table_count"] == 5
     assert data[0]["policy_ready"] is True
+
+def test_discover_lists_registered_datasource(client, monkeypatch, tmp_path):
+    """注册表里的真实数据源出现在 /api/datasources，且按自身库扫描（B6 产品化）。"""
+    import json as _json
+    import sqlite3 as _sqlite3
+    db = tmp_path / "his.db"
+    con = _sqlite3.connect(db)
+    con.execute("CREATE TABLE appt (id TEXT, patient_id TEXT)")
+    con.commit()
+    con.close()
+    monkeypatch.setenv("MEDGUARD_DATASOURCES",
+                       _json.dumps([{"id": "real_hospital", "name": "某院HIS",
+                                     "db_path": str(db)}]))
+    from backend import config as _config
+    _sqlite3.connect(_config.BUSINESS_DB).close()   # 演示库在册的前提：库文件存在
+    rows = client.get("/api/datasources").json()
+    assert any(r["id"] == "regional_health" for r in rows)     # 演示库仍在册
+    real = next(r for r in rows if r["id"] == "real_hospital")
+    assert real["table_count"] == 1
+    assert real["ready"] is False        # 无 SSA → 未就绪（严格模式会拦）

@@ -6,11 +6,14 @@
 可扩展：当前查询计划来自 demo/queries.json（演示模式，NL→SQL 缓存）。
 端到端模式（真实 NL→SQL）预留 question_text 直查接口，见 run_direct_query()。
 """
+import hashlib
 import json
 import os
 import sqlite3
 import time
-from typing import Any, Dict, List, Optional
+import uuid
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -20,8 +23,8 @@ from backend.admission import admission_check_plan
 from backend.db import save_report
 from backend.deps import audit_plan
 from backend.labels import DEGRADATION_LABELS, DEGRADATION_MESSAGES
-from backend.schemas import (AdmissionInfo, DegradationInfo, MetricsInfo,
-                             PlanItem, QueryRequest, QueryResponse,
+from backend.schemas import (AdmissionInfo, AuditDecision, DegradationInfo,
+                             MetricsInfo, PlanItem, QueryRequest, QueryResponse,
                              ResultSet, RewriteInfo, SecurityEvent, Token)
 from backend.security import verified
 
@@ -31,6 +34,36 @@ router = APIRouter(prefix="/api/query", tags=["query"])
 def _load_queries() -> dict:
     with open(config.QUERIES_FILE, encoding="utf-8") as f:
         return json.load(f)
+
+
+def _normalized_sql(sql: str) -> str:
+    """SQL 规范化：解析再序列化，格式差异（空格/大小写/引号）不破坏哈希。"""
+    try:
+        import sqlglot
+        return sqlglot.parse_one(sql, read="sqlite").sql(dialect="sqlite")
+    except Exception:
+        return " ".join((sql or "").split())
+
+
+def _policy_or_none(datasource_id: str):
+    """取数据源策略；不存在/损坏返回 None（就绪门禁用）。
+
+    演示库走兼容模式，**不需要**加载策略对象（allowed 直接放行）。
+    """
+    if datasource_id == config.DEMO_DATASOURCE_ID:
+        return None
+    from backend.deps import list_policy_ids, load_policy
+    if datasource_id in list_policy_ids():
+        try:
+            return load_policy(datasource_id)
+        except Exception:  # noqa: BLE001 - 策略损坏按未就绪处理
+            return None
+    return None
+
+
+def _sql_sha256(sql: str) -> str:
+    """规范化的 SQL SHA-256（十六进制）。"""
+    return hashlib.sha256(_normalized_sql(sql).encode("utf-8")).hexdigest()
 
 
 @router.post("", response_model=QueryResponse)
@@ -50,17 +83,20 @@ def run_query(req: QueryRequest):
         for sq in spec["plan"]
     ]
 
-    resp = _pipeline(plan, spec["question"], req.token, req.datasource_id, t0)
-    _persist(spec["question"], req.token, resp)
+    resp, decision = _pipeline(plan, spec["question"], req.token, req.datasource_id, t0)
+    _persist(spec["question"], req.token, resp, decision)
     return resp
 
 
 def _pipeline(plan: list, question: str, token: Token,
-              datasource_id: str, t0: float) -> QueryResponse:
+              datasource_id: str, t0: float) -> Tuple[QueryResponse, Optional[AuditDecision]]:
     """层一准入 → 层二审计 → 执行 → 组装响应。
 
     预置查询与自由提问共用这一条管线——**它们只在「计划从哪来」上不同**，
     审计与拦截完全一致。这是自由提问不削弱安全演示的原因。
+
+    返回 (响应, 审计决策绑定证据)。决策证据用领域类型 AuditDecision
+    携带（评审 P2：裸字典会漏字段）；随报告落盘见 _persist。
     """
     subject = token.subject_id or ""
 
@@ -72,6 +108,23 @@ def _pipeline(plan: list, question: str, token: Token,
         {**sq, "sql": (sq.get("sql") or "").replace("{subject_id}", subject)}
         for sq in plan
     ]
+
+    # 数据源就绪门禁（评审 B6）：演示库恒为兼容模式；严格模式下非演示
+    # 数据源若存在未标注表/列（schema 与 SSA 有差距），在查询前直接拒绝
+    # ——不等到审计层「临时拦」。这是管理门禁，与层一/层二正交。
+    from backend import datasource_registry as dsr
+    from backend import readiness
+    spec = dsr.get(datasource_id)
+    if spec is None:
+        raise HTTPException(status_code=404, detail="数据源未注册")
+    db_path = dsr.resolve_db_path(spec)
+    if not readiness.allowed(datasource_id, _policy_or_none(datasource_id),
+                             db_path=db_path):
+        raise HTTPException(
+            status_code=503,
+            detail="该数据源未就绪：存在未标注的表或列，"
+                   "请管理员完成安全策略标注后再启用。",
+        )
 
     # 【层一】准入 —— 只对病患令牌执行（医护令牌的权限范围由医院
     # RLS 式策略管理，不在本项目实现；其查询一律放行交层二审计）。
@@ -93,35 +146,52 @@ def _pipeline(plan: list, question: str, token: Token,
                 llm_calls=0, db_access=0),
             result=None,
         )
-        return resp
+        # 层一拒绝：没有审计、没有执行，无从绑定——存 None（NULL）而不是
+        # 空对象：空对象会让 ReportDetail 的 decision 校验失败（评审 P1）。
+        return resp, None
     if token.type != "patient":
         adm.passed = True
         adm.reason = None
 
     # 【层二】审计（零 LLM、零查库）
     audited_at = int((time.perf_counter() - t0) * 1000)   # 审计耗时到此为止
+    decision_id = uuid.uuid4().hex
     outcome = audit_plan(plan, datasource_id)
+    audited_plan = outcome.audited_plan
+    # 审计—执行绑定证据（评审 B5）：改写后计划每条子查询的规范化哈希。
+    plan_hashes = {str(sq["id"]): _sql_sha256(sq["sql"]) for sq in audited_plan}
 
-    # 执行（仅当未被 L3 拒绝）
+    # 执行（仅当审计给出了可执行的计划）。
+    # 「空审计计划回退执行原计划」已删除（评审 B5）：空计划默认不执行——
+    # 回退等于把未审计的原始 SQL 塞回执行器，中介保证就此断开。
     result = None
-    if outcome.degradation_level != "L3":
-        sql_after = {sq["id"]: sq["sql"] for sq in outcome.audited_plan}
-        if not sql_after:
-            sql_after = {sq["id"]: sq["sql"] for sq in plan}
-        result = _execute(sql_after, plan)
+    executed_hash = ""
+    executed_at = ""
+    if audited_plan:
+        # 键保持原始 id（int 或 Rule C 的 "0_a"/"0_b"），最终子查询定位与
+        # 执行器约定一致（plan[-1]["id"]）。
+        sql_after = {sq["id"]: sq["sql"] for sq in audited_plan}
+        final_id = plan[-1]["id"]
+        exec_sql = sql_after.get(final_id)
+        expected = plan_hashes.get(str(final_id))
+        # B5 评审 P0：**先验证、后执行**。执行器只会收到最终那条 SQL，
+        # 且它的规范化哈希必须等于审计通过的最终子查询——不一致时**根本
+        # 不执行**（前版是在执行后才比对并丢弃结果，SQL 实际已跑，评审指出）。
+        if exec_sql is not None and expected is not None \
+                and _sql_sha256(exec_sql) == expected:
+            result = _execute(exec_sql, db_path=db_path)
+            executed_hash = _sql_sha256(exec_sql)
+            executed_at = datetime.now(timezone.utc).isoformat()
+        elif exec_sql is not None:
+            print(f"[query] 审计—执行绑定校验失败（decision={decision_id}），"
+                  f"拒绝执行", flush=True)
 
     # 组装。注意：改写后计划可能与原始计划条数不同——
     #   Rule A 消除死子查询（变少）、Rule C 跨域拆分（一条变两条 0_a/0_b）。
     # 以 audited_plan 为准展示；sql_before 回填原始 SQL（拆分产物回填源查询）。
-    # L3 拒绝时不展示计划。算法层对 L3 一律返回空 audited_plan（FINAL_
-    # IMPLEMENTATION_NOTES：Every L3 result returns an empty audited_plan,
-    # so rejected SQL cannot be accidentally executed）。回落填回原始计划
-    # 会把这条保证作废：被拒的语句又重新出现在响应里，而且那计划本身
-    # 可能就解析不了（实测有过只有一行注释的），展示出来只是乱码。
+    # 空计划（含 L3 拒绝）不展示任何 SQL：回填原始计划会把被拒的语句重新
+    # 摆进响应（评审 B5，与「空计划不执行」同口径）。
     display = outcome.audited_plan
-    if not display and outcome.degradation_level != "L3":
-        display = [{"id": sq["id"], "description": sq["description"],
-                    "sql": sq["sql"]} for sq in plan]
     original_by_id = {str(sq["id"]): sq for sq in plan}
     plan_items = []
     for i, sq in enumerate(display):
@@ -163,6 +233,11 @@ def _pipeline(plan: list, question: str, token: Token,
         # 在这里——指标条文案写的是「审计阶段零模型调用」，范围已限定。
         metrics=MetricsInfo(elapsed_ms=audited_at, llm_calls=0, db_access=0),
         result=result,
+    ), AuditDecision(
+        decision_id=decision_id,
+        plan_hashes=plan_hashes,
+        executed_hash=executed_hash,
+        executed_at=executed_at,
     )
 
 
@@ -219,24 +294,26 @@ def run_direct_query(req: DirectQueryRequest):
         query_cache.store(question, plan, req.token.type,
                           req.token.subject_id, source="llm")
 
-    resp = _pipeline(plan, question, req.token, req.datasource_id, t0)
-    _persist(question, req.token, resp)
+    resp, decision = _pipeline(plan, question, req.token, req.datasource_id, t0)
+    _persist(question, req.token, resp, decision)
     return resp
 
 
-def _execute(sql_by_id: Dict[Any, str], plan: list) -> Optional[ResultSet]:
-    """执行改写后的最后一条子查询。
+def _execute(sql: Optional[str], db_path: Optional[str] = None) -> Optional[ResultSet]:
+    """执行**已经过哈希校验**的审计产物 SQL（评审 B5 P0）。
 
-    返回 None 表示未执行或执行失败——两种情况都不返回结果集，
-    前端表现为「无结果」，不会误导为「查询结果为空」。
+    执行器只接收一条「最终子查询」字符串；调用方在传入前已把它的规范化
+    哈希与审计通过的 SQL 比对过——不一致根本不会走到这里。传 None/空串
+    或执行失败一律不返回结果集（前端表现为「无结果」，不会误导为
+    「查询结果为空」）。执行器不接触原计划或其他 SQL 映射。
+
+    `db_path`：数据源注册表解析出的业务库路径（评审 B6 产品化）；None →
+    演示业务库。真实登记源按各自路径执行。
     """
-    if not os.path.exists(config.BUSINESS_DB):
+    target = db_path or config.BUSINESS_DB
+    if not sql or not os.path.exists(target):
         return None
-    final_id = plan[-1]["id"]
-    sql = sql_by_id.get(final_id)
-    if not sql:
-        return None
-    con = sqlite3.connect(config.BUSINESS_DB)
+    con = sqlite3.connect(target)
     con.text_factory = lambda b: b.decode(errors="ignore")
     try:
         cur = con.execute(sql)
@@ -249,7 +326,8 @@ def _execute(sql_by_id: Dict[Any, str], plan: list) -> Optional[ResultSet]:
     return ResultSet(columns=cols, rows=rows)
 
 
-def _persist(question: str, token: Token, resp: QueryResponse) -> None:
+def _persist(question: str, token: Token, resp: QueryResponse,
+             decision: Optional[AuditDecision] = None) -> None:
     """落盘一条审计报告。
 
     存的是**整个令牌身份**而不只是 type：安全报告要按发起人隔离。隔离依据
@@ -268,4 +346,6 @@ def _persist(question: str, token: Token, resp: QueryResponse) -> None:
         "degradation_level": resp.degradation.level,
         "event_count": len(resp.events),
         "payload": resp.model_dump(),
+        # B5：审计—执行绑定证据（领域类型，落库时展平为 dict）
+        "decision": decision.model_dump() if decision else None,
     })

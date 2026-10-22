@@ -237,6 +237,8 @@ def test_opencmkg_adapter_loads_docs(monkeypatch, tmp_path):
     import json as _json
     from backend.knowledge import opencmkg
     doc_file = tmp_path / "rag_documents.json"
+    # 中文 JSON 必须显式 UTF-8（评审 P1：Windows 默认编码写入 → 加载器
+    # 按 UTF-8 读回为空文档，测试在默认 GBK 的机器上失败）。
     doc_file.write_text(_json.dumps({
         "documents": [
             {"id": "opencmkg:disease:冠心病", "kind": "disease", "key": "冠心病",
@@ -245,7 +247,7 @@ def test_opencmkg_adapter_loads_docs(monkeypatch, tmp_path):
             {"id": "opencmkg:symptom:胸痛", "kind": "symptom", "key": "胸痛",
              "name": "胸痛", "aliases": ["胸痛"], "text": "关联疾病：冠心病"},
         ],
-    }, ensure_ascii=False))
+    }, ensure_ascii=False), encoding="utf-8")
     monkeypatch.setattr(opencmkg, "_DOCS_FILE", str(doc_file))
     opencmkg.reset()
     docs = opencmkg.load_docs()
@@ -351,3 +353,121 @@ def test_opencmkg_failure_falls_back_to_yaml(monkeypatch):
     hits = hybrid.search(smart_doctor.load_knowledge(), "头痛", top_k=3)
     assert isinstance(hits, list)
     hybrid.reset()
+
+
+# ── A2b 向量化与磁盘缓存（2026-10 评审）────────────────────────
+
+def test_dense_vectors_disk_cache_hit(tmp_path):
+    """语料向量缓存：同键第二次不再编码（模型名 + 文档哈希绑定）。"""
+    import os
+    from backend.knowledge import hybrid
+
+    calls = {"n": 0}
+
+    class CountingEncoder:
+        model_name = "test-model"   # 缓存失效键之一（真 BGEEncoder 也有此属性）
+
+        def encode_corpus(self, texts):
+            calls["n"] += 1
+            return [[1.0, 0.0] if "睡" in t else [0.0, 1.0] for t in texts]
+
+        def encode_query(self, text):
+            return [1.0, 0.0]
+
+    texts = ["最近睡不着怎么办", "皮肤瘙痒", "胸痛"]
+    cache_file = str(tmp_path / "dense_test.npy")
+    v1 = hybrid._dense_vectors(texts, CountingEncoder(), cache_file=cache_file)
+    assert calls["n"] == 1
+    assert os.path.exists(cache_file)
+    assert os.path.exists(cache_file[:-4] + ".meta.json")
+    v2 = hybrid._dense_vectors(texts, CountingEncoder(), cache_file=cache_file)
+    assert calls["n"] == 1     # 命中缓存，不再编码
+    assert v1 == v2
+
+
+def test_dense_cache_invalidated_by_doc_change(tmp_path):
+    """文档内容一变 → 缓存键失配，自动重建而不是命中旧向量（评审 P1：
+    只比行数会复用旧向量——内容变了但条数不变时同样必须重建）。"""
+    from backend.knowledge import hybrid
+
+    calls = {"n": 0}
+
+    class CountingEncoder:
+        model_name = "test-model"
+
+        def encode_corpus(self, texts):
+            calls["n"] += 1
+            return [[float(len(t))] for t in texts]
+
+        def encode_query(self, text):
+            return [1.0]
+
+    cache_file = str(tmp_path / "dense_change.npy")
+    v1 = hybrid._dense_vectors(["文档一"], CountingEncoder(), cache_file=cache_file)
+    v2 = hybrid._dense_vectors(["文档二完全不同"], CountingEncoder(),
+                               cache_file=cache_file)
+    assert calls["n"] == 2     # 哈希不同 → 重新编码
+    assert v1 != v2
+
+
+def test_vectorized_dense_search_matches_python():
+    """矩阵路径与 Python 逐条余弦结果一致（评审 A2b 的正确性保证）。"""
+    from backend.knowledge import hybrid
+    from backend.knowledge import corpus as _corpus
+
+    docs = [
+        _corpus.Doc(id="a", kind="disease", key="a", name="失眠",
+                    aliases=("失眠",), text="失眠入睡困难"),
+        _corpus.Doc(id="b", kind="symptom", key="b", name="头痛",
+                    aliases=("头痛",), text="头痛头晕"),
+        _corpus.Doc(id="c", kind="symptom", key="c", name="咳嗽",
+                    aliases=("咳嗽",), text="咳嗽咳痰"),
+    ]
+
+    class FakeEncoder:
+        def encode_corpus(self, texts):
+            out = []
+            for t in texts:
+                if "失眠" in t:
+                    out.append([1.0, 0.0, 0.0])
+                elif "头痛" in t:
+                    out.append([0.0, 1.0, 0.0])
+                else:
+                    out.append([0.0, 0.0, 1.0])
+            return out
+
+        def encode_query(self, text):
+            return [1.0, 0.0, 0.0]
+
+    index = hybrid.DenseIndex(docs, FakeEncoder(), min_score=0.5)
+    assert index._np is not None            # 本机 numpy 可用 → 走矩阵路径
+    fast = [(d.id, round(s, 6)) for d, s in index.search("最近失眠", top_k=3)]
+    index._np = None                        # 强制回退 Python 逐条余弦
+    slow = [(d.id, round(s, 6)) for d, s in index.search("最近失眠", top_k=3)]
+    assert fast == slow
+    assert fast[0][0] == "a"
+
+
+def test_dense_cache_invalidated_by_model_change(tmp_path):
+    """换模型 → 缓存键（模型名）失配，自动重建而不是复用旧向量（评审 P1）。"""
+    from backend.knowledge import hybrid
+
+    calls = {"n": 0}
+
+    class CountingEncoder:
+        model_name = "test-model"
+
+        def encode_corpus(self, texts):
+            calls["n"] += 1
+            return [[1.0] for _ in texts]
+
+        def encode_query(self, text):
+            return [1.0]
+
+    class OtherModelEncoder(CountingEncoder):
+        model_name = "other-model"
+
+    cache_file = str(tmp_path / "dense_model.npy")
+    hybrid._dense_vectors(["同一语料"], CountingEncoder(), cache_file=cache_file)
+    hybrid._dense_vectors(["同一语料"], OtherModelEncoder(), cache_file=cache_file)
+    assert calls["n"] == 2      # 模型不同 → 重新编码

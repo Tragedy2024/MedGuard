@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "oxlint",
+    "lint": "oxlint -c oxlint.json .",
     "preview": "vite preview",
     "visual": "node scripts/visual-check.mjs",
     "e2e": "node scripts/e2e-check.mjs"

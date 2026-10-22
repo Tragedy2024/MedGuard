@@ -17,8 +17,12 @@ RRF。默认尝试 BGE adapter；未安装依赖、模型加载/建索引/查询
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import math
+import os
 import threading
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Protocol, Sequence, Tuple
 
 from backend import config
@@ -43,41 +47,161 @@ def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
     return dot / (na * nb) if na and nb else 0.0
 
 
+# ── 语料向量磁盘缓存（评审 A2b）────────────────────────────────
+#
+# BGE 编码 1.5 万条语料是冷启动大头（本机实测 60 秒级以上）。把语料向量
+# 写成 .npy 缓存，键绑定「模型名 + 文档内容哈希」：模型或语料一变自动
+# 重建。只对真实 BGE 编码器生效（fake encoder 与测试路径不落盘）。
+
+def _dense_cache_path(label: str) -> str:
+    """向量缓存的 .npy 路径（meta 为同名 .meta.json）。"""
+    return os.path.join(config.DATA_DIR, f"dense_{label}.npy")
+
+
+def _dense_vectors(texts: Sequence[str], encoder: Encoder, *,
+                   cache_file: Optional[str] = None) -> Sequence[Sequence[float]]:
+    """编码语料向量；带 cache_file 时优先读缓存。
+
+    缓存元数据 = {model, docs_sha256, built_at}，加载后还要核对 .npy 形状
+    （行数=文档数）；任一不匹配或损坏都静默走重新编码——没有路径能把
+    错误缓存送进检索。
+    """
+    if cache_file:
+        meta_path = cache_file[:-4] + ".meta.json"
+        try:
+            if os.path.exists(cache_file) and os.path.exists(meta_path):
+                with open(meta_path, encoding="utf-8") as f:
+                    saved = json.load(f)
+                import numpy as np
+                arr = np.load(cache_file)
+                # 评审 P1：必须与**当前**模型名、**当前**语料哈希逐字节比较。
+                # 只检查元数据非空 + 行数相等，会在「内容变了但条数不变」时
+                # 复用旧向量。
+                digest = hashlib.sha256(
+                    "\n".join(texts).encode("utf-8")).hexdigest()
+                if (saved.get("model") == getattr(encoder, "model_name", "")
+                        and saved.get("docs_sha256") == digest
+                        and arr.ndim == 2 and arr.shape[0] == len(texts)):
+                    return [list(v) for v in arr]
+        except Exception:
+            pass  # 缓存缺失/损坏/键不匹配 → 重新编码
+
+    vectors = [list(v) for v in encoder.encode_corpus(texts)]
+
+    if cache_file and vectors:
+        try:
+            import numpy as np
+            digest = hashlib.sha256(
+                "\n".join(texts).encode("utf-8")).hexdigest()
+            os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+            np.save(cache_file, np.asarray(vectors, dtype=np.float32))
+            with open(cache_file[:-4] + ".meta.json", "w", encoding="utf-8") as f:
+                json.dump({
+                    "model": getattr(encoder, "model_name", ""),
+                    "docs_sha256": digest,
+                    "count": len(vectors),
+                    "built_at": datetime.now(timezone.utc).isoformat(),
+                }, f, ensure_ascii=False)
+        except Exception:
+            pass  # 写缓存失败不影响本次查询
+    return vectors
+
+
 class DenseIndex:
-    """小语料的精确向量检索；无需额外向量数据库。"""
+    """小语料的精确向量检索；无需额外向量数据库。
+
+    向量化（评审 A2b）：语料向量预归一化成 float32 矩阵，查询时一次
+    ``matrix @ query`` 完成全部余弦计算（1.5 万 × 512 维约 30 MB，
+    毫秒级）；numpy 不可用时回退逐条 Python 余弦。
+    """
 
     def __init__(self, docs: Sequence[corpus.Doc], encoder: Encoder,
-                 min_score: float):
+                 min_score: float, cache_label: Optional[str] = None):
         self.docs = list(docs)
         self._encoder = encoder
         self._min_score = min_score
         texts = [corpus.doc_text_for_index(d) for d in self.docs]
-        self._vectors = [list(v) for v in encoder.encode_corpus(texts)]
+        cache_file = None
+        if (cache_label and isinstance(encoder, BGEEncoder)
+                and config.RAG_DENSE_CACHE):
+            cache_file = _dense_cache_path(cache_label)
+        self._vectors = _dense_vectors(texts, encoder, cache_file=cache_file)
         if len(self._vectors) != len(self.docs):
             raise ValueError("BGE 返回的向量数与知识条目数不一致")
+        self._np = None
+        try:
+            import numpy as np
+            arr = np.asarray(self._vectors, dtype=np.float32)
+            norms = np.linalg.norm(arr, axis=1, keepdims=True)
+            norms[norms == 0] = 1.0
+            self._np = arr / norms
+        except Exception:
+            self._np = None  # numpy 不可用 → Python 余弦兜底
 
     def search(self, query: str, top_k: int) -> List[Tuple[corpus.Doc, float]]:
         qv = list(self._encoder.encode_query(query))
         if not qv:
             return []
+        if self._np is not None:
+            try:
+                import numpy as np
+                q = np.asarray(qv, dtype=np.float32)
+                nq = float(np.linalg.norm(q))
+                if nq > 0:
+                    q = q / nq
+                scores = self._np @ q
+                order = np.argsort(-scores)
+                hits = []
+                for i in order:
+                    s = float(scores[i])
+                    if s < self._min_score:
+                        break
+                    hits.append((self.docs[int(i)], s))
+                    if len(hits) >= top_k:
+                        break
+                return hits
+            except Exception:
+                pass  # 运行时故障 → 走 Python 逐条余弦
         hits = [(d, _cosine(qv, v)) for d, v in zip(self.docs, self._vectors)]
         hits = [(d, s) for d, s in hits if s >= self._min_score]
         hits.sort(key=lambda x: x[1], reverse=True)
         return hits[:top_k]
 
 
+def _model_cached_locally(model_name: str) -> bool:
+    """模型是否已有本地 HF 快照（用于加载前判定离线，见 BGEEncoder）。"""
+    root = os.environ.get("HF_HOME") or os.path.join(
+        os.path.expanduser("~"), ".cache", "huggingface")
+    hub = os.environ.get("HF_HUB_CACHE") or os.path.join(root, "hub")
+    return os.path.isdir(
+        os.path.join(hub, "models--" + model_name.replace("/", "--"))
+    )
+
+
 class BGEEncoder:
     """FlagEmbedding adapter；构造时才加载权重。"""
 
     def __init__(self, model_name: str):
+        self.model_name = model_name      # 缓存失效键之一（A2b）
         self._is_m3 = model_name.rstrip("/").lower().endswith("bge-m3")
+        # huggingface_hub 在**首次读取时**缓存环境变量（HF_HUB_OFFLINE 等），
+        # 进程中途再设无效（实测：中途设置后 AutoTokenizer 仍联网抛
+        # httpx.ConnectTimeout）。所以必须在任何 HF 导入前判定网络需求：
+        #   已缓存快照 → 强制纯离线加载（确定性，演示/评测不因网络抖动退化）；
+        #   无快照   → 正常在线加载（首次下载），失败由调用方统一回退 BM25。
+        if _model_cached_locally(model_name):
+            os.environ.setdefault("HF_HUB_OFFLINE", "1")
+            os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+        self._load_model()
+
+    def _load_model(self) -> None:
         if self._is_m3:
             from FlagEmbedding import BGEM3FlagModel
-            self._model = BGEM3FlagModel(model_name, use_fp16=False)
+            self._model = BGEM3FlagModel(self.model_name, use_fp16=False)
         else:
             from FlagEmbedding import FlagModel
             self._model = FlagModel(
-                model_name,
+                self.model_name,
                 query_instruction_for_retrieval="为这个句子生成表示以用于检索相关文章：",
                 use_fp16=False,
             )
@@ -140,7 +264,8 @@ class HybridRetriever:
                  extra_weight: float = 0.7):
         self.docs = list(docs)
         self._bm25 = BM25Index(self.docs)
-        self._dense = (DenseIndex(self.docs, encoder, dense_min_score)
+        self._dense = (DenseIndex(self.docs, encoder, dense_min_score,
+                                  cache_label="yaml")
                        if encoder is not None else None)
         self._candidate_k = max(3, candidate_k)
         # 检索阈值可调（默认用 retrieval.DEFAULT_MIN_SCORE 的 1.5；
@@ -154,7 +279,8 @@ class HybridRetriever:
         self._extra_bm25 = (BM25Index(self._extra_docs)
                             if self._extra_docs else None)
         self._extra_dense = (
-            DenseIndex(self._extra_docs, encoder, dense_min_score)
+            DenseIndex(self._extra_docs, encoder, dense_min_score,
+                       cache_label="opencmkg")
             if self._extra_docs and encoder is not None else None)
 
     def search(self, query: str, top_k: int = 3) -> List[Tuple[corpus.Doc, float]]:

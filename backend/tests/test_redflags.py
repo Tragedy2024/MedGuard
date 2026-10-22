@@ -65,3 +65,9 @@ def test_lab_intent_with_redflag_still_escalates():
     """红旗与意图正交：挂了报告解读的意图，提到红旗词也升级。"""
     resp = smart_doctor.ask("我胸痛，顺便看下血常规", subject_id="P001")
     assert resp["advice"]["urgent"] is True
+
+def test_xin_geng_colloquial_escalates():
+    """「心梗」是心肌梗死的高特异口语变体，必须升级（2026-10 评测金标发现）。"""
+    from backend.redflags import check
+    hits = check("胸口突然剧痛，是不是心梗")
+    assert any(f.label == "心脑血管急症" for f in hits)

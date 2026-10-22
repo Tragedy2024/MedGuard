@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS reports (
     degradation_level TEXT NOT NULL,
     event_count       INTEGER NOT NULL DEFAULT 0,
     created_at        TEXT NOT NULL DEFAULT (datetime('now')),
-    payload           TEXT NOT NULL
+    payload           TEXT NOT NULL,
+    decision          TEXT
 )
 """
 
@@ -59,6 +60,9 @@ def init_db(db_path: str) -> None:
     # 见 _scope 的说明）。老库里的历史行走不到，本来就归不了属。
     if "account" not in cols:
         con.execute("ALTER TABLE reports ADD COLUMN account TEXT")
+    # decision：审计—执行绑定证据（B5，2026-10 评审）。历史行留空。
+    if "decision" not in cols:
+        con.execute("ALTER TABLE reports ADD COLUMN decision TEXT")
     con.execute(_USERS_SCHEMA)
     con.commit()
     con.close()
@@ -138,15 +142,18 @@ def list_users(db_path: str) -> List[Dict[str, Any]]:
 
 def save_report(db_path: str, record: Dict[str, Any]) -> int:
     con = _connect(db_path)
+    decision = record.get("decision") or None   # None → NULL（层一拒绝等无绑定场景）
     cur = con.execute(
         "INSERT INTO reports (question, token_type, subject_id, account,"
-        " degradation_level, event_count, payload)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?)",
+        " degradation_level, event_count, payload, decision)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         (record["question"], record["token_type"], record.get("subject_id"),
          record.get("account"),
          record["degradation_level"],
          record.get("event_count", 0),
-         json.dumps(record.get("payload", {}), ensure_ascii=False)))
+         json.dumps(record.get("payload", {}), ensure_ascii=False),
+         json.dumps(decision, ensure_ascii=False) if decision is not None
+         else None))
     con.commit()
     rid = cur.lastrowid
     con.close()
@@ -231,4 +238,11 @@ def get_report(db_path: str, report_id: int, *,
     rec = dict(row)
     rec["created_at"] = _iso_utc(rec.get("created_at", ""))
     rec["payload"] = json.loads(rec["payload"])
+    if rec.get("decision"):
+        try:
+            rec["decision"] = json.loads(rec["decision"])
+        except (TypeError, ValueError):
+            rec["decision"] = None
+    else:
+        rec["decision"] = None       # NULL → None（ReportDetail 可空）
     return rec

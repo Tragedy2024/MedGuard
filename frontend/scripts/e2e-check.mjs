@@ -97,7 +97,12 @@ async function ensureServer() {
   let py = null
   for (const c of PY_CANDIDATES) {
     const probe = spawn(c, ['-c', 'import fastapi, uvicorn, sqlglot'], { stdio: 'ignore' })
-    const code = await new Promise((res) => probe.on('close', res))
+    // 候选路径不存在时 spawn 只发 'error' 不发 'close'——两种都结算，
+    // 否则 Node 24 会直接抛 unhandled error 终止整个脚本。
+    const code = await new Promise((res) => {
+      probe.on('close', res)
+      probe.on('error', () => res(-1))
+    })
     if (code === 0) { py = c; break }
   }
   if (!py) {
@@ -150,6 +155,20 @@ async function runQuery(token, questionId) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       token, datasource_id: 'regional_health', question_id: questionId,
+    }),
+  })
+  return { status: r.status, body: await r.json().catch(() => null) }
+}
+
+/** 智慧医生一问。AI 建议可能走模型（慢），故有界超时；断言只碰确定性块。 */
+async function smartAsk(token, question, timeoutMs = 60_000) {
+  const ctl = AbortSignal.timeout(timeoutMs)
+  const r = await fetch(`${BASE}/api/smart-doctor/ask`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    signal: ctl,
+    body: JSON.stringify({
+      token, datasource_id: 'regional_health', question,
     }),
   })
   return { status: r.status, body: await r.json().catch(() => null) }
@@ -244,6 +263,69 @@ async function apiChecks() {
     const asOwner = await fetch(
       `${BASE}/api/reports/${rid}?${tokenQuery(tok.patient)}`)
     checkEq(`患者读自己的报告 id=${rid} → 200`, asOwner.status, 200)
+  }
+
+  console.log('\n【A1 · 数据集疾病可达（评审 A1）】')
+  {
+    const { status, body } = await smartAsk(tok.patient, '我想了解帕金森病')
+    checkEq('智慧医生 · 帕金森病请求 200', status, 200)
+    if (status === 200) {
+      checkEq('意图解析为 disease', body.intent, 'disease')
+      check('解读标题含「帕金森病」',
+        (body.interpretation?.title ?? '').includes('帕金森病'))
+      check('事实卡条目非空（不依赖模型）',
+        (body.interpretation?.items ?? []).length > 0)
+      check('出处标注为开源知识图谱',
+        (body.interpretation?.source ?? '').includes('OpenCMKG'))
+    }
+  }
+
+  console.log('\n【A3 · 跨域个人级 JOIN 检出（评审 A3）】')
+  {
+    const { body: r } = await runQuery(tok.staff, 'doctor_diabetes_cost')
+    if (r) {
+      const types = (r.events ?? []).map((e) => e.type)
+      check('费用查询事件含 cross_domain_personal_join',
+        types.includes('cross_domain_personal_join'), types.join('、'))
+    } else {
+      fail('A3 跨域事件', '费用查询无响应')
+    }
+  }
+
+  console.log('\n【B5 · 审计—执行绑定（评审 B5）】')
+  {
+    // 先跑一条必执行的查询（L0 直通），保证最新报告有真实执行哈希
+    await runQuery(tok.staff, 'doctor_dept_visits')
+    const listRes = await fetch(`${BASE}/api/reports?${tokenQuery(tok.staff)}`)
+    const list = listRes.ok ? await listRes.json() : []
+    const rid = list?.[0]?.id
+    if (!rid) {
+      fail('B5 绑定证据', '取不到医护报告')
+    } else {
+      const detail = await (
+        await fetch(`${BASE}/api/reports/${rid}?${tokenQuery(tok.staff)}`)).json()
+      const d = detail.decision ?? {}
+      check('报告含 decision_id', Boolean(d.decision_id))
+      check('报告含改写后计划哈希', Boolean(d.plan_hashes && Object.keys(d.plan_hashes).length))
+      check('报告含实际执行哈希（确实执行了）', Boolean(d.executed_hash))
+      check('报告含执行时刻', Boolean(d.executed_at))
+      const last = Object.values(d.plan_hashes ?? {}).pop()
+      checkEq('实际执行哈希 == 最终子查询哈希（执行的就是审计通过的 SQL）',
+        d.executed_hash, last)
+    }
+  }
+
+  console.log('\n【B6 · 数据源就绪门禁（评审 B6）】')
+  {
+    const r = await fetch(`${BASE}/api/datasources`)
+    const list = r.ok ? await r.json() : []
+    const demo = (list ?? []).find((d) => d.id === 'regional_health')
+    check('演示数据源存在', Boolean(demo))
+    if (demo) {
+      checkEq('演示库兼容模式：ready', demo.ready, true)
+      checkEq('演示库无未标注列', (demo.unlabeled_columns ?? []).length, 0)
+      checkEq('默认非严格模式', demo.strict, false)
+    }
   }
 }
 
@@ -436,6 +518,44 @@ async function uiChecks(browser) {
         seen[1]?.context ?? null, { intent: 'lab', entity: '血糖' })
     } catch (e) {
       fail('智慧医生 · 多轮上下文', String(e).slice(0, 80))
+    }
+    await ctx.close()
+  }
+
+  // ⑧ 智慧医生：离线引导形态（无 API Key 时的确定性文案）。
+  //    用路由 mock 固定「无 Key 回退」的响应形状，断言引导文案渲染出来
+  //    ——否则"没配 Key 的机器上患者看到什么"永远没人验证过。
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 1100 } })
+    const page = await ctx.newPage()
+    page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
+    page.on('pageerror', (e) => errors.push(e.message))
+    await page.route('**/api/smart-doctor/ask', (route) => route.fulfill({
+      json: {
+        intent: 'fallback',
+        question: '怎么办理出院手续',
+        admission: { passed: true, reason: null, checked_tables: [], bound_to_subject: false },
+        degradation: { level: 'L0', label: '通过', message: '', message_cn: '' },
+        data: null,
+        interpretation: {
+          source: '医院审核知识库',
+          title: '换个问法试试',
+          text: '可以这样问我：……',
+          items: [],
+        },
+        advice: { source: '医院审核知识库', text: '', actions: [], urgent: false },
+      },
+    }))
+    await signIn(page, 'patient')
+    try {
+      await page.fill('.sd-ask input', '怎么办理出院手续')
+      await page.click('.sd-ask button')
+      await page.waitForFunction(
+        () => document.body.innerText.includes('换个问法试试'),
+        { timeout: 8000 })
+      ok('智慧医生 · 离线引导文案渲染', '（换个问法试试）')
+    } catch {
+      fail('智慧医生 · 离线引导文案渲染', '8s 内未出现引导文案')
     }
     await ctx.close()
   }

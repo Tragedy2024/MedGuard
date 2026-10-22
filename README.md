@@ -190,11 +190,23 @@ MEDGUARD_RAG_OPENCMKG_WEIGHT=0.7   # 来源权重：YAML 1.0、OpenCMKG 0.6～0.
 开启后 BM25/BGE 各自对两套语料召回，按来源权重做 RRF 融合；YAML 有可靠命中
 时 top_k 至少保留一条人工证据。OpenCMKG 只贡献**事实召回**、不参与直接诊断；
 检索文档由 `build_dataset_tables.py --export-docs` 从固定 SHA-256 的原始三元组
-生成。关闭（默认）时行为与纯 YAML 检索完全一致。
+生成。关闭（默认）时行为与纯 YAML 检索完全一致。语料向量落本地磁盘缓存
+（`backend/data/dense_*.npy`，gitignore，键=模型名+文档内容哈希），且 BGE
+已缓存时强制纯离线加载——演示/评测不因网络抖动退化成 BM25。
 
-检索质量有金标评测支撑：66 条四类问法、四路配置对照（纯 BM25 / +BGE /
-+OpenCMKG / 全量混合）见 [`docs/research/2026-10-04-retrieval-eval.md`](docs/research/2026-10-04-retrieval-eval.md)，
+检索质量有金标评测支撑：86 条四类问法（2026-10 新增 20 条口语疾病问法）、
+四路配置对照（纯 BM25 / +BGE / +OpenCMKG / 全量混合）见
+[`docs/research/2026-10-04-retrieval-eval.md`](docs/research/2026-10-04-retrieval-eval.md)，
 复现：`python scripts/eval_retrieval.py --all`。
+
+回答安全性另有**医学评测**（自动化风险代理指标，未经临床复核）：四维 14 例
+——红旗升级 / 拒答适当 / 证据忠实度 / 有害误导率，见
+[`docs/research/2026-10-07-medical-safety-eval.md`](docs/research/2026-10-07-medical-safety-eval.md)，
+复现：`python scripts/eval_medical_safety.py --offline`（确定性维度）/
+`--limit 8`（在线判读，需 API Key）。OpenCMKG 默认关与它的关系见报告第五节。
+延迟/内存验收数据（热查询 P50 30ms、冷启动约 25s、峰值内存约 1GB）见
+[`docs/research/2026-10-07-rag-perf.md`](docs/research/2026-10-07-rag-perf.md)，
+复现：`python scripts/bench_rag_latency.py <cold|warm|bm25|memory>`。
 
 ## 快速开始
 
@@ -308,7 +320,9 @@ cp .env.example .env      # 填入 OPENAI_API_KEY
 
 1. 指标条的 **`LLM 调用 0 / 数据库访问 0`**——"零 LLM、零查库"的可验证形式
 2. **改写前后的 SQL 对比**，哪一列、因为什么、被怎么处理了
-3. 报告页可回看的**历史留痕 + 一键导出 JSON**
+3. 报告页可回看的**历史留痕 + 一键导出 JSON**（含审计—执行绑定：
+   `decision_id`、改写后计划的 SQL 哈希、实际执行哈希与时刻——证明
+   "执行的就是审计通过的那份"，评审 B5）
 
 ---
 
@@ -350,7 +364,7 @@ MedGuard/
 │   │   ├── smart_knowledge.yaml       ★ 智慧医生知识库（检验分档/症状/疾病）
 │   │   └── queries.json       预设查询库（医护 4 + 病患 5）
 │   ├── vendor/nl2sql/         内置算法层（改动记录见 VENDOR-PATCHES.md）
-│   ├── tests/                 275 项
+│   ├── tests/                 313 项
 │   └── docs/api-contract/     中文契约说明
 ├── frontend/
 │   └── src/
@@ -370,20 +384,23 @@ MedGuard/
 ## 测试
 
 ```bash
-cd backend && python -m pytest tests/ -q        # 275 项
+cd backend && python -m pytest tests/ -q        # 313 项
 cd frontend && npx tsc -b                       # 类型检查
+cd frontend && npm run e2e                      # 断言式端到端回归（46 项）
 cd frontend && npm run visual                   # 视觉核查，截图 + 收集控制台报错
 ```
 
-**275 项后端测试**覆盖层一准入、演示库 seed 锚点、SSA 策略完整性（防 fail-open 缺口）、
+**313 项后端测试**覆盖层一准入、演示库 seed 锚点、SSA 策略完整性（防 fail-open 缺口）、
 智慧医生（意图识别与歧义引导 / 三块结构 / 层一只读本人 / **红旗规则层** /
-**AI 兜底**）、算法层适配、六组路由契约，以及**演示数据校验**——9 条预设查询逐条断言
+**AI 兜底** / **数据集疾病名可达**）、算法层适配、六组路由契约、
+**医疗个人标识的跨域检出**、**数据源就绪门禁**、**审计—执行绑定**，
+以及**演示数据校验**——9 条预设查询逐条断言
 「是否放行 / 最少事件数 / 期望的降级等级」。后者是阻塞性的：
 演示库触发失败 = 视频录不出来。
 
 > **测试隔离**：`tests/conftest.py` 自动注入 `MEDGUARD_TESTING=1`——无论机器上
 > 是否存在真实 `.env`，`pytest` 都**永不联网**（清空 LLM 配置、关闭 BGE 语义检索），
-> 约 20 秒跑完、结果可复现。真实 API 只在人工演示/自由提问时生效。
+> 约 25 秒跑完、结果可复现。真实 API 只在人工演示/自由提问时生效。
 
 安全报告另有**按账号隔离**的断言：医生与患者各自只看到自己发起的查询，
 越权读/导出别人的报告 id 一律 404。账号侧则钉住**令牌必须验签**——
@@ -413,6 +430,8 @@ cd frontend && npm run visual                   # 视觉核查，截图 + 收集
 | **界面上只用中文业务别名** | 向医生展示 `clinical_records.impression` 只会把产品退回成开发者工具 |
 | **缓存计划而非答案** | 命中缓存后照样走层一与层二，安全演示一点不打折 |
 | **平台元数据库与业务库分离** | 前者是平台自身状态，后者是被审计对象 |
+| **疾病意图才扫数据集疾病名** | 7495 个疾病名只在「想了解/做什么检查」等明确意图下精确最长匹配，不做模糊匹配——错配疾病比答不上来更糟（评审 A1） |
+| **数据源就绪门禁** | 接入真实库前扫描 schema 与 SSA 标注的差距，存在未标注表/列即「未就绪」；严格模式禁止启用，演示库恒为兼容模式。真实库经 `MEDGUARD_DATASOURCES`（JSON）登记 id→db_path 后入册，按各自库扫描与执行（评审 B6） |
 
 ---
 

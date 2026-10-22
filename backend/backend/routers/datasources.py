@@ -29,20 +29,40 @@ def _tables(db_path: str) -> dict:
 
 
 def _discover_datasources() -> list:
-    """枚举当前可用的数据源。
+    """枚举**注册表内**的数据源（评审 B6 产品化）。
 
-    当前规则：demo 业务库存在即视为一个数据源（id=regional_health）。
+    演示库恒在册；真实库经 MEDGUARD_DATASOURCES 环境变量登记后出现在这里。
+    每个源按自己的 db_path 扫描 schema 与就绪门禁（未注册的库不会出现）。
     """
-    if not os.path.exists(config.BUSINESS_DB):
-        return []
-    tables = _tables(config.BUSINESS_DB)
-    return [{
-        "id": config.DEMO_DATASOURCE_ID,
-        "name": config.DEMO_DATASOURCE_NAME,
-        "table_count": len(tables),
-        "column_count": sum(len(cols) for cols in tables.values()),
-        "policy_ready": config.DEMO_DATASOURCE_ID in list_policy_ids(),
-    }]
+    from backend import datasource_registry as dsr
+    from backend import readiness
+    from backend.deps import load_policy
+    policy_ids = list_policy_ids()
+    out = []
+    for spec in dsr.specs():
+        db_path = dsr.resolve_db_path(spec)
+        if not os.path.exists(db_path):
+            continue
+        tables = _tables(db_path)
+        ssa = None
+        if spec.id in policy_ids:
+            try:
+                ssa = load_policy(spec.id)
+            except Exception:  # noqa: BLE001 - 策略损坏按未就绪呈现，不让枚举崩
+                ssa = None
+        report = readiness.scan_readiness(spec.id, ssa, db_path=db_path)
+        out.append({
+            "id": spec.id,
+            "name": spec.name,
+            "table_count": len(tables),
+            "column_count": sum(len(cols) for cols in tables.values()),
+            "policy_ready": spec.id in policy_ids,
+            # 就绪门禁（评审 B6）：演示库兼容模式；真实库严格模式下未标注即拒绝。
+            "ready": report.ready,
+            "unlabeled_columns": report.unlabeled_columns[:20],
+            "strict": bool(config.STRICT_DATASOURCES),
+        })
+    return out
 
 
 def list_policy_ids():

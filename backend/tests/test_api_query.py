@@ -1,4 +1,6 @@
 """查询路由测试。"""
+import hashlib
+import os
 import pytest
 from fastapi.testclient import TestClient
 
@@ -314,3 +316,122 @@ def test_unknown_question_id_404(client):
         "token": STAFF, "datasource_id": "regional_health",
         "question_id": "no_such_question"})
     assert r.status_code == 404
+
+# ── B5 审计—执行绑定（2026-10 评审）────────────────────────────
+
+def test_report_persists_decision_binding(client):
+    """执行后的报告必须落盘审计—执行绑定证据，且实际执行哈希与审计通过的
+    最终子查询一致（评审 B5：decision_id / 计划哈希 / 执行哈希 / 时刻）。"""
+    client.post("/api/query", json={
+        "token": STAFF, "datasource_id": "regional_health",
+        "question_id": "doctor_dept_visits"})
+    rows = client.get("/api/reports", params=scope(STAFF)).json()
+    detail = client.get(f"/api/reports/{rows[0]['id']}",
+                        params=scope(STAFF)).json()
+    decision = detail["decision"]
+    assert decision["decision_id"]
+    assert decision["plan_hashes"]
+    assert decision["executed_hash"]
+    assert decision["executed_at"]
+    # 执行器只取改写后计划的最后一条子查询——哈希必须与它一致
+    assert decision["executed_hash"] == list(decision["plan_hashes"].values())[-1]
+
+
+def test_empty_audited_plan_skips_execution(client, monkeypatch):
+    """空审计计划默认不执行（评审 B5：删除了「回退执行原计划」）。"""
+    from backend.deps import AuditOutcome
+    from backend.routers import query as qr
+    calls = []
+    monkeypatch.setattr(qr, "audit_plan",
+                        lambda *a, **k: AuditOutcome(audited_plan=[],
+                                                     degradation_level="L0"))
+    monkeypatch.setattr(qr, "_execute",
+                        lambda sql: calls.append(sql) or None)
+    r = client.post("/api/query", json={
+        "token": STAFF, "datasource_id": "regional_health",
+        "question_id": "doctor_dept_visits"})
+    assert r.status_code == 200
+    body = r.json()
+    assert calls == []              # 一条 SQL 都没有执行
+    assert body["result"] is None
+    assert body["plan"] == []       # 也不展示原始计划
+
+
+def test_executed_sql_verified_before_execution(client, monkeypatch):
+    """执行前哈希比对（评审 P0）：哈希不一致时**根本不执行**——校验发生在
+    执行之前，而不是执行后才丢弃结果。"""
+    from backend.routers import query as qr
+    calls = []
+    # 每次调用返回不同哈希：计划哈希与执行校验哈希必然不匹配。
+    # （固定值反而相等——同一个函数的同输入恒同输出，会绕过校验。）
+    monkeypatch.setattr(
+        qr, "_sql_sha256",
+        lambda sql: hashlib.sha256(os.urandom(8)).hexdigest())
+    monkeypatch.setattr(qr, "_execute",
+                        lambda sql: calls.append(sql) or None)
+    r = client.post("/api/query", json={
+        "token": STAFF, "datasource_id": "regional_health",
+        "question_id": "doctor_dept_visits"})
+    assert r.status_code == 200
+    body = r.json()
+    assert calls == []              # 校验失败 → _execute 从未被调用
+    assert body["result"] is None
+    assert body["metrics"]["db_access"] == 0
+
+
+# ── B6 数据源就绪门禁（2026-10 评审）───────────────────────────
+
+def test_layer1_rejection_report_detail_ok(client):
+    """层一拒绝的报告：decision 存 NULL，读取报告详情必须 200（评审 P1——
+    空对象会让 ReportDetail.decision_id 校验失败）。"""
+    client.post("/api/query", json={
+        "token": PATIENT, "datasource_id": "regional_health",
+        "question_id": "patient_others_count"})
+    rows = client.get("/api/reports", params=scope(PATIENT)).json()
+    assert rows, "层一拒绝也应留痕"
+    detail = client.get(f"/api/reports/{rows[0]['id']}",
+                        params=scope(PATIENT)).json()
+    assert detail["decision"] is None
+
+
+def test_demo_datasource_bypasses_strict_gate(client, monkeypatch):
+    """演示库兼容模式：严格模式开启也不拦演示查询。"""
+    from backend import config as _config
+    from backend import readiness
+    monkeypatch.setattr(_config, "STRICT_DATASOURCES", True)
+    r = client.post("/api/query", json={
+        "token": STAFF, "datasource_id": "regional_health",
+        "question_id": "doctor_dept_visits"})
+    assert r.status_code == 200
+    assert r.json()["admission"]["passed"] is True
+
+
+# ── B6 产品化：注册表接入查询入口（2026-10 评审）────────────────
+
+def test_unregistered_datasource_404(client):
+    """未注册的数据源：查询入口 404（评审 B6：注册表是权威映射）。"""
+    r = client.post("/api/query", json={
+        "token": STAFF, "datasource_id": "ghost_db",
+        "question_id": "doctor_dept_visits"})
+    assert r.status_code == 404
+
+
+def test_registered_real_source_gated_by_readiness(client, monkeypatch, tmp_path):
+    """登记的真实数据源：严格模式 + 无策略（未就绪）→ 查询入口 503。"""
+    import json as _json
+    import sqlite3 as _sqlite3
+    from backend import config as _config
+    db = tmp_path / "his.db"
+    con = _sqlite3.connect(db)
+    con.execute("CREATE TABLE appt (id TEXT, patient_id TEXT)")
+    con.commit()
+    con.close()
+    monkeypatch.setenv("MEDGUARD_DATASOURCES",
+                       _json.dumps([{"id": "real_hospital", "name": "某院HIS",
+                                     "db_path": str(db)}]))
+    monkeypatch.setattr(_config, "STRICT_DATASOURCES", True)
+    r = client.post("/api/query", json={
+        "token": STAFF, "datasource_id": "real_hospital",
+        "question_id": "doctor_dept_visits"})
+    assert r.status_code == 503
+    assert "未就绪" in r.json()["detail"]
