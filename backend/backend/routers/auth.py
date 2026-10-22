@@ -7,14 +7,13 @@
 **开号只有管理员能做**：医院里给人开账号是信息科的事，患者和医生不该能
 自己把自己注册成医生。这也是为什么没有自助注册接口。
 """
-import os
 import secrets
-import sqlite3
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from backend import config, credentials
-from backend.db import create_user, get_user, list_users
+from backend.db import (MetadataUnavailable, create_user, get_user,
+                        list_users, metadata_ready)
 from backend.schemas import (LoginRequest, LoginResponse, RegisterRequest,
                              Token, UserInfo)
 from backend.security import require_admin, token_from_query
@@ -49,17 +48,17 @@ def _get_user(account: str):
     """读账号，元数据库还没就绪时给一句人话而不是 500。
 
     `_bootstrap_demo_data` 刻意吞掉所有异常（"初始化失败不该导致服务起不来"），
-    所以数据目录不可写时服务照常启动、只是没有 users 表——此时
-    `sqlite3.OperationalError: no such table: users` 会直接从登录接口冒出去。
+    所以数据目录不可写时服务照常启动、只是没有 users 表——此时数据库
+    异常会直接从登录接口冒出去。
     """
-    if not os.path.exists(config.METADATA_DB):
+    if not metadata_ready():
         raise HTTPException(status_code=503,
                             detail="平台元数据库尚未初始化，请先载入演示数据。")
     try:
         return get_user(config.METADATA_DB, account)
-    except sqlite3.OperationalError as exc:
+    except MetadataUnavailable as exc:
         raise HTTPException(status_code=503,
-                            detail="平台元数据库不可用，请检查数据目录权限。") from exc
+                            detail="平台元数据库不可用，请检查连接配置。") from exc
 
 
 @router.post("/login", response_model=LoginResponse)

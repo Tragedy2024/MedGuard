@@ -37,6 +37,9 @@ pytest 永不联网、不加载 BGE，约 20 秒跑完、结果可复现。
 
 - Python 3.10+（实测 3.13）
 - 依赖：见 `requirements.txt`（fastapi / uvicorn / sqlglot / pydantic / pyyaml / pytest / httpx）
+- 生产持久化（可选）：配置 `POSTGRES_URL` / `DATABASE_URL` 后，账号与报告
+  走 Postgres；不配置时本地仍用 SQLite。Vercel 部署必须配置——Functions
+  只有 `/tmp` 可写，冷启动会清空（见 `.env.example`）。
 
 ```bash
 pip install -r requirements.txt
@@ -148,7 +151,7 @@ MedGuard/
 | 界面文案（违规/降级/令牌） | `backend/labels.py` |
 | 演示账号与口令 | `backend/db.py` 的 `_DEMO_USERS` / `_DEMO_PASSWORD`。**只在 users 表为空时种一次**，删掉之后不会再被重启建回来 |
 | 令牌有效期 / 口令轮数 | `backend/credentials.py` 的 `TOKEN_TTL_SEC` / `_PBKDF2_ROUNDS` |
-| 令牌签名密钥 | 环境变量 `MEDGUARD_TOKEN_SECRET`；不设则首次运行生成并持久化到 `data/.token_secret`（**已 gitignore，绝不入库**——泄了它签名就等于没有） |
+| 令牌签名密钥 | 环境变量 `MEDGUARD_TOKEN_SECRET`；不设时：有 Postgres 则生成并存入元数据库（多实例共用），否则生成并持久化到 `data/.token_secret`（**已 gitignore，绝不入库**——泄了它签名就等于没有） |
 | 智慧医生的检验分档/症状/疾病词条 | `demo/smart_knowledge.yaml`（**v2**：每个条目必须有 `id` / `aliases` / `provenance`，疾病还可写 `relations`）。**每条分档与每个症状都必须显式写 `acuity`**（1 濒危／2 危重／3 急症／4 非急症）；检验档位命中 1/2 级弹急诊横幅，红旗规则层（`backend/redflags.py`）命中则无条件升级——两者共同决定 `advice.urgent`；`tests/test_smart_knowledge.py` 有 14 项结构守卫，**漏一个即失败** |
 | 让知识库听懂更多说法 | **加 `aliases`，不要加检索**。实体识别是别名字面匹配；11 个口语问法（发烧／睡不着／肚子疼…）就是这么修好的。⚠️ 单字别名要慎用——`糖` 会让「糖尿病怎么办」被血糖抢走（见 `test_single_char_aliases_do_not_steal_disease_questions`） |
 | RAG 检索的召回/精度 | `backend/knowledge/retrieval.py` 的 `DEFAULT_MIN_SCORE` / `min_matches`。**刻意精度优先**：语料没有的话题宁可留空，也不硬凑上下文给模型。阈值依据见 `docs/research/2026-10-04-retrieval-eval.md`（金标 86 条四路对照） |

@@ -1,10 +1,38 @@
-"""平台元数据库（medguard.db）。
+"""平台元数据库（medguard.db / Postgres）。
 
 与被审计的演示业务库分离——本库存平台自身状态（查询历史报告）。
+
+本地开发与测试默认仍用 SQLite（`medguard.db`，零依赖、测试用临时目录隔离）；
+配置了 `MEDGUARD_DATABASE_URL` / `POSTGRES_URL` / `DATABASE_URL` 时改用
+Postgres。Vercel Functions 的文件系统除 `/tmp` 外只读，演示业务库可以每次
+冷启动重建，账号与报告则必须落在外部的 Postgres 里才能跨冷启动保留。
 """
 import json
+import os
 import sqlite3
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
+
+from backend import config
+
+try:                                  # 本地只跑 SQLite 时允许不装 psycopg
+    import psycopg
+    from psycopg.rows import dict_row
+except ImportError:                   # pragma: no cover - 取决于安装环境
+    psycopg = None
+    dict_row = None
+
+if psycopg is not None:               # noqa: SIM108 - 避免未安装时的导入错误
+    from psycopg.errors import UniqueViolation
+    _PG_UNIQUE: Tuple[type, ...] = (UniqueViolation,)
+else:
+    _PG_UNIQUE = ()
+_INTEGRITY_ERRORS = (sqlite3.IntegrityError,) + _PG_UNIQUE
+
+
+class MetadataUnavailable(RuntimeError):
+    """平台元数据库不可用（文件/表缺失、连接失败）。路由层据此降级。"""
+
 
 _USERS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -14,6 +42,17 @@ CREATE TABLE IF NOT EXISTS users (
     subject_id    TEXT,
     display_name  TEXT NOT NULL,
     created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+)
+"""
+
+_PG_USERS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS users (
+    account       TEXT PRIMARY KEY,
+    password_hash TEXT NOT NULL,
+    role          TEXT NOT NULL,
+    subject_id    TEXT,
+    display_name  TEXT NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )
 """
 
@@ -41,32 +80,199 @@ CREATE TABLE IF NOT EXISTS reports (
 )
 """
 
+_PG_SCHEMA = """
+CREATE TABLE IF NOT EXISTS reports (
+    id                SERIAL PRIMARY KEY,
+    question          TEXT NOT NULL,
+    token_type        TEXT NOT NULL,
+    subject_id        TEXT,
+    account           TEXT,
+    degradation_level TEXT NOT NULL,
+    event_count       INTEGER NOT NULL DEFAULT 0,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    payload           TEXT NOT NULL,
+    decision          TEXT
+)
+"""
 
-def _connect(db_path: str) -> sqlite3.Connection:
-    con = sqlite3.connect(db_path)
+_SETTINGS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+)
+"""
+
+
+def _use_postgres(db_path: str) -> bool:
+    """只有「配置了连接串」且「操作的是平台元数据库」时才走 Postgres。
+
+    测试与工具代码经常把临时 SQLite 路径传给这些函数；它们必须保持原样，
+    不能被生产环境变量带偏。
+    """
+    url = config.METADATA_DATABASE_URL
+    if not url:
+        return False
+    if psycopg is None:
+        raise MetadataUnavailable(
+            "已配置元数据库连接串，但运行环境缺少 psycopg（psycopg[binary]）。")
+    try:
+        return (os.path.normcase(os.path.abspath(db_path))
+                == os.path.normcase(os.path.abspath(config.METADATA_DB)))
+    except (TypeError, ValueError):
+        return False
+
+
+class _Connection:
+    """sqlite3 / psycopg 的最小公共层：占位符与行形状在这里统一。"""
+
+    def __init__(self, con, *, postgres: bool):
+        self._con = con
+        self.postgres = postgres
+
+    def execute(self, sql: str, params: tuple = ()):
+        if self.postgres:
+            sql = sql.replace("?", "%s")
+        try:
+            return self._con.execute(sql, params)
+        except _INTEGRITY_ERRORS:
+            raise
+        except sqlite3.OperationalError as exc:
+            raise MetadataUnavailable(f"元数据库不可用：{exc}") from exc
+        except Exception as exc:          # noqa: BLE001 - psycopg 异常层级较细
+            if psycopg is not None and isinstance(exc, psycopg.Error):
+                raise MetadataUnavailable(f"元数据库不可用：{exc}") from exc
+            raise
+
+    def commit(self) -> None:
+        try:
+            self._con.commit()
+        except sqlite3.Error as exc:
+            raise MetadataUnavailable(f"元数据库不可用：{exc}") from exc
+        except Exception as exc:          # noqa: BLE001
+            if psycopg is not None and isinstance(exc, psycopg.Error):
+                raise MetadataUnavailable(f"元数据库不可用：{exc}") from exc
+            raise
+
+    def close(self) -> None:
+        self._con.close()
+
+
+def _connect(db_path: str) -> _Connection:
+    if _use_postgres(db_path):
+        try:
+            con = psycopg.connect(
+                config.METADATA_DATABASE_URL,
+                row_factory=dict_row,
+                connect_timeout=5,
+                # 连接池（Neon/PgBouncer）下不要用命名预处理语句。
+                prepare_threshold=None,
+            )
+        except psycopg.Error as exc:
+            raise MetadataUnavailable(f"元数据库连接失败：{exc}") from exc
+        return _Connection(con, postgres=True)
+
+    try:
+        con = sqlite3.connect(db_path)
+    except sqlite3.Error as exc:
+        raise MetadataUnavailable(f"元数据库无法打开：{exc}") from exc
     con.row_factory = sqlite3.Row
-    return con
+    return _Connection(con, postgres=False)
+
+
+def _as_dict(row) -> Optional[Dict[str, Any]]:
+    if row is None:
+        return None
+    return row if isinstance(row, dict) else dict(row)
+
+
+def _scalar(row):
+    """取单列单行：SQLite Row 用下标，psycopg 的 dict_row 用值。"""
+    if row is None:
+        return None
+    return next(iter(row.values())) if isinstance(row, dict) else row[0]
+
+
+def metadata_ready() -> bool:
+    """元数据库是否已配置。Postgres 的连通性在真正查询时再判断。"""
+    return bool(config.METADATA_DATABASE_URL) or os.path.exists(config.METADATA_DB)
 
 
 def init_db(db_path: str) -> None:
-    con = _connect(db_path)
-    con.execute(_SCHEMA)
-    # 老库补列：CREATE TABLE IF NOT EXISTS 对**已存在**的表不会加字段，
-    # 而 subject_id 是本次修复新增的（报告要按令牌身份隔离）。
-    cols = {r[1] for r in con.execute("PRAGMA table_info(reports)")}
-    if "subject_id" not in cols:
-        con.execute("ALTER TABLE reports ADD COLUMN subject_id TEXT")
-    # account 是"报告按谁隔离"的最终依据（subject_id 会撞管理员口径，
-    # 见 _scope 的说明）。老库里的历史行走不到，本来就归不了属。
-    if "account" not in cols:
-        con.execute("ALTER TABLE reports ADD COLUMN account TEXT")
-    # decision：审计—执行绑定证据（B5，2026-10 评审）。历史行留空。
-    if "decision" not in cols:
-        con.execute("ALTER TABLE reports ADD COLUMN decision TEXT")
-    con.execute(_USERS_SCHEMA)
-    con.commit()
-    con.close()
+    if _use_postgres(db_path):
+        _init_postgres(db_path)
+    else:
+        _init_sqlite(db_path)
     seed_demo_users(db_path)
+
+
+def _init_sqlite(db_path: str) -> None:
+    con = _connect(db_path)
+    try:
+        con.execute(_SCHEMA)
+        # 老库补列：CREATE TABLE IF NOT EXISTS 对**已存在**的表不会加字段，
+        # 而 subject_id 是本次修复新增的（报告要按令牌身份隔离）。
+        cols = {r[1] for r in con.execute("PRAGMA table_info(reports)")}
+        if "subject_id" not in cols:
+            con.execute("ALTER TABLE reports ADD COLUMN subject_id TEXT")
+        # account 是"报告按谁隔离"的最终依据（subject_id 会撞管理员口径，
+        # 见 _scope 的说明）。老库里的历史行走不到，本来就归不了属。
+        if "account" not in cols:
+            con.execute("ALTER TABLE reports ADD COLUMN account TEXT")
+        # decision：审计—执行绑定证据（B5，2026-10 评审）。历史行留空。
+        if "decision" not in cols:
+            con.execute("ALTER TABLE reports ADD COLUMN decision TEXT")
+        con.execute(_USERS_SCHEMA)
+        con.execute(_SETTINGS_SCHEMA)
+        con.commit()
+    finally:
+        con.close()
+
+
+def _init_postgres(db_path: str) -> None:
+    con = _connect(db_path)
+    try:
+        con.execute(_PG_SCHEMA)
+        # 与 SQLite 的 PRAGMA 补列等价；Postgres 支持 IF NOT EXISTS。
+        for column in ("subject_id", "account", "decision"):
+            con.execute(
+                f"ALTER TABLE reports ADD COLUMN IF NOT EXISTS {column} TEXT")
+        con.execute(_PG_USERS_SCHEMA)
+        con.execute(_SETTINGS_SCHEMA)
+        con.commit()
+    finally:
+        con.close()
+
+
+# ── 设置 ──────────────────────────────────────────────────────
+
+def get_setting(key: str) -> Optional[str]:
+    con = _connect(config.METADATA_DB)
+    try:
+        row = con.execute(
+            "SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+        return _as_dict(row)["value"] if row else None
+    finally:
+        con.close()
+
+
+def set_setting_if_absent(key: str, value: str) -> str:
+    """写入缺失的设置并返回最终生效值（并发首启时以先写入者为准）。"""
+    con = _connect(config.METADATA_DB)
+    try:
+        if _use_postgres(config.METADATA_DB):
+            con.execute(
+                "INSERT INTO settings (key, value) VALUES (?, ?)"
+                " ON CONFLICT (key) DO NOTHING", (key, value))
+        else:
+            con.execute(
+                "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
+                (key, value))
+        con.commit()
+        row = con.execute(
+            "SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+        return (_as_dict(row) or {}).get("value", value)
+    finally:
+        con.close()
 
 
 # ── 账号 ──────────────────────────────────────────────────────
@@ -82,7 +288,7 @@ def _insert_user(db_path: str, *, account: str, password_hash: str,
             (account, password_hash, role, subject_id, display_name))
         con.commit()
         return True
-    except sqlite3.IntegrityError:
+    except _INTEGRITY_ERRORS:
         return False
     finally:
         con.close()
@@ -103,7 +309,7 @@ def seed_demo_users(db_path: str) -> None:
     from backend import credentials   # 延迟导入：依赖 config，避免环
     con = _connect(db_path)
     try:
-        if con.execute("SELECT COUNT(*) FROM users").fetchone()[0] > 0:
+        if _scalar(con.execute("SELECT COUNT(*) FROM users").fetchone()) > 0:
             return
     finally:
         con.close()
@@ -125,47 +331,59 @@ def create_user(db_path: str, *, account: str, password: str, role: str,
 
 def get_user(db_path: str, account: str) -> Optional[Dict[str, Any]]:
     con = _connect(db_path)
-    row = con.execute("SELECT * FROM users WHERE account = ?",
-                      (account,)).fetchone()
-    con.close()
-    return dict(row) if row else None
+    try:
+        row = con.execute("SELECT * FROM users WHERE account = ?",
+                          (account,)).fetchone()
+        return _as_dict(row)
+    finally:
+        con.close()
 
 
 def list_users(db_path: str) -> List[Dict[str, Any]]:
     con = _connect(db_path)
-    rows = con.execute(
-        "SELECT account, role, subject_id, display_name, created_at"
-        " FROM users ORDER BY account").fetchall()
-    con.close()
-    return [dict(r) for r in rows]
+    try:
+        rows = con.execute(
+            "SELECT account, role, subject_id, display_name, created_at"
+            " FROM users ORDER BY account").fetchall()
+        return [_as_dict(r) for r in rows]
+    finally:
+        con.close()
 
 
 def save_report(db_path: str, record: Dict[str, Any]) -> int:
+    postgres = _use_postgres(db_path)
     con = _connect(db_path)
-    decision = record.get("decision") or None   # None → NULL（层一拒绝等无绑定场景）
-    cur = con.execute(
-        "INSERT INTO reports (question, token_type, subject_id, account,"
-        " degradation_level, event_count, payload, decision)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (record["question"], record["token_type"], record.get("subject_id"),
-         record.get("account"),
-         record["degradation_level"],
-         record.get("event_count", 0),
-         json.dumps(record.get("payload", {}), ensure_ascii=False),
-         json.dumps(decision, ensure_ascii=False) if decision is not None
-         else None))
-    con.commit()
-    rid = cur.lastrowid
-    con.close()
-    return rid
+    try:
+        decision = record.get("decision") or None   # None → NULL（层一拒绝等无绑定场景）
+        sql = (
+            "INSERT INTO reports (question, token_type, subject_id, account,"
+            " degradation_level, event_count, payload, decision)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+        if postgres:
+            sql += " RETURNING id"
+        cur = con.execute(
+            sql,
+            (record["question"], record["token_type"], record.get("subject_id"),
+             record.get("account"),
+             record["degradation_level"],
+             record.get("event_count", 0),
+             json.dumps(record.get("payload", {}), ensure_ascii=False),
+             json.dumps(decision, ensure_ascii=False) if decision is not None
+             else None))
+        rid = _scalar(cur.fetchone()) if postgres else cur.lastrowid
+        con.commit()
+        return int(rid)
+    finally:
+        con.close()
 
 
-def _iso_utc(created_at: str) -> str:
-    """把 SQLite 的时间戳补成明确的 ISO-8601 UTC（`...T...Z`）。
+def _iso_utc(created_at) -> str:
+    """把时间戳补成明确的 ISO-8601 UTC（`...T...Z`）。
 
-    `datetime('now')` 返回的是 **UTC**，格式 `YYYY-MM-DD HH:MM:SS`，**没有
-    时区标记**。这样一串字符是歧义的：前端只能猜，猜错就是 8 小时偏差
-    （实测界面上显示 06:56，实际是 14:56）。
+    SQLite 的 `datetime('now')` 返回 **UTC**，格式 `YYYY-MM-DD HH:MM:SS`，
+    **没有时区标记**。这样一串字符是歧义的：前端只能猜，猜错就是 8 小时
+    偏差（实测界面上显示 06:56，实际是 14:56）。Postgres 的 TIMESTAMPTZ
+    则回传 datetime 对象，这里一并归一成同样的字符串形状。
 
     所以在这里补上 T 与 Z，让"这是 UTC"成为数据的一部分而不是约定。
     展示成北京时间是前端的事——**存 UTC、显示本地**，反过来做会让这个
@@ -173,6 +391,11 @@ def _iso_utc(created_at: str) -> str:
     """
     if not created_at:
         return created_at
+    if isinstance(created_at, datetime):
+        dt = created_at
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
     s = created_at.strip()
     if "T" in s or s.endswith("Z"):
         return s            # 已经是 ISO 形状，不动
@@ -207,14 +430,16 @@ def list_reports(db_path: str, *, account: Optional[str],
     """
     where, params = _scope(account)
     con = _connect(db_path)
-    rows = con.execute(
-        "SELECT id, question, token_type, degradation_level, event_count,"
-        f" created_at FROM reports WHERE {where} ORDER BY id DESC LIMIT ?",
-        (*params, limit)).fetchall()
-    con.close()
+    try:
+        rows = con.execute(
+            "SELECT id, question, token_type, degradation_level, event_count,"
+            f" created_at FROM reports WHERE {where} ORDER BY id DESC LIMIT ?",
+            (*params, limit)).fetchall()
+    finally:
+        con.close()
     out = []
     for r in rows:
-        d = dict(r)
+        d = _as_dict(r)
         d["created_at"] = _iso_utc(d.get("created_at", ""))
         out.append(d)
     return out
@@ -229,13 +454,15 @@ def get_report(db_path: str, report_id: int, *,
     """
     where, params = _scope(account)
     con = _connect(db_path)
-    row = con.execute(
-        f"SELECT * FROM reports WHERE id = ? AND {where}",
-        (report_id, *params)).fetchone()
-    con.close()
-    if row is None:
+    try:
+        row = con.execute(
+            f"SELECT * FROM reports WHERE id = ? AND {where}",
+            (report_id, *params)).fetchone()
+    finally:
+        con.close()
+    rec = _as_dict(row)
+    if rec is None:
         return None
-    rec = dict(row)
     rec["created_at"] = _iso_utc(rec.get("created_at", ""))
     rec["payload"] = json.loads(rec["payload"])
     if rec.get("decision"):

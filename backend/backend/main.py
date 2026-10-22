@@ -22,12 +22,20 @@ def _bootstrap_demo_data() -> None:
 
     绝不重建已存在的业务库——用户对策略/数据的任何调整都不会被覆盖。
     """
-    try:
-        from backend import config
-        from backend.db import init_db
+    from backend import config
+    from backend.db import init_db
 
+    try:
         os.makedirs(config.DATA_DIR, exist_ok=True)
+    except OSError as exc:
+        print(f"[bootstrap] 运行时数据目录不可用：{exc}")
+    # 两段初始化各自独立：元数据库（生产在 Postgres）暂时连不上时，
+    # /tmp 里的演示业务库仍要能建出来，否则数据源列表会整个空掉。
+    try:
         init_db(config.METADATA_DB)
+    except Exception as exc:  # noqa: BLE001 - 初始化失败不应导致服务起不来
+        print(f"[bootstrap] 元数据库初始化跳过：{exc}")
+    try:
         if not os.path.exists(config.BUSINESS_DB):
             from demo.seed import build_database
             build_database(config.BUSINESS_DB)

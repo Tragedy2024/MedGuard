@@ -32,6 +32,7 @@ _PBKDF2_ALGO = "sha256"
 
 _SECRET_FILE = ".token_secret"
 _SECRET_ENV = "MEDGUARD_TOKEN_SECRET"
+_SECRET_SETTING = "token_secret"
 _SECRET_BYTES = 32
 
 _secret_lock = threading.Lock()
@@ -91,6 +92,23 @@ def _secret() -> bytes:
         if env:
             _cached_secret = env.encode("utf-8")
             return _cached_secret
+
+        # 生产（Vercel）的 /tmp 每个实例、每次冷启动都是新的。密钥若只落在
+        # 那里，实例 A 签发的令牌到实例 B 就验不过，表现为随机 401。有
+        # Postgres 时把它存进元数据库；没有则维持本地文件方案。
+        if config.METADATA_DATABASE_URL:
+            try:
+                from backend import db
+                stored = db.get_setting(_SECRET_SETTING)
+                if not stored:
+                    stored = db.set_setting_if_absent(
+                        _SECRET_SETTING, secrets.token_bytes(_SECRET_BYTES).hex())
+                data = bytes.fromhex(stored)
+                if len(data) == _SECRET_BYTES:
+                    _cached_secret = data
+                    return _cached_secret
+            except Exception:  # noqa: BLE001 - 元数据库暂不可用则退回文件
+                pass
 
         path = os.path.join(config.DATA_DIR, _SECRET_FILE)
         try:

@@ -57,20 +57,17 @@ def require_admin(token: Token) -> Dict[str, Any]:
     （设计文档 §1.2 的既有约束），"是不是管理员"必须回库核对，否则任何
     医护令牌都能自称管理员来建号。账号在签名载荷里，所以用户改不了它。
     """
-    import os
-    import sqlite3
-
     from backend import config
-    from backend.db import get_user
+    from backend.db import MetadataUnavailable, get_user, metadata_ready
     verified(token)
-    if not os.path.exists(config.METADATA_DB):
+    if not metadata_ready():
         raise HTTPException(status_code=503,
                             detail="平台元数据库尚未初始化，请先载入演示数据。")
     try:
         user = get_user(config.METADATA_DB, token.account or "")
-    except sqlite3.OperationalError as exc:
+    except MetadataUnavailable as exc:
         raise HTTPException(status_code=503,
-                            detail="平台元数据库不可用，请检查数据目录权限。") from exc
+                            detail="平台元数据库不可用，请检查连接配置。") from exc
     if user is None or user["role"] != "admin":
         raise HTTPException(
             status_code=403,

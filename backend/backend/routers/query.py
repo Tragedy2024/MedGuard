@@ -20,7 +20,7 @@ from pydantic import BaseModel
 
 from backend import config, llm_nl2sql, query_cache
 from backend.admission import admission_check_plan
-from backend.db import save_report
+from backend.db import MetadataUnavailable, metadata_ready, save_report
 from backend.deps import audit_plan
 from backend.labels import DEGRADATION_LABELS, DEGRADATION_MESSAGES
 from backend.schemas import (AdmissionInfo, AuditDecision, DegradationInfo,
@@ -336,16 +336,20 @@ def _persist(question: str, token: Token, resp: QueryResponse,
     选填的，等于默认路径上就串号。
     """
     db_path = config.METADATA_DB
-    if not os.path.exists(db_path):
+    if not metadata_ready():
         return
-    save_report(db_path, {
-        "question": question,
-        "token_type": token.type,
-        "subject_id": token.subject_id,
-        "account": token.account,
-        "degradation_level": resp.degradation.level,
-        "event_count": len(resp.events),
-        "payload": resp.model_dump(),
-        # B5：审计—执行绑定证据（领域类型，落库时展平为 dict）
-        "decision": decision.model_dump() if decision else None,
-    })
+    try:
+        save_report(db_path, {
+            "question": question,
+            "token_type": token.type,
+            "subject_id": token.subject_id,
+            "account": token.account,
+            "degradation_level": resp.degradation.level,
+            "event_count": len(resp.events),
+            "payload": resp.model_dump(),
+            # B5：审计—执行绑定证据（领域类型，落库时展平为 dict）
+            "decision": decision.model_dump() if decision else None,
+        })
+    except MetadataUnavailable as exc:
+        # 查询本身已经成功；持久化失败不该把 200 变成 500。
+        print(f"[reports] 审计报告未落盘：{exc}", flush=True)

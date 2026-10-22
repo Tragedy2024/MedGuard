@@ -4,14 +4,13 @@
 不得杜撰——前端展示的权威数字由此接口提供。
 """
 import json
-import os
-import sqlite3
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 
 from backend import config
-from backend.db import get_report, list_reports
+from backend.db import (MetadataUnavailable, get_report, list_reports,
+                        metadata_ready)
 from backend.schemas import (DetectionMetrics, ReportDetail, ReportSummary,
                              Token)
 from backend.security import token_from_query
@@ -39,20 +38,20 @@ def reports(token: Token = Depends(token_from_query), limit: int = 20):
     这个端点原先不收任何身份、无过滤地返回全表，于是医生跑完查询、患者
     登录后看到的是医生的记录。现在身份既必填、又必须签名有效。
     """
-    if not os.path.exists(config.METADATA_DB):
+    if not metadata_ready():
         return []
     try:
         return list_reports(config.METADATA_DB, account=token.account,
                             limit=limit)
-    except sqlite3.OperationalError:
-        # 元数据库文件在、但表没建（初始化被跳过或失败）——当作"还没有报告"，
-        # 而不是把 500 抛给用户。os.path.exists 那条守卫挡不住这种。
+    except MetadataUnavailable:
+        # 元数据库在、但表没建或连接暂不可用——当作"还没有报告"，
+        # 而不是把 500 抛给用户。metadata_ready 那条守卫挡不住这种。
         return []
 
 
 @router.get("/reports/{report_id}", response_model=ReportDetail)
 def report_detail(report_id: int, token: Token = Depends(token_from_query)):
-    if not os.path.exists(config.METADATA_DB):
+    if not metadata_ready():
         raise HTTPException(status_code=404, detail="报告不存在")
     rec = get_report(config.METADATA_DB, report_id, account=token.account)
     if rec is None:
@@ -63,7 +62,7 @@ def report_detail(report_id: int, token: Token = Depends(token_from_query)):
 
 @router.get("/reports/{report_id}/export")
 def export_report(report_id: int, token: Token = Depends(token_from_query)):
-    if not os.path.exists(config.METADATA_DB):
+    if not metadata_ready():
         raise HTTPException(status_code=404, detail="报告不存在")
     rec = get_report(config.METADATA_DB, report_id, account=token.account)
     if rec is None:

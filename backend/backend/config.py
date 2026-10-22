@@ -10,10 +10,16 @@ import os
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# 运行时数据目录（gitignore）：平台元数据库与演示业务库都放这里
-DATA_DIR = os.environ.get(
-    "MEDGUARD_DATA_DIR", os.path.join(_PROJECT_ROOT, "data")
+# 运行时数据目录（gitignore）：平台元数据库与演示业务库都放这里。
+# Vercel Functions 的文件系统除 /tmp 外只读，部署时自动把运行时数据
+# 目录指到 /tmp；演示业务库每次冷启动按固定种子重建，账号与报告走
+# 外部 Postgres（见下方 METADATA_DATABASE_URL）。
+_DEFAULT_DATA_DIR = (
+    "/tmp/medguard"
+    if (os.environ.get("VERCEL") or os.environ.get("VERCEL_ENV"))
+    else os.path.join(_PROJECT_ROOT, "data")
 )
+DATA_DIR = os.environ.get("MEDGUARD_DATA_DIR", _DEFAULT_DATA_DIR)
 METADATA_DB = os.environ.get("MEDGUARD_METADATA_DB",
                              os.path.join(DATA_DIR, "medguard.db"))
 BUSINESS_DB = os.environ.get("MEDGUARD_BUSINESS_DB",
@@ -93,6 +99,18 @@ for _p in (os.path.join(_PROJECT_ROOT, ".env"),
 _TESTING = os.environ.get("MEDGUARD_TESTING", "0").lower() in {
     "1", "true", "yes", "on",
 }
+
+
+# ── 平台元数据库（Postgres，生产用）────────────────────────────
+# 为空时用本地 SQLite（开发/测试默认）。Vercel Postgres/Neon 会注入
+# POSTGRES_URL；也接受通用的 DATABASE_URL。测试隔离下强制为空，
+# 保证 pytest 不会连到任何真实数据库。
+METADATA_DATABASE_URL = "" if _TESTING else (
+    os.environ.get("MEDGUARD_DATABASE_URL")
+    or os.environ.get("POSTGRES_URL")
+    or os.environ.get("DATABASE_URL")
+    or ""
+).strip()
 
 
 # ── LLM（自然语言 → SQL 的翻译环节）──────────────────────────────
