@@ -162,9 +162,10 @@ True 并在建议文本最前加入急诊指引——即使 AI 未判急症、�
 
 ### BGE 混合检索与自动降级
 
-系统默认尝试基于 FlagEmbedding 的混合检索：BM25 与 BGE 各自召回候选，
-再使用 RRF 融合排名。精排已移除；依赖、模型加载、建索引或查询阶段发生故障时，
-都会自动回退到轻量、完全离线的 BM25。
+系统默认使用 BM25 + BGE 两路召回，再以 RRF 融合排名。桌面环境优先使用
+FlagEmbedding；Vercel 等轻量运行环境自动改用 FastEmbed 的 ONNX 版
+`bge-small-zh-v1.5`，无需打包 PyTorch。精排已移除；两种 BGE 后端均不可用，
+或模型加载、建索引、查询阶段发生故障时，才回退到完全离线的 BM25。
 
 ```bash
 pip install -r backend/requirements-rag.txt
@@ -191,7 +192,7 @@ MEDGUARD_RAG_OPENCMKG_WEIGHT=0.7   # 来源权重：YAML 1.0、OpenCMKG 0.6～0.
 时 top_k 至少保留一条人工证据。OpenCMKG 只贡献**事实召回**、不参与直接诊断；
 检索文档由 `build_dataset_tables.py --export-docs` 从固定 SHA-256 的原始三元组
 生成。关闭（默认）时行为与纯 YAML 检索完全一致。语料向量落本地磁盘缓存
-（`backend/data/dense_*.npy`，gitignore，键=模型名+文档内容哈希），且 BGE
+（`backend/data/dense_*.npy`，gitignore，键=推理后端+模型名+文档内容哈希），且 BGE
 已缓存时强制纯离线加载——演示/评测不因网络抖动退化成 BM25。
 
 检索质量有金标评测支撑：86 条四类问法（2026-10 新增 20 条口语疾病问法）、

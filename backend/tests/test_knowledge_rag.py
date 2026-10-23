@@ -167,7 +167,7 @@ def test_hybrid_dense_recovers_a_semantic_match():
 
 
 def test_missing_optional_bge_falls_back_to_bm25(monkeypatch):
-    """真实部署没装模型或模型下载失败时，RAG 仍应可用。"""
+    """两个稠密后端都不可用时，RAG 仍应回退 BM25。"""
     from backend import config
 
     class BrokenBGE:
@@ -176,12 +176,72 @@ def test_missing_optional_bge_falls_back_to_bm25(monkeypatch):
 
     monkeypatch.setattr(config, "RAG_DENSE_ENABLED", True)
     monkeypatch.setattr(hybrid, "BGEEncoder", BrokenBGE)
+    monkeypatch.setattr(hybrid, "FastEmbedEncoder", BrokenBGE)
     hybrid.reset()
     try:
         hits = hybrid.search(smart_doctor.load_knowledge(), "头痛")
         assert hits
     finally:
         hybrid.reset()
+
+
+def test_missing_flagembedding_uses_fastembed(monkeypatch):
+    """Vercel 不带 PyTorch/FlagEmbedding 时仍应启用 ONNX BGE。"""
+    from backend import config
+
+    class BrokenBGE:
+        def __init__(self, _model_name):
+            raise ModuleNotFoundError("No module named 'FlagEmbedding'")
+
+    class FakeFastEmbed:
+        def __init__(self, model_name):
+            self.model_name = model_name
+
+        def encode_corpus(self, texts):
+            return [[1.0, 0.0] for _ in texts]
+
+        def encode_query(self, _text):
+            return [1.0, 0.0]
+
+    monkeypatch.setattr(config, "RAG_DENSE_ENABLED", True)
+    monkeypatch.setattr(hybrid, "BGEEncoder", BrokenBGE)
+    monkeypatch.setattr(hybrid, "FastEmbedEncoder", FakeFastEmbed)
+
+    encoder = hybrid._optional_encoder()
+
+    assert isinstance(encoder, FakeFastEmbed)
+    assert encoder.model_name == config.RAG_DENSE_MODEL
+
+
+def test_fastembed_redirects_all_caches_to_writable_data_dir(
+        monkeypatch, tmp_path):
+    """Vercel 的 HOME 只读；HF/Xet/FastEmbed 都必须改写到 /tmp。"""
+    import os
+    import sys
+    from types import SimpleNamespace
+    from backend import config
+
+    data_dir = str(tmp_path)
+    monkeypatch.setattr(config, "DATA_DIR", data_dir)
+    for name in ("FASTEMBED_CACHE_PATH", "HF_HOME", "HF_HUB_CACHE",
+                 "HF_XET_CACHE", "XDG_CACHE_HOME"):
+        monkeypatch.delenv(name, raising=False)
+
+    class ProbeTextEmbedding:
+        def __init__(self, *, model_name, cache_dir):
+            assert model_name == config.RAG_DENSE_MODEL
+            assert os.path.commonpath([cache_dir, data_dir]) == data_dir
+            for name in ("FASTEMBED_CACHE_PATH", "HF_HOME", "HF_HUB_CACHE",
+                         "HF_XET_CACHE", "XDG_CACHE_HOME"):
+                value = os.environ[name]
+                assert os.path.commonpath([value, data_dir]) == data_dir
+
+    monkeypatch.setitem(
+        sys.modules, "fastembed",
+        SimpleNamespace(TextEmbedding=ProbeTextEmbedding),
+    )
+
+    hybrid.FastEmbedEncoder(config.RAG_DENSE_MODEL)
 
 
 def test_bge_index_failure_falls_back_to_bm25(monkeypatch):

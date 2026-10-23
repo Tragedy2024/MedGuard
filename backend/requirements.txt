@@ -17,6 +17,10 @@ PyYAML>=6.0
 # backend/main.py 的 lifespan 里预热，避免第一个提问的患者吃这一下。
 jieba>=0.42
 
+# Vercel 上的轻量 BGE 后端。使用 ONNX 版 bge-small-zh-v1.5，避免为了
+# 语义检索打包约 500MB 的 PyTorch；加载失败时仍会自动回退 BM25。
+fastembed>=0.7,<1
+
 # 自然语言 → SQL（MAC-SQL 体系，已内置在 vendor/nl2sql/src/core/）
 # 注意：上游 MAC-SQL 的 core/agents.py 还 import 了 pandas 与 tiktoken，
 # 但两者都是死导入，已在本仓库移除以免拖入约 32MB 依赖。

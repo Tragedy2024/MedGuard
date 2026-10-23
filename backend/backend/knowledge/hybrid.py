@@ -79,7 +79,9 @@ def _dense_vectors(texts: Sequence[str], encoder: Encoder, *,
                 # 复用旧向量。
                 digest = hashlib.sha256(
                     "\n".join(texts).encode("utf-8")).hexdigest()
-                if (saved.get("model") == getattr(encoder, "model_name", "")
+                if (saved.get("model") == getattr(
+                        encoder, "cache_key",
+                        getattr(encoder, "model_name", ""))
                         and saved.get("docs_sha256") == digest
                         and arr.ndim == 2 and arr.shape[0] == len(texts)):
                     return [list(v) for v in arr]
@@ -97,7 +99,9 @@ def _dense_vectors(texts: Sequence[str], encoder: Encoder, *,
             np.save(cache_file, np.asarray(vectors, dtype=np.float32))
             with open(cache_file[:-4] + ".meta.json", "w", encoding="utf-8") as f:
                 json.dump({
-                    "model": getattr(encoder, "model_name", ""),
+                    "model": getattr(
+                        encoder, "cache_key",
+                        getattr(encoder, "model_name", "")),
                     "docs_sha256": digest,
                     "count": len(vectors),
                     "built_at": datetime.now(timezone.utc).isoformat(),
@@ -122,7 +126,7 @@ class DenseIndex:
         self._min_score = min_score
         texts = [corpus.doc_text_for_index(d) for d in self.docs]
         cache_file = None
-        if (cache_label and isinstance(encoder, BGEEncoder)
+        if (cache_label and getattr(encoder, "cache_key", "")
                 and config.RAG_DENSE_CACHE):
             cache_file = _dense_cache_path(cache_label)
         self._vectors = _dense_vectors(texts, encoder, cache_file=cache_file)
@@ -183,6 +187,7 @@ class BGEEncoder:
 
     def __init__(self, model_name: str):
         self.model_name = model_name      # 缓存失效键之一（A2b）
+        self.cache_key = f"flagembedding::{model_name}"
         self._is_m3 = model_name.rstrip("/").lower().endswith("bge-m3")
         # huggingface_hub 在**首次读取时**缓存环境变量（HF_HUB_OFFLINE 等），
         # 进程中途再设无效（实测：中途设置后 AutoTokenizer 仍联网抛
@@ -227,6 +232,53 @@ class BGEEncoder:
     def encode_query(self, text: str) -> Sequence[float]:
         rows = self._encode([text], queries=True)
         return rows[0] if len(rows) else []
+
+
+class FastEmbedEncoder:
+    """轻量 ONNX BGE adapter，供 Vercel 等无 PyTorch 环境使用。
+
+    FastEmbed 官方提供 ``BAAI/bge-small-zh-v1.5`` 的量化 ONNX 版本。
+    模型缓存在可写的 DATA_DIR；Vercel 上即 ``/tmp/medguard``。它与
+    FlagEmbedding 使用不同 cache_key，避免两种推理后端误复用彼此的语料
+    向量缓存。
+    """
+
+    def __init__(self, model_name: str):
+        cache_root = os.path.join(config.DATA_DIR, "fastembed_cache")
+        cache_locations = {
+            "FASTEMBED_CACHE_PATH": cache_root,
+            "HF_HOME": os.path.join(cache_root, "huggingface"),
+            "HF_HUB_CACHE": os.path.join(cache_root, "huggingface", "hub"),
+            "HF_XET_CACHE": os.path.join(cache_root, "huggingface", "xet"),
+            "XDG_CACHE_HOME": os.path.join(cache_root, "xdg"),
+        }
+        on_vercel = bool(os.environ.get("VERCEL") or os.environ.get("VERCEL_ENV"))
+        for name, path in cache_locations.items():
+            if on_vercel:
+                os.environ[name] = path
+            else:
+                os.environ.setdefault(name, path)
+            os.makedirs(os.environ[name], exist_ok=True)
+        # Vercel 的 HOME 只读；禁用 Xet 后 Hugging Face 走普通 HTTP 下载，
+        # 避免 Xet 即使模型目录在 /tmp，仍尝试向 ~/.cache 写日志。
+        if on_vercel:
+            os.environ["HF_HUB_DISABLE_XET"] = "1"
+
+        from fastembed import TextEmbedding
+
+        self.model_name = model_name
+        self.cache_key = f"fastembed::{model_name}"
+        self._model = TextEmbedding(
+            model_name=model_name,
+            cache_dir=cache_root,
+        )
+
+    def encode_corpus(self, texts: Sequence[str]) -> Sequence[Sequence[float]]:
+        return list(self._model.passage_embed(list(texts), batch_size=32))
+
+    def encode_query(self, text: str) -> Sequence[float]:
+        rows = list(self._model.query_embed(text))
+        return rows[0] if rows else []
 
 
 def reciprocal_rank_fusion(
@@ -344,6 +396,10 @@ def _optional_encoder() -> Optional[Encoder]:
     try:
         return BGEEncoder(config.RAG_DENSE_MODEL)
     except Exception as exc:  # noqa: BLE001 - 可选 adapter 失败必须安全回退
+        print(f"[rag] FlagEmbedding 不可用，尝试 FastEmbed：{exc}", flush=True)
+    try:
+        return FastEmbedEncoder(config.RAG_DENSE_MODEL)
+    except Exception as exc:  # noqa: BLE001 - 两种 adapter 都失败才回退
         print(f"[rag] BGE 不可用，回退 BM25：{exc}", flush=True)
         return None
 
