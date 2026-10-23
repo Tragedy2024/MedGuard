@@ -335,19 +335,21 @@ export function LoginPage() {
               </div>
             </section>
 
-            <div className="login-foot">
-              <svg viewBox="0 0 16 19" fill="none" aria-hidden="true"><path d="M8 1.2 14 3.6v4.9c0 4-2.7 6.9-6 8.3-3.3-1.4-6-4.3-6-8.3V3.6L8 1.2Z" stroke="currentColor" strokeWidth="1.2" /><path d="m5.3 8.7 1.8 1.8 3.6-3.9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-              <span>登录令牌由服务端签发。界面不保存明文口令，会话在关闭标签页后结束。</span>
+            <div className="login-meta">
+              <div className="login-foot">
+                <svg viewBox="0 0 16 19" fill="none" aria-hidden="true"><path d="M8 1.2 14 3.6v4.9c0 4-2.7 6.9-6 8.3-3.3-1.4-6-4.3-6-8.3V3.6L8 1.2Z" stroke="currentColor" strokeWidth="1.2" /><path d="m5.3 8.7 1.8 1.8 3.6-3.9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                <span>登录令牌由服务端签发。界面不保存明文口令，会话在关闭标签页后结束。</span>
+              </div>
+              <p className="login-disclaimer">演示账号与数据均为虚构，不含真实患者信息。<br />平台不替代执业医师的诊断与紧急医疗服务。</p>
+              <button
+                className="motion-toggle"
+                type="button"
+                aria-pressed={paused}
+                onClick={() => setPaused((value) => !value)}
+              >
+                {paused ? '恢复背景动效' : '暂停背景动效'}
+              </button>
             </div>
-            <p className="login-disclaimer">演示账号与数据均为虚构，不含真实患者信息。<br />平台不替代执业医师的诊断与紧急医疗服务。</p>
-            <button
-              className="motion-toggle"
-              type="button"
-              aria-pressed={paused}
-              onClick={() => setPaused((value) => !value)}
-            >
-              {paused ? '恢复背景动效' : '暂停背景动效'}
-            </button>
           </div>
         </section>
       </main>

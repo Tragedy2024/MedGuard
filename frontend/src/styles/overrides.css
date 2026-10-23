@@ -531,3 +531,64 @@ button.side-switch {
   .metrics-bar { gap: 12px 16px; }
   .metrics-note { margin-left: 0; width: 100%; }
 }
+
+/* ── 文字可读性复核 ──────────────────────────────────────
+   深墨绿按钮与状态标记继续使用白字；这里只提高浅色工作区中偏小的
+   辅助文字，不改变原有颜色关系。 */
+.console-page .side-section,
+.console-page .scope-label,
+.console-page .side-note,
+.console-page .top-crumb,
+.console-page .meter-label,
+.console-page .work-index,
+.console-page .scope-badge,
+.console-page .live-status,
+.console-page .top-user small,
+.console-page .side-user small,
+.console-page .side-switch,
+.console-page .section-title-row span,
+.console-page .query-help .kbd,
+.console-page .result-kicker,
+.console-page .result-status,
+.console-page .result-metric span,
+.console-page .result-metric strong em,
+.console-page .metric-split span,
+.console-page .source-line span,
+.console-page .denied-list li span,
+.console-page .denied-foot span,
+.console-page .trail-step small,
+.console-page .chat-id small,
+.console-page .chat-subject,
+.console-page .chat-date,
+.console-page .msg-who,
+.console-page .msg-who time,
+.console-page .answer-section h5,
+.console-page .answer-foot span,
+.console-page .report-list-head span,
+.console-page .report-id,
+.console-page .report-time,
+.console-page .mini-status,
+.console-page .report-ms,
+.console-page .report-detail-meta,
+.console-page .audit-cell span,
+.console-page .plan-list li::before,
+.console-page .timeline time,
+.console-page .report-footnote {
+  font-size: 12px;
+}
+
+.console-page .work-copy small,
+.console-page .metric-detail,
+.console-page .col-type,
+.console-page .col-pk,
+.console-page .ecl,
+.console-page th {
+  font-size: 11.5px;
+}
+
+@media (max-width: 700px) {
+  .console-page .live-status,
+  .console-page .report-detail-meta {
+    font-size: 11.5px;
+  }
+}
