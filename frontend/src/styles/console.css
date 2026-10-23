@@ -274,8 +274,8 @@
 .query-composer {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 13px 13px 13px 15px;
+  gap: 12px;
+  padding: 10px 11px 10px 13px;
   border: 1px solid var(--border-strong);
   border-radius: 18px;
   background: var(--surface-raised);
@@ -291,23 +291,23 @@
   flex: 0 0 auto;
   display: grid;
   place-items: center;
-  width: 50px;
-  height: 50px;
+  width: 44px;
+  height: 44px;
   border: 1px solid color-mix(in oklch, var(--accent) 18%, var(--border));
   border-radius: 13px;
   background: var(--accent-wash);
   color: var(--accent-deep);
 }
-.composer-icon svg { width: 23px; height: 23px; }
+.composer-icon svg { width: 21px; height: 21px; }
 .composer-field { flex: 1 1 auto; min-width: 0; }
 .composer-label { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; color: var(--fg-soft); font-size: 13px; font-weight: 600; letter-spacing: 0; }
 .composer-label span { color: var(--muted); font-size: 12px; font-weight: 400; }
 .composer-field textarea {
   display: block;
   width: 100%;
-  min-height: 54px;
+  min-height: 44px;
   max-height: 164px;
-  padding: 5px 0 8px;
+  padding: 8px 0 6px;
   border: 0;
   background: transparent;
   color: var(--fg);
@@ -324,7 +324,7 @@
   justify-content: center;
   gap: 10px;
   min-width: 138px;
-  min-height: 58px;
+  min-height: 50px;
   padding: 0 20px;
   border: 1px solid var(--accent);
   border-radius: 12px;
@@ -739,9 +739,9 @@
   .ask-head { display: block; margin-bottom: 16px; }
   .ask-head h2 { font-size: clamp(25px, 7vw, 32px); }
   .ask-head-note { font-size: 12.5px; }
-  .query-composer { flex-direction: column; align-items: stretch; padding: 12px; }
+  .query-composer { flex-direction: column; align-items: stretch; padding: 10px; }
   .composer-icon { display: none; }
-  .composer-field textarea { font-size: 17px; min-height: 50px; }
+  .composer-field textarea { font-size: 17px; min-height: 46px; }
   .query-submit { width: 100%; min-height: 50px; }
   .result-empty { padding: 18px; text-align: left; }
   .result-empty p { font-size: 12.5px; }

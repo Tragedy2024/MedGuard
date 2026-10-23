@@ -30,14 +30,14 @@
 <main id="main">
   <section class="hero" id="top" aria-labelledby="hero-title">
     <div class="hero-copy">
-      <p class="eyebrow" data-reveal><span class="eyebrow-dot"></span>可信医疗信息入口 · 为真实就医场景而建</p>
+      <p class="eyebrow" data-reveal><span class="eyebrow-dot"></span>可信医疗信息入口 · 从一次健康疑问开始</p>
       <h1 id="hero-title">
         <span class="line" style="--d: 30ms">当健康出现疑问，</span>
         <span class="line" style="--d: 170ms">答案不该</span>
         <span class="line" style="--d: 310ms">淹没在<em>噪声</em>里。</span>
       </h1>
       <p class="hero-lead" data-reveal style="--delay: .5s">
-        医学知识、个人报告、科室方向与院内服务，被分散在太多入口。MedGuard 医盾把它们重新组织成一条可信、清楚、受到安全保护的路径。
+        医学知识在网页里，个人报告在院内系统里，科室和就医服务又在别的入口。MedGuard 医盾把它们放到一起，并说明信息从哪里来、当前身份可以查看什么。
       </p>
       <div class="hero-actions" data-reveal style="--delay: .64s">
         <a class="primary-action" href="/login" data-transition data-transition-label="正在进入平台" data-od-id="home-primary-cta">
@@ -56,12 +56,12 @@
       <div class="proof-number">36,600.50<small>元</small></div>
       <div class="proof-rule"></div>
       <div class="proof-meta">
-        <div><span>数据来源</span><strong>医院主库</strong></div>
+        <div><span>数据来源</span><strong>演示医院主库</strong></div>
         <div><span>安全审计</span><strong>3 ms · 0 事件</strong></div>
         <div><span>覆盖患者</span><strong>8 位 · 演示数据</strong></div>
         <div><span>结果形态</span><strong>汇总统计</strong></div>
       </div>
-      <p class="proof-note">演示数据仅用于展示查询链路，不含真实患者信息。</p>
+      <p class="proof-note">演示数据只用于展示从提问到返回结果的过程，不含真实患者信息。</p>
     </aside>
 
     <div class="hero-foot">
@@ -77,14 +77,14 @@
           <p class="section-index">02 / 06 · 背景</p>
           <h2 id="problem-title">信息很多，<br>但<em>下一步</em>并不清楚。</h2>
         </div>
-        <p class="section-lead">搜索结果在增加，判断成本也在增加。用户真正需要的不是更多链接，而是一个能说明来源、边界和下一步的答案。</p>
+        <p class="section-lead">搜到的内容越来越多，真正能放心参考的却不容易找到。用户需要的不是再打开几个网页，而是先弄清楚：这条信息从哪里来，和自己有没有关系，接下来应该怎么办。</p>
       </header>
 
       <div class="problem-ledger">
         <article class="problem-row" data-reveal>
           <span class="problem-num">01</span>
           <div>
-            <h3>答案很多，可信的很少</h3>
+            <h3>信息很多，可信依据却不容易辨认</h3>
             <p>医学科普、患者经验、营销内容与过时资料混在一起。更新时间、适用人群和证据来源常常缺席，越是着急的时候，越难判断该相信哪一条。</p>
           </div>
           <div class="problem-signal" aria-hidden="true">
@@ -98,7 +98,7 @@
         <article class="problem-row" data-reveal>
           <span class="problem-num">02</span>
           <div>
-            <h3>权威信息，藏在分散的系统里</h3>
+            <h3>权威信息，分散在不同系统与入口中</h3>
             <p>疾病知识、检验解读、药品说明与院内记录分散在不同入口。即使找到了权威来源，也往往不知道它是否适用于自己的报告与就诊场景。</p>
           </div>
           <div class="problem-signal" aria-hidden="true">
@@ -110,8 +110,8 @@
         <article class="problem-row" data-reveal>
           <span class="problem-num">03</span>
           <div>
-            <h3>与医院的联系，不够及时稳定</h3>
-            <p>用户查完信息之后，仍要回到电话、公众号、院内系统之间反复确认。知识查询和下一步行动之间，缺一条稳定的连接。</p>
+            <h3>查到信息以后，下一步仍然很麻烦</h3>
+            <p>用户还要在电话、公众号和不同院内系统之间来回寻找。知道了问题是什么，却不一定知道该去哪里、找谁处理。</p>
           </div>
           <div class="problem-signal" aria-hidden="true">
             <div class="broken-link"><span>院内系统</span><i></i><span>用户端</span></div>
@@ -131,7 +131,7 @@
     <div class="chapter-inner">
       <p class="eyebrow" data-reveal>03 / 06 · 重构</p>
       <h2 id="pivot-title" data-reveal>把散落的答案，<br>接成一条<em>可验证</em>的路径。</h2>
-      <p class="pivot-copy" data-reveal>先确认问题，再检索依据；先审计查询计划，再执行数据访问。<br>每一个结论都能回到来源，每一次访问都留在边界之内。</p>
+      <p class="pivot-copy" data-reveal>医学知识问题，先找到依据，再组织回答；涉及院内数据时，系统会先检查查询计划，确认可以访问后才执行。<br>回答会标明来源。谁能看、能看到多少，由登录身份决定；检查过程可以在安全报告中回看。</p>
       <div class="pivot-mark" data-reveal aria-hidden="true">
         <span class="pivot-line left"></span>
         <b>盾</b>
@@ -150,35 +150,35 @@
           <p class="section-index">04 / 06 · 平台</p>
           <h2 id="platform-title">一个入口，<br>连接问题与<em>下一步</em>。</h2>
         </div>
-        <p class="section-lead">不是再做一个搜索框，而是把知识查询、报告理解、就医方向与院内数据服务放进同一条链路。四类需求，共用一套来源标注与安全边界。</p>
+        <p class="section-lead">这不只是一个搜索框。用户可以在同一处查知识、看报告、找就医方向，也可以在授权范围内查询院内记录。每一步都会说明内容来自哪里、当前身份可以查看什么。</p>
       </header>
 
       <div class="flow-grid">
         <article class="flow-node" data-reveal data-od-id="platform-node-question">
           <span>01 / ASK</span>
           <h3>自然语言提问</h3>
-          <p>不会写 SQL 也能问。系统识别问题、检索已收录问法，再把回答组织成可读的结果。</p>
+          <p>不会写 SQL 也能问。常用问题可以直接查询；遇到新问法，系统会尝试解析，无法可靠处理时会明确提示。</p>
         </article>
         <article class="flow-node" data-reveal style="--delay: .08s" data-od-id="platform-node-knowledge">
           <span>02 / KNOWLEDGE</span>
           <h3>先找依据，再回答</h3>
-          <p>知识库与开源数据提供事实基础；院内记录只在授权范围内参与回答，并与 AI 解读分开标注。</p>
+          <p>回答会先从项目整理的知识条目和开源数据中查找依据。涉及个人记录时，只读取当前身份有权查看的部分，并和 AI 生成的解释分开显示。</p>
         </article>
         <article class="flow-node" data-reveal style="--delay: .16s" data-od-id="platform-node-safety">
           <span>03 / SAFETY</span>
           <h3>查询执行前先审计</h3>
-          <p>层一准入判断访问边界，层二审计检查中间结果暴露。审计阶段不调用模型，也不访问数据库。</p>
+          <p>层一先判断当前身份能不能查，层二再检查查询计划是否带出了不需要的敏感字段。这个审计过程不调用模型，也不读取数据库。</p>
         </article>
         <article class="flow-node" data-reveal style="--delay: .24s" data-od-id="platform-node-action">
           <span>04 / ACTION</span>
-          <h3>把答案接到服务</h3>
-          <p>科室、医生与院内服务在同一处更新，让“知道了”继续走到“下一步去哪里”。</p>
+          <h3>从信息查询走向下一步</h3>
+          <p>看完解释后，用户还可以继续查看相关科室、医生和就医信息，不必重新换一个入口查找。</p>
         </article>
       </div>
 
       <div class="platform-note" data-reveal>
         <strong>统一入口，<br>不等于统一答案。</strong>
-        <p>院内数据、医院审核知识库、OpenCMKG 开源数据与 AI 生成内容，在界面上始终分开标注。用户看到的不是一团“智能回答”，而是一条可以追问、可以核对、可以回到来源的证据链。</p>
+        <p>不同来源的内容不会混在一起。用户可以分清哪些是个人记录，哪些来自项目知识库和 OpenCMKG，哪些只是 AI 给出的提示。</p>
       </div>
     </div>
   </section>
@@ -192,7 +192,7 @@
         </div>
         <p class="data-source">
           <strong>SOURCE / DATASET</strong>
-          基于 OpenCMKG 开放医学知识图谱做清洗、别名归一、结构化与产品适配。学术研究用途；抽取脚本随仓库交付，可复现、可审计。扩展语料默认不启用，需通过医学安全评估。
+          项目使用 OpenCMKG 开放医学知识图谱。原始数据不能直接用于问答，因此我们进行了清洗、别名归一、结构化和产品适配。相关脚本随项目提供，处理过程可以复现；扩展语料目前默认关闭，完成医学安全评估后再决定是否使用。
         </p>
       </header>
 
@@ -210,7 +210,7 @@
               <span class="data-unit">YAML 条目</span>
               <span class="data-bar" aria-hidden="true"></span>
             </button>
-            <button class="data-col" type="button" style="--h: 236px; --bar: oklch(70% .050 190); --d: 140ms" data-note="症状映射：6,227 条症状—科室候选关系，用于导诊覆盖扩展，最终判断仍由临床知识库承担。" aria-label="症状映射 6227 条" data-od-id="dataset-column-symptom">
+            <button class="data-col" type="button" style="--h: 236px; --bar: oklch(70% .050 190); --d: 140ms" data-note="症状映射：6,227 条症状—科室候选关系，用于扩展常见症状的科室匹配范围；输出仅作为就医方向提示，不用于疾病诊断。" aria-label="症状映射 6227 条" data-od-id="dataset-column-symptom">
               <span class="data-value">6,227</span>
               <span class="data-name">症状映射</span>
               <span class="data-unit">结构化数据</span>
@@ -240,8 +240,8 @@
         <div><span>01 / EXTRACT</span><strong>抽取</strong><small>从开放关系三元组中提取可用事实</small></div>
         <div><span>02 / CLEAN</span><strong>清洗</strong><small>去污染、别名归一、来源标记</small></div>
         <div><span>03 / INDEX</span><strong>结构化</strong><small>建立可检索、可回看的索引</small></div>
-        <div><span>04 / ADAPT</span><strong>产品适配</strong><small>把数据结构接到真实问法上</small></div>
-        <div class="data-tests"><span>QUALITY / 验证</span><strong>313</strong><small>后端自动化测试覆盖查询、安全与服务链路</small></div>
+        <div><span>04 / ADAPT</span><strong>产品适配</strong><small>按用户常见问法组织数据</small></div>
+        <div class="data-tests"><span>QUALITY / 验证</span><strong>313</strong><small>后端自动化测试覆盖查询、安全审计与服务流程</small></div>
       </div>
     </div>
   </section>
@@ -251,7 +251,7 @@
       <div class="security-copy" data-reveal>
         <p class="section-index">06 / 06 · 安全</p>
         <h2 id="security-title">答案抵达之前，<br>先经过一道<em>静态安全门</em>。</h2>
-        <p class="lead">医盾在查询执行前审计查询计划：判断访问边界，检查中间结果是否暴露了不需要的受控列。它不调用模型，也不访问数据库，输出是确定性的。</p>
+        <p class="lead">在查询真正执行前，医盾会先检查：当前身份能不能查，以及查询过程中是否带出了不需要的敏感字段。这一步只分析查询计划，不调用模型，也不读取数据库；规则和输入相同，审计结果也相同。</p>
         <div class="security-metrics">
           <div><em>审计阶段</em><strong>0</strong><span>LLM 调用</span></div>
           <div><em>审计阶段</em><strong>0</strong><span>数据库访问</span></div>
@@ -285,7 +285,7 @@
 
 <footer class="site-footer">
   <div class="site-footer-inner">
-    <p>MedGuard 医盾 · 医患信息数据服务云平台。开源数据来源：OpenCMKG（学术研究用途）。院内记录仅限授权范围访问，查询过程可回看。</p>
+    <p>MedGuard 医盾 · 医疗信息查询与安全服务原型平台。开源数据来源：OpenCMKG（学术研究用途）。演示院内记录按身份范围提供只读访问，查询过程可回看。</p>
     <div class="footer-meta"><span>SECURE QUERY</span><span>ZERO LLM / ZERO DB AUDIT</span><span>© 2026</span></div>
   </div>
 </footer>

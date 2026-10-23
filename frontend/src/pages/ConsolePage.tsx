@@ -133,9 +133,7 @@ function Console() {
             </svg>
           </span>
           <div className="composer-field">
-            <label className="composer-label" htmlFor="queryInput">
-              输入问题 <span>支持自然语言，不必写 SQL</span>
-            </label>
+            <label className="sr-only" htmlFor="queryInput">查询内容</label>
             <textarea
               ref={inputRef}
               id="queryInput"
