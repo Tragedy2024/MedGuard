@@ -538,7 +538,7 @@ L0 通过 / L1 聚合替代 / L2 意图变更 / L3 已拒绝
 
 1. **代码是好的**（实测）：向 `thrombosis_prediction.yaml` 写入一条规则后，审计器在"双侧非聚合 JOIN + 个人属性列"时正确触发 1 条 `cross_domain_personal_join`，在"仅单侧 / 已聚合 / 非个人列"三个负样本上均 0 误报。
 2. **数据是支持的**：`thrombosis_prediction` 存在真实外键 `Examination.ID → Patient.ID`，两侧都持有 controlled 列——正是跨域规则要防的场景。
-3. **从没人生成过它**：`src/ssa/annotator.py` 的提示词只要求 `column_labels`，全文无 `cross_domain` 字样。
+3. **前期工具未生成过它**：当时的 SSA 自动标注脚本只要求 `column_labels`，全文无 `cross_domain` 字样；该依赖未授权 MAC-SQL `core` 的旧脚本已从公开竞赛包移除。
 
 人工审查记录证实了"留白"这一动作：
 

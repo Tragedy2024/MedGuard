@@ -1,10 +1,9 @@
 """
-Security Auditor Agent — LangGraph orchestration for the 4-Agent NL2SQL pipeline.
+Security Auditor Agent — deterministic audit and degradation for NL2SQL plans.
 
 Per v1-implementation-report.md §0.2-0.6:
   - SecurityAwareNL2SQLState: global state flowing through the graph
   - build_security_aware_graph(): 4-Agent StateGraph with conditional routing
-  - build_mac_sql_baseline_graph(): 3-Agent baseline (B1, no Security Auditor)
   - security_auditor_agent_node(): ★ core contribution — zero LLM calls
   - route_after_audit(): conditional routing based on degradation level
 
@@ -25,8 +24,7 @@ from typing import TypedDict, List, Optional, Dict, Any
 # Ensure project paths
 _SRC = os.path.dirname(os.path.abspath(__file__))
 _BASE = os.path.dirname(_SRC)
-_VENDOR = os.path.join(_BASE, 'vendor', 'MAC-SQL')
-for _p in [_VENDOR, _SRC]:
+for _p in [_SRC]:
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
@@ -485,27 +483,11 @@ class MACSQLAgentBridge:
         dataset_name: str = "bird",
         lazy: bool = True,
     ):
-        from core.agents import Selector, Decomposer, Refiner
-        from core.const import SELECTOR_NAME, DECOMPOSER_NAME, REFINER_NAME
-
-        self.data_path = data_path
-        self.tables_json_path = tables_json_path
-        self.model_name = model_name
-        self.dataset_name = dataset_name
-        self.SELECTOR = SELECTOR_NAME
-        self.DECOMPOSER = DECOMPOSER_NAME
-        self.REFINER = REFINER_NAME
-
-        self.selector = Selector(
-            data_path=data_path,
-            tables_json_path=tables_json_path,
-            model_name=model_name,
-            dataset_name=dataset_name,
-            lazy=lazy,
-            without_selector=False,
+        raise RuntimeError(
+            "The legacy MAC-SQL bridge is not distributed in the public "
+            "competition package. Use backend.llm_nl2sql to create a query "
+            "plan, then call run_security_auditor_pipeline()."
         )
-        self.decomposer = Decomposer(dataset_name=dataset_name)
-        self.refiner = Refiner(data_path=data_path, dataset_name=dataset_name)
 
     # ---- LangGraph Node Functions ----
 

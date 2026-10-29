@@ -8,6 +8,11 @@
 MAC-SQL 源码，产品改用 `backend/llm_client.py` 与 `backend/llm_nl2sql.py`
 中的独立接口适配和查询计划提示词。
 
+为避免公开包中保留不可运行或边界不清的旧研究入口，本次还移除了依赖上述
+`src/core/` 的 MAC-SQL 基线适配、QSG/图生成实验模块和旧 SSA 自动标注脚本。
+公开产品链路只把 `backend/llm_nl2sql.py` 生成的查询计划送入
+`run_security_auditor_pipeline()`；安全裁决本身不调用 LLM，也不访问数据库。
+
 本次参赛新增内容包括医疗 SSA 标识扩展、身份准入、审计与执行绑定、查询改写
 与降级、条件路由、平台前后端、报告隔离、知识源适配和评测。前期论文成果不
 作为本次比赛新增原创成果，MAC-SQL 的方法与原始代码归原作者。
