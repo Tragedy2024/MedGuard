@@ -28,7 +28,7 @@ DEGRADATION_LABELS = {
 # 面向用户的中文说明。算法层返回的 degradation_message 是英文原文
 # （如 "Cannot compute exact result due to privacy policy constraints..."），
 # 直接展示给医护与病患是不合适的——本产品的用户不是数据库专业人员。
-# 算法层一行不改（红线），故在**产品层**并置一条中文说明，原文保留供
+# 前期审计引擎与产品层保持接口隔离，故在**产品层**并置一条中文说明，原文保留供
 # 技术观众在「技术详情」里核对。
 DEGRADATION_MESSAGES = {
     "L0": "",

@@ -2,7 +2,7 @@
 
 > 调研日期：2026-09-23  
 > 时间范围：2023-09 至 2026-09（论文按正式会议年份或首个公开版本年份标注）  
-> 项目约束：中文医疗问答/导诊、小型静态知识库、现有手写 BM25、OpenCMKG 派生表、引用可追溯、低成本本地部署、医疗安全优先。
+> 项目约束：中文医疗问答/导诊、小型静态知识库、现有手写 BM25、可选的 OpenCMKG 本地派生表、引用可追溯、低成本本地部署、医疗安全优先。OpenCMKG 原始数据、派生 JSON 与向量缓存不随本仓库分发。
 
 ## 1. 结论先行
 
@@ -29,7 +29,7 @@ MedGuard 不适合直接移植一个“大而全”的 Agentic RAG 或 GraphRAG 
 - `retrieval.py`：进程内手写 Okapi BM25，固定 `min_score=1.5`、`min_matches=2`、默认 top-3；
 - `tokenize.py`：jieba 加 aliases 用户词典，删除单字 token；
 - `corpus.py`：只把 `smart_knowledge.yaml` 展平为约 91 个可检索文档；
-- OpenCMKG 派生的 `symptom_departments.json`、`disease_facts.json` 是确定性表查询，**没有进入 BM25/向量索引**；
+- OpenCMKG 可在用户自行取得数据后，本地生成 `symptom_departments.json`、`disease_facts.json`；这些文件不提交到公开仓库，且在当时版本中只用于确定性表查询，**没有进入 BM25/向量索引**；
 - 返回给前端的 `items` 是“检索候选”，并非经过模型逐条确认的“实际引用”。
 
 这意味着当前首要瓶颈不是生成模型能力，而是：大部分数据不可达、短查询被 `min_matches=2` 拦截、候选相关性与引用真实性没有独立验证、急症安全完全不能依赖 RAG 分数。

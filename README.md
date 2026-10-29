@@ -94,8 +94,8 @@
 | 块 | 内容 | 来源 |
 |---|---|---|
 | 院内数据 | 患者本人的化验 / 用药 / 诊断 | **医院主库**（经层一 + 层二审计） |
-| 就诊科室建议 | 症状 → 相关疾病 → 科室分布 | **OpenCMKG**（开源中文医学知识图谱） |
-| 疾病条目 | 常见症状 / 常用检查 / 常用药物 / 并发症 / 治疗方式 | **OpenCMKG** |
+| 就诊科室建议 | 症状 → 相关疾病 → 科室分布 | 可选的 **OpenCMKG** 本地派生数据 |
+| 疾病条目 | 常见症状 / 常用检查 / 常用药物 / 并发症 / 治疗方式 | 可选的 **OpenCMKG** 本地派生数据 |
 | 通俗解读与建议 | 把上面的事实讲给患者听 | **AI**，界面标注「AI 智能导诊」 |
 
 > **为什么要分开**：事实可以确定、可离线、可复现；而"这意味着什么"需要语言
@@ -105,15 +105,16 @@
 ### 数据集怎么用（可复现、可审计）
 
 ```
-backend/scripts/build_dataset_tables.py      抽取脚本（随仓库交付）
+backend/scripts/build_dataset_tables.py      抽取脚本（随仓库开放）
         │  读 OpenCMKG 的原始三元组
         ▼
-backend/demo/symptom_departments.json        症状 6227 个 · 465 KB
-backend/demo/disease_facts.json              疾病 7495 个 · 2.4 MB
+backend/demo/symptom_departments.json        本地生成，已由 .gitignore 排除
+backend/demo/disease_facts.json              本地生成，已由 .gitignore 排除
 ```
 
-**抽取逻辑在代码里，不是在文档里声称。** 任何人下载 OpenCMKG 后跑一遍脚本，
-都能得到同样两份文件。
+**抽取逻辑在代码里，不是在文档里声称。** 使用者在确认符合上游用途限制后，
+自行下载固定版本的 OpenCMKG 三元组并运行脚本，即可在本地复现派生文件。
+由于上游未明确授予派生数据再分发权，仓库不提交原始数据、派生 JSON 或其向量缓存。
 
 只用了六种关系，因为实测其余维度与本院常规诊疗体系错位：
 
@@ -147,7 +148,8 @@ backend/demo/disease_facts.json              疾病 7495 个 · 2.4 MB
   红旗层独立于 LLM 与知识图谱，命中即无条件升级。
 - **数据集含中成药名**（玉泉颗粒、脑立清丸等），与演示库的现代药不重合——
   那是数据集的原样内容，未作筛选。
-- **许可**：OpenCMKG 为「**仅学术研究，不得商用**」。本项目非商用、不公开。
+- **许可**：OpenCMKG 为「**仅学术研究，不得商用**」，且没有明确的派生数据再分发授权。
+  本仓库仅开放清洗、转换、索引和评测脚本，不分发原始或派生医学事实数据。
 - 检验数值分档与用药说明**仍是本项目自建的仿真内容**（`demo/smart_knowledge.yaml`），
   尚未迁移到开源来源。
 
@@ -180,8 +182,9 @@ MEDGUARD_RAG_DENSE_MODEL=BAAI/bge-small-zh-v1.5
 
 ### OpenCMKG 第二知识源（默认关，可选的召回扩充）
 
-清洗后的 OpenCMKG（约 1.5 万条检索文档：疾病/症状/检查/科室，**不含药物与
-治疗**，见 `knowledge/opencmkg.py`）可纳入混合召回：
+使用者自行生成的 OpenCMKG 检索文档（固定版本实测约 1.5 万条，包含疾病、症状、
+检查和科室，**不含药物与治疗**）可纳入混合召回。未生成时系统自动只使用
+人工 YAML 知识源：
 
 ```bash
 MEDGUARD_RAG_OPENCMKG=1
@@ -191,14 +194,15 @@ MEDGUARD_RAG_OPENCMKG_WEIGHT=0.7   # 来源权重：YAML 1.0、OpenCMKG 0.6～0.
 开启后 BM25/BGE 各自对两套语料召回，按来源权重做 RRF 融合；YAML 有可靠命中
 时 top_k 至少保留一条人工证据。OpenCMKG 只贡献**事实召回**、不参与直接诊断；
 检索文档由 `build_dataset_tables.py --export-docs` 从固定 SHA-256 的原始三元组
-生成。关闭（默认）时行为与纯 YAML 检索完全一致。语料向量落本地磁盘缓存
+在本地生成，文件受 `.gitignore` 排除。关闭（默认）或文件不存在时，行为与纯
+YAML 检索完全一致。语料向量落本地磁盘缓存
 （`backend/data/dense_*.npy`，gitignore，键=推理后端+模型名+文档内容哈希），且 BGE
 已缓存时强制纯离线加载——演示/评测不因网络抖动退化成 BM25。
 
 检索质量有金标评测支撑：86 条四类问法（2026-10 新增 20 条口语疾病问法）、
 四路配置对照（纯 BM25 / +BGE / +OpenCMKG / 全量混合）见
-[`docs/research/2026-10-04-retrieval-eval.md`](docs/research/2026-10-04-retrieval-eval.md)，
-复现：`python scripts/eval_retrieval.py --all`。
+[`docs/research/2026-10-04-retrieval-eval.md`](docs/research/2026-10-04-retrieval-eval.md)。
+先按上文生成本地派生数据，再复现：`python scripts/eval_retrieval.py --all`。
 
 回答安全性另有**医学评测**（自动化风险代理指标，未经临床复核）：四维 14 例
 ——红旗升级 / 拒答适当 / 证据忠实度 / 有害误导率，见
@@ -334,7 +338,7 @@ cp .env.example .env      # 填入 OPENAI_API_KEY
 | 前端 | React 19 · Vite 8 · TypeScript 6 · React Router 7 | 纯展示层，不直接读数据 |
 | 后端 | FastAPI · Pydantic v2 · SQLite | 同步路由，六组 API（auth/数据源/策略/查询/报告/智慧医生） |
 | 审计 | `sqlglot` 纯 AST 静态分析 | **零 LLM、零数据库访问** |
-| 翻译 | MAC-SQL 多智能体体系（vendor 内置） | 自然语言 → 多步分解计划 |
+| 翻译 | 项目自有 LLM 查询计划适配器 | 自然语言 → 多步查询计划；参考公开论文的分解思路，不含 MAC-SQL 源码 |
 | 契约 | OpenAPI → `openapi-typescript` | 后端一改，前端**编译报错** |
 
 ---
@@ -364,8 +368,8 @@ MedGuard/
 │   │   ├── ssa/regional_health.yaml   ★ 手写安全策略（含跨域规则）
 │   │   ├── smart_knowledge.yaml       ★ 智慧医生知识库（检验分档/症状/疾病）
 │   │   └── queries.json       预设查询库（医护 4 + 病患 5）
-│   ├── vendor/nl2sql/         内置算法层（改动记录见 VENDOR-PATCHES.md）
-│   ├── tests/                 313 项
+│   ├── vendor/nl2sql/         参赛队员前期安全审计研究成果（不含 MAC-SQL 源码）
+│   ├── tests/                 315 项
 │   └── docs/api-contract/     中文契约说明
 ├── frontend/
 │   └── src/
@@ -385,13 +389,13 @@ MedGuard/
 ## 测试
 
 ```bash
-cd backend && python -m pytest tests/ -q        # 313 项
+cd backend && python -m pytest tests/ -q        # 315 项
 cd frontend && npx tsc -b                       # 类型检查
 cd frontend && npm run e2e                      # 断言式端到端回归（46 项）
 cd frontend && npm run visual                   # 视觉核查，截图 + 收集控制台报错
 ```
 
-**313 项后端测试**覆盖层一准入、演示库 seed 锚点、SSA 策略完整性（防 fail-open 缺口）、
+**315 项后端测试**覆盖层一准入、演示库 seed 锚点、SSA 策略完整性（防 fail-open 缺口）、
 智慧医生（意图识别与歧义引导 / 三块结构 / 层一只读本人 / **红旗规则层** /
 **AI 兜底** / **数据集疾病名可达**）、算法层适配、六组路由契约、
 **医疗个人标识的跨域检出**、**数据源就绪门禁**、**审计—执行绑定**，
@@ -422,7 +426,7 @@ cd frontend && npm run visual                   # 视觉核查，截图 + 收集
 
 | 决策 | 理由 |
 |---|---|
-| **算法层一行不改** | 产品是纯适配器，`import` 即接口契约；耦合点收敛在 `deps.py` 一个文件 |
+| **前期审计引擎边界清晰** | 审计耦合点收敛在 `deps.py`；本次医疗适配与产品实现单独记录 |
 | **层一与层二分开实现** | 层一是常规授权（非创新），层二才是算法创新 |
 | **安全策略每数据源一份，不按角色分** | SSA 描述数据自身的属性，与谁在问无关 |
 | **病患令牌全称禁止涉他数据** | "可反推性"不可判定（需知结果基数，而基数要查库）；全称禁止是可判定的 |
@@ -440,8 +444,8 @@ cd frontend && npm run visual                   # 视觉核查，截图 + 收集
 
 这一节不是免责声明，是这个项目的可信度所在。
 
-- **翻译准确率是 62–77%，不是 100%。** 这是 MAC-SQL 在 BIRD/Spider 上的公开实测数字
-  （`EX`），文档与演示中如实呈现。
+- **翻译准确率不是 100%。** 当前项目自有查询计划适配器仍可能误解任意中文问法；
+  预设问法和安全审计只能降低演示风险，不能替代真实业务验证。
 - **演示走预置查询与本地缓存**，NL→SQL 那一步不实时调用。
   理由：产品创新点全在审计侧；而模型单次翻译要几十秒，会让视频录制不可控。
   **审计与准入判定 100% 真实**，两条路径实测结果一致（同为 L2 / 3 违规 / 1 改写）。
@@ -510,19 +514,20 @@ npx tsc -b          # 有错就是契约对不上——这正是这一步的目�
 <details>
 <summary>算法层的复用方式</summary>
 
-算法层（医盾引擎）**已内置**在 `backend/vendor/nl2sql/`，
-拿到文件夹即可运行，无需额外安装。定位顺序：
+安全审计引擎位于 `backend/vendor/nl2sql/`，拿到文件夹即可运行，无需额外安装。
+它属于参赛队员前期论文研究成果，本次公开版本已移除没有再分发授权的
+MAC-SQL 源码。定位顺序：
 
 1. 环境变量 `MEDGUARD_NL2SQL_SRC`
-2. **内置** `vendor/nl2sql/src`（默认命中）
+2. **内置** `vendor/nl2sql/src`（默认命中，仅含团队有权开放的审计代码）
 3. 相对路径探测（MedGuard 与 NL2SQL 同级时自动命中）
 
 ```bash
 python -c "from backend.deps import algo_available; print(algo_available())"
 ```
 
-内置副本的改动**全部记录在** [`backend/vendor/nl2sql/VENDOR-PATCHES.md`](backend/vendor/nl2sql/VENDOR-PATCHES.md)
-（目前仅删除两个死导入，以免拖入约 32MB 的 `pandas` / `tiktoken` 依赖，行为零影响）。
+前期成果、本次改动和上游代码移除说明记录在
+[`backend/vendor/nl2sql/VENDOR-PATCHES.md`](backend/vendor/nl2sql/VENDOR-PATCHES.md)。
 
 后端**只有 `deps.py` 一个文件**访问算法层。其他文件不得直接
 `import security_auditor` / `ssa.loader`。
@@ -549,6 +554,6 @@ python -c "from backend.deps import algo_available; print(algo_available())"
 
 **医盾 MedGuard** — 在 Agent 和数据库之间，加一道无法被说服的执行点。
 
-<sub>竞赛作品 · 仿真数据 · 未指定开源许可</sub>
+<sub>竞赛作品 · 仿真数据 · 团队自主代码采用 MIT 许可证</sub>
 
 </div>

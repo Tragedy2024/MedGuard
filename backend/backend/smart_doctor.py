@@ -523,7 +523,7 @@ def interpret_lab(test_name: str, value_text: str) -> Optional[Dict[str, Any]]:
 
 # ── AI 兜底（知识库未覆盖的问法） ─────────────────────────────
 #
-# 与 NL→SQL 翻译同一通道（vendor 内置 MAC-SQL 体系的 core.llm）。
+# 与 NL→SQL 翻译共用项目自有的 OpenAI 兼容接口适配器。
 # 只用于**咨询类**问法（症状/疾病/未识别）；lab 与 medication 涉及
 # 本人数据读取，永远不把数据发给模型——AI 只做解释，不碰数据。
 # 未配置 Key / 调用失败 / 输出无法解析 → 返回 None，由调用方回退引导。
@@ -540,25 +540,14 @@ _AI_SYSTEM = """你是医院审核知识库的临床导诊专家。请用通俗�
 
 
 def _call_llm(prompt: str) -> str:
-    """调用内置算法层的大模型通道（与 llm_nl2sql 同一体系）。
-
-    vendor 的 safe_call_llm 是「5 次重试 + 每次失败 sleep 20s」且**不接
-    超时参数**——首次网络失败就会把请求阻塞 80~100 秒，测试套件也会被拖住。
-    算法层一行不改（红线），故在产品层用守护线程兜住用户可见的等待时间。
-    超时后后台线程仍会跑完，但调用方已经拿到异常并走回退。
-    """
-    src = config.ALGO_SRC_DIR
-    if not src or not os.path.isdir(src):
-        raise RuntimeError("算法层（vendor/nl2sql/src）不可用")
-    if src not in sys.path:
-        sys.path.insert(0, src)
-    from core.llm import safe_call_llm  # 延迟导入：无 Key 时也可加载本模块
+    """调用项目自有的模型接口适配器，并限制用户可见等待时间。"""
+    from backend.llm_client import call_llm
 
     box: List[Any] = []
 
     def _run() -> None:
         try:
-            box.append((None, safe_call_llm(prompt)))
+            box.append((None, call_llm(prompt, timeout=_LLM_TIMEOUT_SEC)))
         except BaseException as exc:  # noqa: BLE001 - 原样带回调用方
             box.append((exc, None))
 

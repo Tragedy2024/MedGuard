@@ -21,10 +21,7 @@ jieba>=0.42
 # 语义检索打包约 500MB 的 PyTorch；加载失败时仍会自动回退 BM25。
 fastembed>=0.7,<1
 
-# 自然语言 → SQL（MAC-SQL 体系，已内置在 vendor/nl2sql/src/core/）
-# 注意：上游 MAC-SQL 的 core/agents.py 还 import 了 pandas 与 tiktoken，
-# 但两者都是死导入，已在本仓库移除以免拖入约 32MB 依赖。
-# 详见 vendor/nl2sql/VENDOR-PATCHES.md。
+# 自然语言 → 查询计划与知识回答（项目自有 OpenAI 兼容接口适配器）
 openai>=1.0
 func_timeout>=4.3
 tqdm>=4.0

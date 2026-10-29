@@ -18,14 +18,14 @@
          URL：https://raw.githubusercontent.com/RuiqingDing/OpenCMKG/master/triples.txt
          SHA-256：1d6e6242baf20a7c9c2044809a53969ffb73e3248ac9a7911f8b053b06438632
        （脚本会**自动校验**输入哈希，不一致直接拒绝——不是靠注释提醒；
-         2026-09-24 起本仓库 JSON 即由该版本生成）
+         项目评测所用本地 JSON 由该版本生成；派生文件不随仓库分发）
     2. python scripts/build_dataset_tables.py <triples.txt 路径> [--export-docs]
        `--export-docs` 额外导出**检索用文档**（混合 RAG 的第二知识源输入）：
          backend/demo/rag_documents.json
        检索文档与界面展示表（上面两张，每项前 5 条）不同：关系**全量**不截断，
        且按设计评审第一步只含 疾病名称/症状/检查/科室，不含药物与治疗字段。
 
-输出：
+输出（仅限本地生成，已由 .gitignore 排除）：
     backend/demo/symptom_departments.json   界面展示表
     backend/demo/disease_facts.json         界面展示表
     backend/demo/rag_documents.json         检索文档（--export-docs）

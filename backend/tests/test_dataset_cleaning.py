@@ -67,14 +67,20 @@ def test_builders_apply_relation_specific_cleaning(tmp_path):
     assert set(symptom_table) == {"胸痛"}
 
 
-def test_generated_medical_json_has_no_confirmed_pollution():
+def test_generated_medical_json_has_no_confirmed_pollution(tmp_path):
     b = _builder()
-    disease_data = json.loads(
-        (ROOT / "demo" / "disease_facts.json").read_text(encoding="utf-8")
+    # 派生数据因上游未明确授予再分发权而不入库；用最小夹具验证同一生成路径。
+    triples = tmp_path / "triples.txt"
+    triples.write_text(
+        "正常病,disease_belong_department,内科\n"
+        "正常病,disease_has_symptom,胸痛\n"
+        "正常病,disease_has_symptom,中枢神经抑制药\n"
+        "正常病,disease_need_check,白细胞计数(WBC)\n"
+        "N动脉瘤,disease_belong_department,普外科\n",
+        encoding="utf-8",
     )
-    symptom_data = json.loads(
-        (ROOT / "demo" / "symptom_departments.json").read_text(encoding="utf-8")
-    )
+    disease_data = b.build_diseases(str(triples))
+    symptom_data = b.build(str(triples))
     all_values = list(_all_strings(disease_data)) + list(_all_strings(symptom_data))
 
     assert not [

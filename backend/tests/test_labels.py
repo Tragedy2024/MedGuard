@@ -6,7 +6,7 @@
 rewrite_log "Rule A: Removing clinical_records.diagnosis_name ..."），
 产品就退回成开发者工具——会议记录 §1.1 已否决的形态。
 
-算法层一行不改（红线），所以中文必须由产品层并置提供，且不能漏。
+前期审计引擎与产品层保持接口隔离，所以中文必须由产品层并置提供，且不能漏。
 """
 from backend.labels import (DEGRADATION_LABELS, DEGRADATION_MESSAGES,
                             SEVERITY_LABELS, TOKEN_LABELS, VIOLATION_LABELS)

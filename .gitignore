@@ -13,6 +13,7 @@ __pycache__/
 .venv/
 venv/
 .pytest_cache/
+.pytest-review-*/
 # 构建产物。vendor/ 里曾混进一份（含论文仓库 README 全文，属溯源混淆），
 # 已删除并记于 vendor/nl2sql/VENDOR-PATCHES.md §2。加通配防止再带进来。
 *.egg-info/
@@ -31,6 +32,9 @@ build/
 **/data/*.db-journal
 # 运行时学习缓存（预置演示缓存 demo/query_cache.json 仍跟踪、只读）
 **/data/query_cache_learned.json
+# 本地生成的语义向量缓存，不属于源码或开放成果。
+**/data/dense_*.npy
+**/data/dense_*.meta.json
 # 令牌签名密钥（backend/credentials.py 首次运行时生成）。
 # **绝不入库**：它一泄露，任何人都能签发以假乱真的令牌，签名就等于没有。
 # 团队共享请走群消息/密码管理器，或各自用 MEDGUARD_TOKEN_SECRET 覆盖。
@@ -67,3 +71,9 @@ Thumbs.db
 **/data/dense_*.meta.json
 # 评审工具留下的 pytest 缓存目录（本轮评审 P3）
 .pytest-review-*/
+
+# OpenCMKG 仅允许学术研究且未明确授予派生数据再分发权。
+# 仓库只开放生成脚本；使用者需自行取得上游数据并在本地生成这些文件。
+backend/demo/disease_facts.json
+backend/demo/symptom_departments.json
+backend/demo/rag_documents.json

@@ -9,7 +9,31 @@
 - 「我胃痛」走症状导诊的歧义规则保持；
 - 命中后直接走 dataset_kb 事实卡，不依赖 RAG / BGE / LLM。
 """
+import pytest
+
 from backend import smart_doctor as sd
+
+
+@pytest.fixture(scope="module", autouse=True)
+def optional_dataset_fixture():
+    """用最小本地派生表验证疾病可达性，不依赖不可再分发的数据文件。"""
+    from backend import dataset_kb
+
+    old_cache = dict(dataset_kb._CACHE)
+    dataset_kb._CACHE[dataset_kb.DISEASE_FILE] = {
+        "_meta": {"source": "OpenCMKG"},
+        "diseases": {
+            name: {
+                "dept": "相关专科", "symptoms": ["示例症状"],
+                "checks": ["相关检查"], "drugs": [],
+                "complications": [], "treatments": [],
+            }
+            for name in ("帕金森病", "荨麻疹", "颈椎病")
+        },
+    }
+    yield
+    dataset_kb._CACHE.clear()
+    dataset_kb._CACHE.update(old_cache)
 
 
 def test_parse_intent_known_yaml_disease_unchanged():

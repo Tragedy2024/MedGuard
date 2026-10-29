@@ -1,98 +1,24 @@
-# 内置算法层的改动记录
+# 前期研究引擎的来源与本次交付边界
 
-本目录是从别处拷进来的第三方代码，**默认保持原样**。任何改动都必须记在这里，
-避免出现"没人知道它和上游不一样"的情况。
+`backend/vendor/nl2sql/src/` 是当前参赛队员在前期论文研究中形成的安全审计
+引擎。本次作品复用该前期成果，并在产品层完成医疗场景适配。
 
-## 来源
+前期研究曾修改 MAC-SQL 源码。由于 MAC-SQL 官方仓库未提供明确的标准许可证，
+团队没有取得其源码再分发授权。本次公开交付已移除 `src/core/` 中复制并修改的
+MAC-SQL 源码，产品改用 `backend/llm_client.py` 与 `backend/llm_nl2sql.py`
+中的独立接口适配和查询计划提示词。
 
-| 子目录 | 来源 | 说明 |
-|---|---|---|
-| `src/`（除 `core/`） | 论文仓库 `NL2SQL/src` | 医盾安全审计引擎（论文贡献，**一行未改**） |
-| `src/core/` | `NL2SQL/vendor/MAC-SQL/core` | MAC-SQL 多智能体体系，用于自然语言 → 多步分解计划 |
+本次参赛新增内容包括医疗 SSA 标识扩展、身份准入、审计与执行绑定、查询改写
+与降级、条件路由、平台前后端、报告隔离、知识源适配和评测。前期论文成果不
+作为本次比赛新增原创成果，MAC-SQL 的方法与原始代码归原作者。
 
-## 改动清单
+## 本次保留的前期引擎适配
 
-### 1. `src/core/agents.py` — 删除两个未使用的 import
-
-**改动**：删掉 `import pandas as pd` 与 `import tiktoken`。
-
-**依据**：全 vendor 树检索确认，`pd.` 一次都没出现；`tiktoken` 的唯一
-出现位置是第 529 行一条**注释**（`# encoder = tiktoken.get_encoding(...)`）。
-两者都是死导入。
-
-**为什么值得改**：`pandas` 会连带 `numpy` 拖进约 30MB，`tiktoken` 另加约 2MB。
-本交付包的要求是「拿到文件夹即可运行」（见 `README-dev.md`），为一个从未执行
-的 import 付 32MB 依赖不划算。
-
-**行为影响**：无。删除的是未引用符号，不改变任何运行时路径。
-
-**上游同步提示**：将来若从 MAC-SQL 更新 `core/`，这两行会重新出现，
-需要再次删除，或改用安装 pandas / tiktoken。
-
-### 2. 删除 `src/nl2sql_security_audit.egg-info/`（5 个文件）
-
-**改动**：删掉整个 egg-info 目录。
-
-**依据**：这是 `pip install -e` 的**构建产物**，不是源码。三条证据：
-
-1. **本产品不经过它**：`backend/deps.py` 靠 `sys.path.insert(0, config.ALGO_SRC_DIR)`
-   导入算法层，查的是目录而不是包元数据。删除前后算法层可用性不变。
-2. **全仓库零引用**：`backend/backend/`、`demo/`、`tests/`、`scripts/`、`frontend/src/`
-   检索 `egg-info` / `egg_info` 无命中。
-3. **同仓库既有的判断**：`__pycache__/` 同样属构建产物，已被 `.gitignore` 排除、
-   零跟踪。
-
-**为什么值得删（不只是省体积）**：`PKG-INFO` 里粘的是**论文仓库的 README 全文**——
-包含 `data/` 2.4G 数据集、31 个基准库、14,424 次 LLM 调用等属于论文的内容。
-它躺在产品仓库的 vendor 目录里，会让读者误以为那份 README 描述的是 MedGuard。
-`SOURCES.txt` 也列着本仓库**并不存在**的 `tests/test_security_pipeline.py`。
-这是溯源混淆，删掉比留着干净。
-
-**行为影响**：无。已跑 123 项测试与前端构建验证。
-
-**如何防止复发**：`.gitignore` 已加 `*.egg-info/`。将来若有人对 vendor 目录
-执行 `pip install -e`，产物不会再被跟踪。
-
-**上游同步提示**：从上游重新拷贝 `src/` 时，这个目录会一起带过来，需要再次删除。
-
-### 3. `src/ssa/loader.py` + `src/auditor/base.py` — 声明式个人标识列（个人级 JOIN 判定）
-
-**改动**（纯增量，未声明时行为与上游完全一致）：
-
-- `SSALabels` 新增字段 `personal_identifier_columns: Set[str]` 与判定方法
-  `is_personal_identifier()`；`load_ssa_data` 解析 SSA YAML 顶层键
-  `personal_identifier_columns`（列名列表，支持 `表.列` 全限定或裸列名）。
-- `auditor/base.py` 的 `_is_personal_level_join` 个人标识判定改为
-  "启发式命中 **或** SSA 显式声明"——两条路任一成立即视为个人级。
-
-**依据**：上游的 `is_personal_attribute` 是英文命名启发式（name/email/
-customer_id…），没有 patient_id、id_card 等**医疗标识**。医疗主键是系统内部
-标识，命名与英文习惯无关，靠名字猜会静默漏报——demo 复现：
-
-```sql
-SELECT c.patient_id, b.amount
-FROM clinical_records c
-JOIN billing b ON c.visit_id = b.visit_id
-```
-
-修复前不触发 `cross_domain_personal_join`（`is_personal_attribute`
-不命中即 L0 放行），尽管 SSA 已声明 `forbid_personal_level` 的跨域规则。
-修复后由 SSA 显式声明（演示策略 `regional_health.yaml` 已声明患者侧
-标识列），不依赖命名猜测，也不把 `*_id` 一刀切判为个人属性（避免
-visit_id / record_id 这类系统键误报）。
-
-**行为影响**：SSA 未声明 `personal_identifier_columns` 时输出与上游一致；
-声明后仅扩大个人级 JOIN 的检出范围。配套回归测试见
+`src/ssa/loader.py` 与 `src/auditor/base.py` 支持 SSA YAML 顶层的
+`personal_identifier_columns`。它把医疗场景中的 `patient_id`、`id_card`
+等显式个人标识纳入跨域个人级 JOIN 判定，避免仅靠英文列名启发式造成静默漏报。
+未声明该字段时保持原行为；配套回归测试见
 `backend/tests/test_audit_personal_identifiers.py`。
 
-**上游同步提示**：从上游重新拷贝 `src/` 时两处改动都会丢失，需按本节重打。
-
----
-
-## 未改但值得知道的事
-
-- `src/core/agents.py` 保留着 `import pdb`（调试残留）。它属 Python 内置，
-  零成本，故未动。
-- `src/graph/sql_generator.py` 需要 `core.llm.safe_call_llm`——本目录已补上
-  `core/`，所以这个模块现在**可以导入**了（在此之前是 `ModuleNotFoundError`）。
-  它是论文的图分解生成器，本产品**不使用**；我们走 MAC-SQL 体系。
+本目录其余团队成员拥有权利的代码按项目根目录 MIT 许可证开放；其中引用的
+论文、通用算法、第三方依赖和数据仍按各自来源及使用条件处理。

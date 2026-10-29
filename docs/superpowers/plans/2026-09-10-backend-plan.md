@@ -6,11 +6,16 @@
 > smart-doctor 两组路由。抄之前请对照 `backend/docs/api-contract/API_CONTRACT.md`
 > 与现有代码。
 
+> **许可边界更新（2026-10-29）**：当前参赛队员的前期审计引擎继续作为前期
+> 研究成果复用；因未取得 MAC-SQL 源码再分发授权，公开仓库已移除其复制代码，
+> 自然语言查询计划改由产品层独立实现。下文“算法层不修改/内置 MAC-SQL”的
+> 旧计划不再作为当前交付说明。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 实现 FastAPI 后端，提供数据源管理、安全策略、查询与拦截、安全事件报告四组接口，并保证病患令牌无法触及任何涉他患者数据。
 
-**Architecture:** 纯适配器模式——产品层不修改算法层，只通过 `backend/deps.py` 这一个文件访问 `J:\race\AIC\NL2SQL`（已 `pip install -e`）。安全由两层构成：层一准入（令牌主语绑定，本计划实现）在查询执行前拦截越权查询；层二审计（算法层医盾引擎，已存在）拦截中间结果暴露。
+**Architecture:** 当前实现通过 `backend/deps.py` 访问参赛队员前期形成的安全审计引擎；本次产品层实现身份准入、执行绑定与医疗适配。自然语言查询计划由项目自有模型适配器生成，不包含 MAC-SQL 源码。
 
 **Tech Stack:** Python 3.12 / FastAPI 0.141 / uvicorn / sqlglot 30.18 / SQLite / pytest
 
@@ -18,7 +23,7 @@
 
 ## Global Constraints
 
-- **算法层一行不改**。`J:\race\AIC\NL2SQL` 只读，经 `pip install -e` 复用。
+- **前期审计引擎与本次产品改动分开记录**。审计接口保持稳定，医疗适配与执行绑定由产品层实现。
 - **算法层只经由 `backend/deps.py` 访问**。其他文件不得直接 `import security_auditor` / `ssa.loader`。
 - Python 环境：`conda activate medguard`（Python 3.12.14）。
 - 违规类型、严重度、降级等级的中文映射集中在 `backend/labels.py`，**不在路由里硬编码中文**（层一拒答文案除外，它是固定的产品文案）。

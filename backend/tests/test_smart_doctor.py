@@ -11,6 +11,42 @@ from backend.smart_doctor import (INTENT_DISEASE, INTENT_FALLBACK, INTENT_LAB,
 from tests.helpers import load_demo, sign
 
 
+@pytest.fixture(scope="module", autouse=True)
+def optional_opencmkg_fixture():
+    """用最小派生表验证可选 OpenCMKG 路径，不依赖不可再分发的数据文件。"""
+    from backend import dataset_kb
+
+    old_cache = dict(dataset_kb._CACHE)
+    dataset_kb._CACHE.clear()
+    dataset_kb._CACHE[dataset_kb.SYMPTOM_FILE] = {
+        "_meta": {"source": "OpenCMKG"},
+        "alias_map": {"manual": {"胃疼": "胃痛"}, "auto": {}},
+        "symptoms": {
+            "胸痛": {"total": 3, "depts": [["呼吸内科", 2], ["心内科", 1]]},
+            "胃痛": {"total": 2, "depts": [["消化内科", 2], ["普通内科", 1]]},
+            "咳嗽": {"total": 2, "depts": [["呼吸内科", 2], ["普通内科", 1]]},
+        },
+    }
+    dataset_kb._CACHE[dataset_kb.DISEASE_FILE] = {
+        "_meta": {"source": "OpenCMKG"},
+        "diseases": {
+            "糖尿病": {
+                "dept": "内分泌科", "symptoms": ["多饮", "多尿"],
+                "checks": ["血糖"], "drugs": [], "complications": [],
+                "treatments": [],
+            },
+            "高血脂": {
+                "dept": "内分泌科", "symptoms": ["多数早期无明显症状"],
+                "checks": ["血脂"], "drugs": [], "complications": [],
+                "treatments": [],
+            },
+        },
+    }
+    yield
+    dataset_kb._CACHE.clear()
+    dataset_kb._CACHE.update(old_cache)
+
+
 @pytest.fixture(scope="module")
 def demo_db(tmp_path_factory):
     """建一个独立演示库并指向 config（P001 血糖锚点 = 6.3）。"""

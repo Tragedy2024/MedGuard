@@ -49,7 +49,7 @@ QUERIES_FILE = os.path.join(DEMO_DIR, "queries.json")
 #   B) 交付版「后端代码」位于 <root>/后端代码（../AIC/NL2SQL）
 _ALGO_CANDIDATES = [
     os.environ.get("MEDGUARD_NL2SQL_SRC", ""),
-    # 交付版内置算法层（自包含，拿到文件夹即可运行）
+    # 交付版内置团队前期审计引擎（不含无授权的 MAC-SQL 源码）
     os.path.join(_PROJECT_ROOT, "vendor", "nl2sql", "src"),
     os.path.join(os.path.dirname(_PROJECT_ROOT), "NL2SQL", "src"),
     os.path.join(_PROJECT_ROOT, "..", "NL2SQL", "src"),
@@ -71,8 +71,7 @@ DEMO_DATASOURCE_NAME = "区域医疗集团"
 
 # ── .env（API Key 等敏感配置）────────────────────────────────────
 # 两处都找：交付包根目录、backend/。不覆盖已存在的环境变量。
-# MAC-SQL 的 core/api_config.py 也会自行向上查找 .env，这里重复加载是
-# 有意的——产品层需要**提前**知道 LLM 是否可用，才能做优雅降级。
+# 产品层提前加载配置，便于在模型不可用时立即走确定性降级。
 def _load_env_file(path: str) -> None:
     try:
         with open(path, encoding="utf-8") as f:

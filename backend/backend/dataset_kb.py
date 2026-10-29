@@ -1,10 +1,12 @@
-"""数据集知识库：智慧医生的**事实层**，内容全部来自开源数据集 OpenCMKG。
+"""可选数据集知识库：智慧医生的**事实层**，内容来自 OpenCMKG 本地派生表。
 
     症状 → 就诊科室      demo/symptom_departments.json
     疾病 → 事实卡片      demo/disease_facts.json
 
-两份文件都由 `scripts/build_dataset_tables.py` 从原始三元组生成——
-**抽取逻辑在代码里，可复现可审计**，不是手写一份 JSON 声称来自某数据集。
+两份文件由使用者在确认符合上游用途限制后，通过
+`scripts/build_dataset_tables.py` 从原始三元组本地生成。仓库开放抽取逻辑，
+但不分发 OpenCMKG 原始数据、派生 JSON 或向量缓存；文件不存在时返回空表，
+上层自动使用人工审核知识库或安全引导文案。
 
 分工（这是这一层最重要的约定）：
 

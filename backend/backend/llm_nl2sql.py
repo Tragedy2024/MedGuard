@@ -1,14 +1,12 @@
-"""自然语言 → 多步分解计划（MAC-SQL 体系）。
+"""自然语言 → 多步查询计划。
 
 **这是翻译环节，不是审计环节。** 医盾审计仍然零 LLM、零查库——本模块
 只是把一句中文问话翻译成一份查询计划，计划随后照常走层一准入与层二审计。
 「零 LLM」的安全声明说的是审计器不调模型，与翻译无关（设计文档 §1.2）。
 
-用 MAC-SQL 的 `Decomposer`，且必须 `dataset_name='bird'`：那个分支的模板
-（`decompose_template_bird`）输出「Sub question N + ```sql 块」格式，正是
-vendor 里已有的 `decomposer_parser.parse_qa_pairs` 能解析的形状。
-spider 分支输出单条 SQL，没有中间步骤，安全演示会失去「中间结果暴露」——
-本产品不使用。
+查询计划提示词由本项目独立实现，参考公开论文中的“复杂问题分解为子问题”思路，
+但不复制或分发 MAC-SQL 源码。输出格式仍沿用既有审计引擎能够解析的
+「Sub question N + SQL 代码块」，随后进入身份准入和静态安全审计。
 """
 import os
 import re
@@ -50,7 +48,7 @@ def _load_schema_meta(datasource_id: str) -> Tuple[Dict[str, str], Dict[str, Dic
 def _value_examples(con: sqlite3.Connection, table: str, col: str) -> List[str]:
     """给文本列取几个真实取值。
 
-    MAC-SQL 的模板靠 Value examples 让模型把中文词对上列名（如
+    查询计划提示词靠 Value examples 让模型把中文词对上列名（如
     「糖尿病」→ diagnosis_name）。只取低基数文本列，避免把数字列刷屏。
     """
     try:
@@ -70,7 +68,7 @@ def _value_examples(con: sqlite3.Connection, table: str, col: str) -> List[str]:
 
 
 def build_schema_text(datasource_id: str) -> Tuple[str, str]:
-    """生成 MAC-SQL 模板要的【Database schema】与【Foreign keys】两段。
+    """生成查询计划提示词所需的数据库结构与外键说明。
 
     比 BIRD 原件多做一件事：把中文业务名一并写进去。本产品的提问是中文，
     而列名是英文（diagnosis_name 之类），不给中文对照，模型很难对上
@@ -159,7 +157,7 @@ def _normalize_output(raw: str) -> str:
 
 
 def _binding_hint(token_type: str, subject_id: str) -> str:
-    """令牌主体的身份约束，塞进 MAC-SQL 模板的 evidence 槽位。
+    """为查询计划提示词加入令牌主体的身份约束。
 
     **不给这段，模型会写出 `patient_id = :patient_id` 这类参数占位符**——
     它既执行不了（sqlite3 会当成未绑定参数），更要命的是**等于没有绑定到本人**，
@@ -204,38 +202,51 @@ def decompose(
     if not llm_available():
         raise NL2SQLError("未配置模型（缺少 OPENAI_API_KEY），无法翻译新的问法。")
 
-    # 延迟导入：core.api_config 在**导入时**就构造 OpenAI 客户端，没有 Key
-    # 会直接抛异常。所以必须放到函数内，让无 Key 的环境也能正常加载本模块。
+    # 既有审计引擎保留计划解析器；模型调用与提示词由产品层独立实现。
     src = _algo_path()
     if src not in sys.path:
         sys.path.insert(0, src)
     try:
-        from core.agents import Decomposer
-        from core.const import DECOMPOSER_NAME
         from decomposer_parser import parse_qa_pairs
+        from backend.llm_client import call_llm
     except Exception as exc:  # noqa: BLE001 - 缺依赖时给出可读原因
         raise NL2SQLError(f"算法层导入失败：{exc}") from exc
 
     desc_str, fk_str = build_schema_text(datasource_id)
 
-    msg = {
-        "idx": 0,
-        "db_id": datasource_id,
-        "query": question.strip(),
-        "evidence": _binding_hint(token_type, subject_id),
-        "desc_str": desc_str,
-        "fk_str": fk_str,
-        "difficulty": "",
-        "ground_truth": "",
-        "send_to": DECOMPOSER_NAME,
-    }
+    binding = _binding_hint(token_type, subject_id)
+    prompt = f"""你负责把自然语言问题转换为只读 SQL 查询计划。
+
+【数据库结构】
+{desc_str}
+
+【连接关系】
+{fk_str}
+
+【身份约束】
+{binding or '无额外身份约束。'}
+
+【用户问题】
+{question.strip()}
+
+要求：
+1. 只能使用上面列出的表和字段，只生成 SELECT 或 WITH 查询。
+2. 复杂问题可以拆成多个步骤；简单问题只生成一个步骤。
+3. 身份约束必须直接体现在 SQL 中，不得使用 :param 等未绑定占位符。
+4. 不输出解释、推理过程或 Markdown 标题，只按以下格式逐项输出：
+
+Sub question 1: 子问题说明
+SQL
+```sql
+SELECT ...
+```
+"""
 
     try:
-        Decomposer(dataset_name="bird").talk(msg)
+        raw = call_llm(prompt, timeout=30.0)
     except Exception as exc:  # noqa: BLE001 - 网络/鉴权/模型异常统一转义
         raise NL2SQLError(f"模型调用失败：{exc}") from exc
 
-    raw = msg.get("qa_pairs") or ""
     tasks = parse_qa_pairs(raw)
     if not tasks:
         # 先规整再试一次——模型书写习惯的差异不该让整条查询失败
