@@ -107,7 +107,6 @@ button.side-switch {
 .card,
 .panel,
 .empty-state,
-.metric,
 .schema-table,
 .policy-summary {
   border: 1px solid var(--border);
@@ -200,15 +199,6 @@ button.side-switch {
   color: var(--fg-soft);
 }
 .domain-note { color: var(--muted); }
-
-.metrics-grid { gap: 12px; }
-.metric {
-  padding: 20px 16px;
-  text-align: left;
-}
-.metric-value { color: var(--accent-deep); font-family: var(--font-display); font-size: 42px; }
-.metric-name { color: var(--fg-soft); }
-.metric-detail { color: var(--muted); }
 
 .policy-summary { padding: 14px 16px; }
 .summary-item strong { color: var(--fg); }
@@ -578,7 +568,6 @@ button.side-switch {
 }
 
 .console-page .work-copy small,
-.console-page .metric-detail,
 .console-page .col-type,
 .console-page .col-pk,
 .console-page .ecl,

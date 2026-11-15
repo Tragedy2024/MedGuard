@@ -76,7 +76,8 @@ class BM25Index:
     def search(self, query: str, top_k: int = 3,
                min_score: float = DEFAULT_MIN_SCORE,
                exclude_kinds: Sequence[str] = (),
-               min_matches: Optional[int] = None) -> List[Tuple[corpus.Doc, float]]:
+               min_matches: Optional[int] = None,
+               filters: Optional[corpus.MetadataFilter] = None) -> List[Tuple[corpus.Doc, float]]:
         """返回 (文档, 分数) 降序，已按 min_score 截断。
 
         过滤条件缺一不可：
@@ -108,7 +109,8 @@ class BM25Index:
         skip = set(exclude_kinds)
         hits = [(d, s, n_matched.get(i, 0))
                 for i, (d, s) in enumerate(zip(self.docs, self.score(qt)))
-                if s > 0 and s >= min_score and d.kind not in skip]
+                if s > 0 and s >= min_score and d.kind not in skip
+                and (filters is None or filters.matches(d))]
         hits = [(d, s) for d, s, n in hits if n >= min_matches]
         hits.sort(key=lambda x: x[1], reverse=True)
         return hits[:top_k]

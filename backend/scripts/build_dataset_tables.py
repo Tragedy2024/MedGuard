@@ -1,86 +1,22 @@
-# -*- coding: utf-8 -*-
-"""从 OpenCMKG 抽取两张表（构建期工具，不在运行时调用）。
+"""从固定版本的 OpenCMKG 原始 CSV 生成三份本地知识库文件。
 
-    ① 症状 → 就诊科室      disease_has_symptom + disease_belong_department
-    ② 疾病 → 事实卡片      disease_has_symptom / need_check / recommand_drug /
-                          common_drug / belong_department / accompany_disease /
-                          need_treatment
-
-**为什么要有这个脚本**：这两张表的来源必须是**可复现、可审计**的。
-项目书里写"知识库来自开源数据集"，评委要能自己跑一遍验证——所以抽取逻辑
-放在代码里，而不是我手写一份 JSON 声称来自某数据集。
-
-**产品层的定位**：这两张表只提供**事实**（有哪些症状、归哪个科、该查什么），
-**解读与建议由 AI 生成并单独标注**。事实与建议不混同。
-
-用法：
-    1. 下载 OpenCMKG 原始三元组（固定版本，SHA-256 见下）：
-         URL：https://raw.githubusercontent.com/RuiqingDing/OpenCMKG/master/triples.txt
-         SHA-256：1d6e6242baf20a7c9c2044809a53969ffb73e3248ac9a7911f8b053b06438632
-       （脚本会**自动校验**输入哈希，不一致直接拒绝——不是靠注释提醒；
-         项目评测所用本地 JSON 由该版本生成；派生文件不随仓库分发）
-    2. python scripts/build_dataset_tables.py <triples.txt 路径> [--export-docs]
-       `--export-docs` 额外导出**检索用文档**（混合 RAG 的第二知识源输入）：
-         backend/demo/rag_documents.json
-       检索文档与界面展示表（上面两张，每项前 5 条）不同：关系**全量**不截断，
-       且按设计评审第一步只含 疾病名称/症状/检查/科室，不含药物与治疗字段。
-
-输出（仅限本地生成，已由 .gitignore 排除）：
-    backend/demo/symptom_departments.json   界面展示表
-    backend/demo/disease_facts.json         界面展示表
-    backend/demo/rag_documents.json         检索文档（--export-docs）
-
-数据清洗（2026-09-24 新增，回应代码评审 P1）：
-    原始三元组含抓取残留（作者署名「驻站医/闫铁…」被当成症状、罗马数字
-    「Ⅰ」与缩写「SP」混入药品），由 `_clean_value()` 在读取时统一过滤：
-    作者署名黑名单 / 罗马数字残渣 / 无汉字且不在医用缩写白名单的纯符号串 /
-    单字串。过滤数与本次生成时间记录在两张表的 `_meta.cleaned_dropped`。
+运行 python scripts/build_dataset_tables.py <triples.txt> --export-docs
+用 --output-dir 指定暂存目录，用 --review-log 保存待复核记录及原始行号。
 """
+import argparse
 import collections
+import csv
 import hashlib
-import io
 import json
-import os
-import sys
 from datetime import date
+from pathlib import Path
 
-# 固定版本的原始三元组（可复现性的锚点；程序强制校验）
 TRIPLES_SHA256 = "1d6e6242baf20a7c9c2044809a53969ffb73e3248ac9a7911f8b053b06438632"
+SOURCE_VERSION = "61ff8aa8635b7b4c4c831cc56108e4116ecc3c01"
+SOURCE_URL = f"https://raw.githubusercontent.com/RuiqingDing/OpenCMKG/{SOURCE_VERSION}/triples.txt"
 
-
-def _verify_triples_sha(src: str) -> None:
-    """输入哈希不一致直接拒绝——防止用别的版本意外覆盖已清洗数据。"""
-    dig = hashlib.sha256()
-    with io.open(src, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            dig.update(chunk)
-    actual = dig.hexdigest()
-    if actual != TRIPLES_SHA256:
-        sys.exit(
-            f"[错误] triples.txt 哈希不符：\n"
-            f"       期望 {TRIPLES_SHA256}\n"
-            f"       实际 {actual}\n"
-            f"       当前仓库数据由固定版本生成，请重新下载上游文件；"
-            f"若确要让新版成为基线，需显式更新 TRIPLES_SHA256 并重跑全部生成与测试。"
-        )
-
-# ── 科室名归一化 ──────────────────────────────────────────────
-#
-# OpenCMKG 的科室叫法与本院不一致，不映射就会出现「同一个科室两个名字」。
-# 实测：不映射时推导准确率 40%，映射后 65%（top1）/ 85%（top3）。
-#
-# 值为 None 表示**不是具体临床科室，丢弃**（它们会稀释投票结果）。
-DEPT_NORMALIZE = {
-    "心内科": "心血管内科",
-    "骨外科": "骨科",
-    "精神科": "心理科",
-    "肝病": "消化内科",
-    "肛肠科": "消化内科",
-    "中医综合": None,
-    "儿科综合": None,
-    "小儿内科": None,
-    "小儿外科": None,
-}
+# 仅保留明确的名称归一化。专业科室与院内组织的映射应由院方配置。
+DEPT_NORMALIZE = {"心内科": "心血管内科", "骨外科": "骨科"}
 
 # ── 实体清洗 ──────────────────────────────────────────────────
 #
@@ -179,391 +115,193 @@ def _clean_value(v: str, field: str = "generic") -> str:
             return ""
     return s
 
-# 每个症状保留的候选科室数
-TOP_N = 5
-
-# ── 疾病事实卡片 ──────────────────────────────────────────────
-#
-# 疾病科普改成「数据集事实 + AI 解读」之后，这里提供的是**事实部分**：
-# 该病有哪些常见症状、归哪个科、该查什么、常用什么药、可能有什么并发症。
-# 解读性文字由 AI 生成（单独标注），不在这里自写。
-#
-# 不含饮食关系（recommand_food / noteat_food / eat_food）——那三类合计
-# 约 9 万条边，会把文件从 2.9 MB 撑到 4.6 MB，而信息价值最低。
+DEPARTMENT_RELATION = "disease_belong_department"
 DISEASE_RELATIONS = {
     "disease_has_symptom": "symptoms",
     "disease_need_check": "checks",
-    "disease_recommand_drug": "drugs",
-    "disease_common_drug": "drugs",
-    "disease_accompany_disease": "complications",
-    "disease_need_treatment": "treatments",
 }
-DISEASE_ITEMS_PER_KIND = 5
-
-META = {
-    "source": "OpenCMKG",
-    "url": "https://github.com/RuiqingDing/OpenCMKG",
-    "license": "仅学术研究，不得商用",
-    "derived_from": ["disease_has_symptom", "disease_belong_department", "SameAs"],
-    "method": ("症状→疾病→科室 两跳聚合投票；口语映射取 SameAs 一跳（不取传递闭包，"
-               "否则 85% 节点会坍缩成一个巨分量）"),
-    "note": ("本文件是 OpenCMKG 若干关系的**聚合结果**，不是原始数据。"
-             "科室名经归一化映射（见 build_symptom_table.py 的 DEPT_NORMALIZE）；"
-             "非临床科室（中医综合等）已丢弃。"
-             "口语映射中 manual 那几条是日常说法对应，不含医学判断。"),
+REVIEW_ONLY_RELATIONS = {
+    "SameAs": "实体对齐待复核",
+    "disease_acompany_disease": "并发关系待复核",
+    "disease_common_drug": "用药关系待复核",
+    "disease_recommand_drug": "网页药品展示关系待复核",
+    "disease_need_treatment": "治疗关系待复核",
+}
+OUT_OF_SCOPE_RELATIONS = {
+    "department_belong_department", "disease_noteat_food", "disease_eat_food",
+    "disease_recommand_food", "drug_relate_producer",
 }
 
-
-# ── 口语映射 ──────────────────────────────────────────────────
-#
-# 患者说的是口语（嗓子疼、尿少、没劲），数据集里是书面名（咽痛、少尿、乏力）。
-# 这层映射**不是医学知识，是语言常识**——任何检索系统都需要它。
-#
-# 绝大部分**从数据集自动推导**：OpenCMKG 的 `SameAs` 边就是同义对齐边。
-# 实测 76 个说法里 45 个本身就是数据集的症状名、25 个能靠一跳推定，
-# 只剩 6 个需要人工补（见 MANUAL_ALIASES）。
-#
-# ⚠️ **SameAs 只能取直接一跳，不能求传递闭包**：实测闭合后 85% 的节点
-# 会坍缩成一个 14,765 节点的巨分量（"所有词都同义于所有词"），完全不可用。
-
-# 人工补/纠正的少数几条——**纯粹的日常说法对应，不含任何医学判断**。
-# 值为 None 表示"数据集里没有对应的通用症状名，不硬凑"。
+# 仅记录明确的常见写法。匹配时还要确认目标确实在本次生成结果中。
 MANUAL_ALIASES = {
-    # 日常说法 → 数据集书面名
-    "心里发慌": "心慌",
-    "晕得慌": "头晕",
-    "睡不好": "失眠",
-    "耳朵响": "耳鸣",
-    "关节红肿": "关节疼痛",
-    "痰中带血": "咯血",
-    # 自动映射取错的，人工纠正（原因写在旁边）
-    "发热": "发烧",     # 自动选了「小儿发热」，不适用于成人
-    "感冒": None,       # 数据集只有「反复感冒/胃肠感冒」，没有通用的，不硬凑
+    "心里发慌": "心慌", "发慌": "心慌", "晕得慌": "头晕", "脑袋晕": "头晕",
+    "睡不着": "入睡困难", "睡不好": "失眠", "耳朵响": "耳鸣", "嗓子疼": "咽痛",
+    "肚子疼": "腹痛", "肚子痛": "腹痛", "胃疼": "胃痛",
+    "胸口疼": "胸痛", "腰疼": "腰痛", "尿少": "少尿",
+    "皮肤痒": "皮肤瘙痒", "大便带血": "便血", "血便": "便血",
+    "看东西模糊": "视物模糊", "视力模糊": "视物模糊",
+    "大便干结": "大便干燥", "流涕": "流鼻涕",
+    "发热": "发烧", "感冒": None, "起疹子": "皮疹",
 }
 
 
-def _lcs_len(a: str, b: str) -> int:
-    """最长公共子串长度——用来从多个同义候选里挑最贴近的那个。
+def _read_source(path, log=None):
+    cards = collections.defaultdict(lambda: collections.defaultdict(dict))
+    counts = collections.Counter()
 
-    例：「大便干结」的候选是 [便血, 大便干燥]，取第一个会错成「便血」；
-    按最长公共子串（「大便干」vs「大便干燥」）就能选对。
-    """
-    best = 0
-    for i in range(len(a)):
-        for j in range(i + 1, len(a) + 1):
-            if a[i:j] in b:
-                best = max(best, j - i)
-    return best
+    def exclude(line, reason, raw):
+        counts[reason] += 1
+        if log is not None:
+            log.write(json.dumps({"line": line, "reason": reason, "raw": raw},
+                                 ensure_ascii=False) + "\n")
 
-
-def build_alias_map(symptoms: dict, triples_path: str) -> dict:
-    """把知识库里的症状说法映射到数据集里的症状名。"""
-    neighbors: dict = collections.defaultdict(set)
-    with io.open(triples_path, encoding="utf-8", errors="replace") as f:
-        for line in f:
-            p = line.rstrip("\n").split(",")
-            if len(p) == 3 and p[1] == "SameAs":
-                a, b = _clean_value(p[0]), _clean_value(p[2])
-                if a and b:
-                    neighbors[a].add(b)
-                    neighbors[b].add(a)
-
-    # 知识库里的说法从 smart_knowledge.yaml 取
-    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    try:
-        from backend import smart_doctor
-        kb = smart_doctor.load_knowledge()
-        aliases = sorted({a for s in (kb.get("symptoms") or [])
-                          for a in (s.get("aliases") or [])})
-    except Exception as exc:      # noqa: BLE001
-        print(f"[警告] 读不到知识库，口语映射跳过：{exc}")
-        return {"auto": {}, "manual": {}}
-
-    auto = {}
-    for a in aliases:
-        if a in symptoms:                     # 本身就是数据集里的名字
-            continue
-        if a in MANUAL_ALIASES:               # 人工清单优先（含「不映射」）
-            continue
-        cands = [n for n in neighbors.get(a, ()) if n in symptoms]
-        if cands:
-            auto[a] = max(cands, key=lambda c: (_lcs_len(a, c), -len(c)))
-    return {"auto": auto, "manual": dict(MANUAL_ALIASES)}
-
-
-DISEASE_META = {
-    "source": "OpenCMKG",
-    "url": "https://github.com/RuiqingDing/OpenCMKG",
-    "license": "仅学术研究，不得商用",
-    "derived_from": list(DISEASE_RELATIONS) + ["disease_belong_department"],
-    "method": (f"按疾病聚合七种关系的宾语，每类保留前 {DISEASE_ITEMS_PER_KIND} 条；"
-               "只保留在数据集中有科室归属的疾病"),
-    "note": ("本文件是 OpenCMKG 若干关系的**聚合结果**，不是原始数据。"
-             "只提供**事实**（症状/检查/药物/并发症/治疗/科室），"
-             "**不含解读性文字**——解读与建议由 AI 生成并单独标注。"
-             "含中成药名，属数据集原样内容。"),
-}
-
-
-def build_diseases(triples_path: str) -> dict:
-    """疾病 → 事实卡片。"""
-    facts: dict = collections.defaultdict(lambda: collections.defaultdict(list))
-    dropped = 0
-    with io.open(triples_path, encoding="utf-8", errors="replace") as f:
-        for line in f:
-            p = line.rstrip("\n").split(",")
-            if len(p) != 3:
+    with open(path, encoding="utf-8", newline="") as stream:
+        for line_no, raw in enumerate(stream, 1):
+            try:
+                cells = next(csv.reader([raw], strict=True))
+                if len(cells) != 3 or not all(cell.strip() for cell in cells):
+                    raise ValueError("应为三个非空字段")
+            except (csv.Error, ValueError):
+                exclude(line_no, "格式错误或空字段", raw.rstrip("\r\n"))
                 continue
-            e1, rel, e2 = p
-            disease = _clean_value(e1, "disease")
-            if not disease:
-                dropped += 1
+            head, relation, tail = (cell.strip() for cell in cells)
+            if relation in REVIEW_ONLY_RELATIONS:
+                exclude(line_no, REVIEW_ONLY_RELATIONS[relation], cells)
                 continue
-            if rel == "disease_belong_department":
-                value = _clean_value(e2, "dept")
-                if value:
-                    facts[disease]["dept"] = value
-                else:
-                    dropped += 1
-            elif rel in DISEASE_RELATIONS:
-                field = DISEASE_RELATIONS[rel]
-                value = _clean_value(e2, field)
-                if value:
-                    facts[disease][field].append(value)
-                else:
-                    dropped += 1
-
-    out = {}
-    for d, v in facts.items():
-        if "dept" not in v:
-            continue                    # 没科室的疾病回答不了"挂什么科"，略去
-        dept = DEPT_NORMALIZE.get(v["dept"], v["dept"])
-        if not dept:
-            continue                    # 非临床科室，丢弃
-        card = {"dept": dept}
-        for k, items in v.items():
-            if k == "dept":
+            if relation in OUT_OF_SCOPE_RELATIONS:
+                counts["本次未使用的关系"] += 1
                 continue
-            # 去重保序，截断
-            seen, kept = set(), []
-            for x in items:
-                if x and x not in seen:
-                    seen.add(x)
-                    kept.append(x)
-            if kept:
-                card[k] = kept[:DISEASE_ITEMS_PER_KIND]
-        out[d] = card
-
-    return {"_meta": {**DISEASE_META, "generated": date.today().isoformat(),
-                      "disease_count": len(out), "cleaned_dropped": dropped},
-            "diseases": out}
-
-
-def build(triples_path: str) -> dict:
-    dept_of: dict = {}
-    sym_to_diseases: dict = collections.defaultdict(list)
-    dropped = 0
-
-    with io.open(triples_path, encoding="utf-8", errors="replace") as f:
-        for line in f:
-            p = line.rstrip("\n").split(",")
-            if len(p) != 3:
+            field = "dept" if relation == DEPARTMENT_RELATION else DISEASE_RELATIONS.get(relation)
+            if field is None:
+                exclude(line_no, "未知关系", cells)
                 continue
-            e1, rel, e2 = p
-            disease = _clean_value(e1, "disease")
-            if not disease:
-                dropped += 1
+            disease = _clean_value(head, "disease")
+            value = _clean_value(tail, field)
+            if not disease or not value or "\ufffd" in disease or "\ufffd" in value:
+                exclude(line_no, "命中清洗规则", cells)
                 continue
-            if rel == "disease_belong_department":
-                value = _clean_value(e2, "dept")
-                if value:
-                    dept_of[disease] = value
-                else:
-                    dropped += 1
-            elif rel == "disease_has_symptom":
-                value = _clean_value(e2, "symptoms")
-                if value:
-                    sym_to_diseases[value].append(disease)
-                else:
-                    dropped += 1
+            # dict 保持源顺序。重复记录保留第一次出现的原始行。
+            cards[disease][field].setdefault(value, line_no)
+    return cards, dict(counts)
+
+
+def _metadata(stats):
+    return {"source": "OpenCMKG", "url": SOURCE_URL, "source_version": SOURCE_VERSION,
+            "sha256": TRIPLES_SHA256, "license": "仅学术研究，不得商用",
+            "review_status": "未经临床复核", "generated": date.today().isoformat(),
+            "cleaned_dropped": stats.get("命中清洗规则", 0), "processing_counts": stats}
+
+
+def _make_tables(cards, stats):
+    diseases = {}
+    symptom_links = collections.defaultdict(list)
+    for disease, fields in cards.items():
+        original_depts = list(fields.get("dept", {}))
+        depts = list(dict.fromkeys(DEPT_NORMALIZE.get(d, d) for d in original_depts))
+        card = {field: list(fields[field]) for field in DISEASE_RELATIONS.values() if field in fields}
+        if depts:
+            card["departments"] = depts
+            card["source_departments"] = original_depts
+            if len(depts) == 1:
+                card["dept"] = depts[0]
+        card["source_lines"] = {field: list(values.values()) for field, values in fields.items()}
+        diseases[disease] = card
+        for symptom in card.get("symptoms", []):
+            symptom_links[symptom].append(disease)
 
     symptoms = {}
-    for sym, diseases in sym_to_diseases.items():
-        counter: collections.Counter = collections.Counter()
-        for d in diseases:
-            raw = dept_of.get(d)
-            if not raw:
-                continue
-            name = DEPT_NORMALIZE.get(raw, raw)
-            if name:                       # None = 非临床科室，丢弃
-                counter[name] += 1
-        if counter:
-            symptoms[sym] = {
-                "total": len(diseases),
-                "depts": [[k, v] for k, v in counter.most_common(TOP_N)],
+    for symptom, linked in symptom_links.items():
+        counts = collections.Counter(
+            diseases[d]["dept"] for d in linked if "dept" in diseases[d]
+        )
+        if counts:
+            symptoms[symptom] = {
+                "total": len(linked),
+                "depts": sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:5],
             }
-
-    alias_map = build_alias_map(symptoms, triples_path)
-
-    return {
-        "_meta": {**META, "generated": date.today().isoformat(),
-                  "symptom_count": len(symptoms),
-                  "alias_map_count": len(alias_map["auto"]) + len(alias_map["manual"]),
-                  "cleaned_dropped": dropped},
-        "symptoms": symptoms,
-        "alias_map": alias_map,
-    }
-
-
-def _write(path: str, data: dict) -> None:
-    with io.open(path, "w", encoding="utf-8", newline="\n") as f:
-        json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
-    print(f"[完成] {os.path.basename(path):<28} {os.path.getsize(path)/1024/1024:.2f} MB")
+    manual = {name: target for name, target in MANUAL_ALIASES.items()
+              if target is None or (target in symptoms and name != target)}
+    return (
+        {"_meta": {**_metadata(stats), "disease_count": len(diseases)},
+         "diseases": diseases},
+        {"_meta": {**_metadata(stats), "symptom_count": len(symptoms),
+                   "alias_map_count": len(manual)},
+         "symptoms": symptoms, "alias_map": {"auto": {}, "manual": manual}},
+        symptom_links,
+    )
 
 
-def build_retrieval_docs(triples_path: str) -> dict:
-    """导出**检索用**文档（混合 RAG 第二知识源的输入，`--export-docs`）。
-
-    与界面展示表（上面两张 JSON，每项截前 5 条）不同：
-    - 关系**不截断**（检索文档要的是完整事实，不能用截断列表当完整医学事实）；
-    - 按设计评审第一步，文档只含 疾病名称 / 症状 / 检查 / 科室，
-      **不含药物与治疗**——那两类第一阶段不参与生成，只留界面事实卡展示；
-    - 文档 ID 稳定（`opencmkg:disease:冠心病`），作为证据引用与回查锚点。
-    """
-    dept_of: dict = {}
-    sym_to_diseases: dict = collections.defaultdict(list)
-    rels: dict = collections.defaultdict(dict)
-    with io.open(triples_path, encoding="utf-8", errors="replace") as f:
-        for line in f:
-            p = line.rstrip("\n").split(",")
-            if len(p) != 3:
-                continue
-            e1, rel, e2 = p
-            disease = _clean_value(e1, "disease")
-            if not disease:
-                continue
-            if rel == "disease_belong_department":
-                value = _clean_value(e2, "dept")
-                if value:
-                    dept_of[disease] = value
-            elif rel == "disease_has_symptom":
-                value = _clean_value(e2, "symptoms")
-                if value:
-                    rels[disease].setdefault("symptoms", []).append(value)
-                    sym_to_diseases[value].append(disease)
-            elif rel == "disease_need_check":
-                value = _clean_value(e2, "checks")
-                if value:
-                    rels[disease].setdefault("checks", []).append(value)
-
-    documents: list = []
-
-    # 疾病文档：关联症状（全量）＋关联检查（全量）＋就诊科室
-    for disease, r in rels.items():
-        syms = list(dict.fromkeys(r.get("symptoms", [])))
-        checks = list(dict.fromkeys(r.get("checks", [])))
-        dept = dept_of.get(disease, "")
-        if not syms and not checks:
-            continue
+def _make_documents(disease_table, symptom_table, symptom_links):
+    documents = []
+    for disease, card in disease_table["diseases"].items():
         parts = []
-        if syms:
-            parts.append("关联症状：" + "、".join(syms))
-        if checks:
-            parts.append("关联检查：" + "、".join(checks))
-        if dept:
-            parts.append("就诊科室：" + dept)
-        documents.append({
-            "id": f"opencmkg:disease:{disease}",
-            "kind": "disease",
-            "key": disease,
-            "name": disease,
-            "aliases": [disease],
-            "text": "；".join(parts),
-        })
-
-    # 症状文档：关联疾病（正文上限 50 条防超长）＋可能就诊科室（前 TOP_N）
-    dept_counter: dict = collections.defaultdict(collections.Counter)
-    for sym, diseases in sym_to_diseases.items():
-        for d in diseases:
-            raw = dept_of.get(d)
-            if not raw:
-                continue
-            name = DEPT_NORMALIZE.get(raw, raw)
-            if name:
-                dept_counter[sym][name] += 1
-    for sym, diseases in sym_to_diseases.items():
-        diseases = list(dict.fromkeys(diseases))
-        parts = []
-        if diseases:
-            tail = "等" if len(diseases) > 50 else ""
-            parts.append("关联疾病：" + "、".join(diseases[:50]) + tail)
-        depts = [d for d, _ in dept_counter[sym].most_common(TOP_N)]
-        if depts:
-            parts.append("可能就诊科室：" + "、".join(depts))
-        if not parts:
-            continue
-        documents.append({
-            "id": f"opencmkg:symptom:{sym}",
-            "kind": "symptom",
-            "key": sym,
-            "name": sym,
-            "aliases": [sym],
-            "text": "；".join(parts),
-        })
-
-    n_dis = sum(1 for d in documents if d["kind"] == "disease")
-    n_sym = len(documents) - n_dis
-    return {
-        "_meta": {
-            "source": "OpenCMKG",
-            "url": "https://github.com/RuiqingDing/OpenCMKG",
-            "license": "仅学术研究，不得商用",
-            "sha256": TRIPLES_SHA256,
-            "generated": date.today().isoformat(),
-            "doc_count": len(documents),
-            "disease_docs": n_dis,
-            "symptom_docs": n_sym,
-            "note": ("检索用文档（混合 RAG 第二知识源）：疾病文档的关系**全量**"
-                     "不截断；症状文档的关联疾病正文**上限 50 条**（防单文档超长，"
-                     "不表示事实截断）。按设计评审第一步不含药物/治疗字段。"
-                     "与界面展示表（symptom_departments.json / "
-                     "disease_facts.json，每项前 5 条）分开。"),
-        },
-        "documents": documents,
-    }
+        for key, label in (("symptoms", "关联症状"), ("checks", "关联检查")):
+            if card.get(key):
+                parts.append(label + "：" + "、".join(card[key]))
+        if card.get("dept"):
+            parts.append("就诊科室：" + card["dept"])
+        documents.append(_document("disease", disease, parts))
+    disease_count = len(documents)
+    for symptom, linked in symptom_links.items():
+        parts = ["关联疾病：" + "、".join(linked[:50]) + ("等" if len(linked) > 50 else "")]
+        if symptom in symptom_table["symptoms"]:
+            depts = symptom_table["symptoms"][symptom]["depts"]
+            parts.append("可能就诊科室：" + "、".join(dept for dept, _ in depts))
+        documents.append(_document("symptom", symptom, parts))
+    return {"_meta": {**disease_table["_meta"], "doc_count": len(documents),
+                      "disease_docs": disease_count, "symptom_docs": len(documents) - disease_count},
+            "documents": documents}
 
 
-def main() -> None:
-    args = sys.argv[1:]
-    export_docs = "--export-docs" in args
-    positional = [a for a in args if a != "--export-docs"]
-    if len(positional) < 1:
-        print(__doc__)
-        sys.exit(2)
-    src = positional[0]
-    if not os.path.isfile(src):
-        sys.exit(f"[错误] 找不到 {src}")
-    _verify_triples_sha(src)
+def _document(kind, name, parts):
+    return {"id": f"opencmkg:{kind}:{name}", "kind": kind, "key": name, "name": name,
+            "aliases": [name], "text": "；".join(parts), "source_version": SOURCE_VERSION}
 
-    demo = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                        "demo")
 
-    sym = build(src)
-    _write(os.path.join(demo, "symptom_departments.json"), sym)
-    m = sym["_meta"]
-    print(f"       症状 {m['symptom_count']} 个 · 口语映射 {m['alias_map_count']} 条 "
-          f"（自动 {len(sym['alias_map']['auto'])} / 人工 {len(sym['alias_map']['manual'])}）")
+def build_diseases(triples_path):
+    return _make_tables(*_read_source(triples_path))[0]
 
-    dis = build_diseases(src)
-    _write(os.path.join(demo, "disease_facts.json"), dis)
-    print(f"       疾病 {dis['_meta']['disease_count']} 个")
 
-    if export_docs:
-        docs = build_retrieval_docs(src)
-        _write(os.path.join(demo, "rag_documents.json"), docs)
-        m3 = docs["_meta"]
-        print(f"       检索文档 {m3['doc_count']} 条"
-              f"（疾病 {m3['disease_docs']} / 症状 {m3['symptom_docs']}）")
+def build(triples_path):
+    return _make_tables(*_read_source(triples_path))[1]
+
+
+def build_retrieval_docs(triples_path):
+    return _make_documents(*_make_tables(*_read_source(triples_path)))
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("triples", type=Path)
+    parser.add_argument("--output-dir", type=Path,
+                        default=Path(__file__).resolve().parents[1] / "demo")
+    parser.add_argument("--export-docs", action="store_true")
+    parser.add_argument("--review-log", type=Path)
+    args = parser.parse_args()
+
+    with args.triples.open("rb") as raw:
+        sha256 = hashlib.file_digest(raw, "sha256").hexdigest()
+    if sha256 != TRIPLES_SHA256:
+        parser.error(f"原始文件 SHA-256 不符，实际为 {sha256}")
+
+    if args.review_log:
+        args.review_log.parent.mkdir(parents=True, exist_ok=True)
+        with args.review_log.open("x", encoding="utf-8") as log:
+            cards, stats = _read_source(args.triples, log)
+    else:
+        cards, stats = _read_source(args.triples)
+    diseases, symptoms, links = _make_tables(cards, stats)
+    outputs = {"disease_facts.json": diseases, "symptom_departments.json": symptoms}
+    if args.export_docs:
+        outputs["rag_documents.json"] = _make_documents(diseases, symptoms, links)
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    for name, data in outputs.items():
+        target = args.output_dir / name
+        temporary = target.with_suffix(".json.tmp")
+        with temporary.open("w", encoding="utf-8", newline="\n") as stream:
+            json.dump(data, stream, ensure_ascii=False, separators=(",", ":"))
+        temporary.replace(target)
+        print(target)
 
 
 if __name__ == "__main__":

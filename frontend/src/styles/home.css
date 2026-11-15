@@ -454,6 +454,96 @@
   .platform-note strong { font-family: var(--font-display); font-size: 23px; font-weight: 430; line-height: 1.3; }
   .platform-note p { margin: 0; max-width: 50em; color: var(--fg-soft); font-size: 15px; line-height: 1.85; }
 
+  .role-story {
+    border-top: 1px solid var(--border);
+    background: linear-gradient(176deg,
+      color-mix(in oklch, var(--surface) 35%, transparent),
+      color-mix(in oklch, var(--accent-wash) 42%, var(--bg)) 65%,
+      color-mix(in oklch, var(--surface) 50%, var(--bg)));
+  }
+  .role-story-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: clamp(14px, 2vw, 24px);
+    margin-top: clamp(32px, 5vw, 60px);
+  }
+  .role-story-card {
+    padding: clamp(20px, 3vw, 34px);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: color-mix(in oklch, var(--surface) 82%, var(--bg));
+  }
+  .role-story-card-admin {
+    border-color: color-mix(in oklch, var(--accent) 28%, var(--border));
+    background: color-mix(in oklch, var(--accent-wash) 58%, var(--surface));
+  }
+  .role-story-name {
+    display: inline-block;
+    border-radius: 999px;
+    padding: 4px 12px;
+    background: color-mix(in oklch, var(--accent) 10%, var(--surface));
+    color: var(--accent-deep);
+    font-size: 13px;
+    font-weight: 650;
+  }
+  .role-story-card h3, .role-onboarding h3 {
+    margin: 0;
+    font: 600 clamp(18px, 1.9vw, 23px)/1.35 var(--font-body);
+    color: var(--fg);
+  }
+  .role-story-card h3 { margin-top: 16px; }
+  .role-story-card p, .role-onboarding-head p {
+    margin: 10px 0 0;
+    color: var(--fg-soft);
+    font-size: 15px;
+    line-height: 1.75;
+  }
+  .role-onboarding {
+    margin-top: clamp(26px, 4vw, 44px);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: clamp(20px, 3vw, 34px);
+    background: color-mix(in oklch, var(--surface) 64%, transparent);
+  }
+  .role-onboarding-steps {
+    counter-reset: role-step;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    column-gap: clamp(12px, 2.6vw, 34px);
+    padding: 0;
+    margin: 24px 0 0;
+    list-style: none;
+  }
+  .role-onboarding-steps li {
+    position: relative;
+    counter-increment: role-step;
+  }
+  .role-onboarding-steps li::before {
+    content: counter(role-step);
+    display: grid;
+    place-items: center;
+    inline-size: 28px;
+    block-size: 28px;
+    margin-bottom: 12px;
+    border: 1px solid var(--border-strong);
+    border-radius: 50%;
+    background: var(--surface);
+    color: var(--accent-deep);
+    font: 14px var(--font-mono);
+  }
+  .role-onboarding-steps li:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    top: 14px;
+    left: 38px;
+    width: calc(100% - 30px);
+    height: 1px;
+    background: linear-gradient(90deg, var(--accent), var(--border));
+  }
+  .role-onboarding-steps strong, .role-onboarding-steps span { display: block; }
+  .role-onboarding-steps strong { font-size: 15px; color: var(--fg); }
+  .role-onboarding-steps span { margin-top: 5px; font-size: 14px; line-height: 1.65; color: var(--fg-soft); }
+
   .data-section {
     background: color-mix(in oklch, var(--surface) 50%, var(--bg));
     border-top: 1px solid var(--border);
@@ -763,6 +853,18 @@
     .flow-grid { grid-template-columns: 1fr; border-top: 0; }
     .flow-node { border-top: 1px solid var(--border-strong); min-height: 0; padding: 20px 0 24px; }
     .flow-node::before { top: -3px; }
+    .role-story-grid, .role-onboarding-steps { grid-template-columns: minmax(0, 1fr); }
+    .role-onboarding-steps { row-gap: 16px; }
+    .role-onboarding-steps li { padding-left: 42px; min-height: 44px; }
+    .role-onboarding-steps li::before { position: absolute; top: 0; left: 0; margin: 0; }
+    .role-onboarding-steps li:not(:last-child)::after {
+      top: 32px;
+      bottom: -12px;
+      left: 14px;
+      width: 1px;
+      height: auto;
+      background: linear-gradient(var(--accent), var(--border));
+    }
     .data-process { grid-template-columns: 1fr 1fr; }
     .data-process > div { min-height: 96px; padding: 16px 14px 17px; }
     .data-process > div:last-child { padding-left: 14px; padding-right: 14px; }

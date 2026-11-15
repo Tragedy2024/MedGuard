@@ -8,6 +8,7 @@ symptoms / diseases / departments），而检索关心的是「有哪些可被�
 **这一层不做任何医学判断**，只做形状转换——正文怎么拼、别名从哪取。
 """
 from dataclasses import dataclass
+import re
 from typing import Any, Dict, Iterable, List, Tuple
 
 # 文档类型。与语料的段落名一致（除 departments）。
@@ -47,6 +48,55 @@ class Doc:
     source_version: str = ""
     license: str = ""
     quality_tier: str = "curated"
+    entity_id: str = ""
+    sections: Tuple[Tuple[str, str], ...] = ()
+
+
+def normalize_entity(name: str) -> str:
+    """只归一书写形式；不会把子型合并到父疾病。"""
+    name = re.sub(r"\s+", "", name)
+    return re.sub(r"([一二ⅠⅡ])型", lambda m: {
+        "一": "1", "二": "2", "Ⅰ": "1", "Ⅱ": "2",
+    }[m[1]] + "型", name)
+
+
+@dataclass(frozen=True)
+class MetadataFilter:
+    """同维度取并集，不同维度取交集；空维度表示不限，绝不自动放宽。"""
+    kinds: Tuple[str, ...] = ()
+    entities: Tuple[str, ...] = ()
+    fields: Tuple[str, ...] = ()
+    sources: Tuple[str, ...] = ()
+    quality_tiers: Tuple[str, ...] = ()
+    source_versions: Tuple[str, ...] = ()
+
+    def matches(self, doc: Doc) -> bool:
+        return (
+            (not self.kinds or doc.kind in self.kinds)
+            and (not self.entities or normalize_entity(doc.entity_id or doc.key)
+                 in {normalize_entity(e) for e in self.entities})
+            and (not self.fields or bool(set(self.fields) & {k for k, text in doc.sections if text}))
+            and (not self.sources or doc.source in self.sources)
+            and (not self.quality_tiers or doc.quality_tier in self.quality_tiers)
+            and (not self.source_versions or doc.source_version in self.source_versions)
+        )
+
+
+def evidence_text(doc: Doc, filters: MetadataFilter) -> str:
+    """字段过滤同时约束给模型的正文，避免无关字段进入生成。"""
+    if not filters.fields:
+        return doc.text
+    return "；".join(text for field, text in doc.sections if field in filters.fields)
+
+
+def _metadata(key: str, entry: Dict[str, Any]) -> Dict[str, Any]:
+    provenance = entry.get("provenance") or {}
+    if not isinstance(provenance, dict):
+        provenance = {}
+    return {
+        "entity_id": key,
+        "source_version": str(provenance.get("version") or ""),
+    }
 
 
 def _join(*parts: Any) -> str:
@@ -89,6 +139,10 @@ def _lab_doc(key: str, e: Dict[str, Any]) -> Doc:
         kind=KIND_LAB, key=key, name=key,
         aliases=_aliases(e),
         source=_source(e),
+        **_metadata(key, e),
+        sections=(("overview", _join(e.get("desc"))),
+                  ("reference", _join(e.get("normal"), band_text, e.get("unit"))),
+                  ("advice", _join(e.get("advice_common"), e.get("urgent_text")))),
         text=_join(e.get("desc"), e.get("unit"), e.get("normal"),
                    band_text, e.get("advice_common"), e.get("urgent_text")),
     )
@@ -100,6 +154,9 @@ def _medication_doc(key: str, e: Dict[str, Any]) -> Doc:
         kind=KIND_MEDICATION, key=key, name=key,
         aliases=_aliases(e),
         source=_source(e),
+        **_metadata(key, e),
+        sections=tuple((k, _join(e.get(k))) for k in ("purpose", "usage", "caution", "note")
+                       if _join(e.get(k))),
         text=_join(e.get("purpose"), e.get("usage"),
                    e.get("caution"), e.get("note")),
     )
@@ -115,6 +172,9 @@ def _symptom_doc(e: Dict[str, Any]) -> Doc:
         name=name,
         aliases=aliases,
         source=_source(e),
+        **_metadata(name, e),
+        sections=(("overview", _join(e.get("text"))),
+                  ("department", _join(e.get("department")))),
         text=_join(e.get("text"), e.get("department")),
     )
 
@@ -125,6 +185,9 @@ def _disease_doc(key: str, e: Dict[str, Any]) -> Doc:
         kind=KIND_DISEASE, key=key, name=key,
         aliases=_aliases(e),
         source=_source(e),
+        **_metadata(key, e),
+        sections=(("overview", _join(e.get("what"))),
+                  ("advice", _join(e.get("advice")))),
         text=_join(e.get("what"), e.get("advice")),
     )
 

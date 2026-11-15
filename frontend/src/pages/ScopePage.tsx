@@ -11,7 +11,7 @@
 import { useEffect, useState } from 'react'
 import { fetchPolicy } from '../api/policies'
 import type { EclLabel, Policy } from '../api/models'
-import { EclTag } from '../components/EclTag'
+import { ECL_TEXT, EclTag } from '../components/EclTag'
 import { useAuth } from '../store/auth'
 import { errorText } from '../api/client'
 
@@ -46,7 +46,7 @@ function buildDomains(policy: Policy): Domain[] {
   })
 }
 
-/** 只列出数量大于 0 的等级，避免「禁止 0」这种噪音。 */
+/** 只列出数量大于 0 的等级。 */
 const present = (counts: Record<EclLabel, number>): EclLabel[] =>
   (['free', 'controlled', 'blocked'] as EclLabel[]).filter((l) => counts[l] > 0)
 
@@ -88,7 +88,7 @@ export function ScopePage() {
         {isPatient
           ? '以下为您本人病历涵盖的数据内容。'
           : '以下为本平台可供查询的数据内容。'}
-        <strong>受控</strong>与<strong>禁止</strong>的信息不会出现在任何查询结果中，
+        <strong>{ECL_TEXT.controlled}</strong> 与 <strong>{ECL_TEXT.blocked}</strong> 的信息不会出现在任何查询结果中，
         包括查询的中间步骤。
       </p>
 
@@ -114,7 +114,7 @@ export function ScopePage() {
               ))}
             </ul>
           ) : (
-            <p className="hint">该数据域没有可自由查询的信息。</p>
+            <p className="hint">该数据域没有标为 {ECL_TEXT.free} 的字段。</p>
           )}
 
           {d.counts.controlled + d.counts.blocked > 0 && (

@@ -631,8 +631,8 @@ def test_load_knowledge_failure_is_not_cached(monkeypatch):
 
 # ── 多轮：指代解析（「它」「那个」）────────────────────────────
 
-def _ctx(intent, entity=None):
-    return {"intent": intent, "entity": entity}
+def _ctx(intent, entity=None, *, personal=False):
+    return {"intent": intent, "entity": entity, "personal": personal}
 
 
 def test_context_fills_in_when_nothing_recognized():
@@ -641,7 +641,7 @@ def test_context_fills_in_when_nothing_recognized():
     「我的血糖结果正常吗」→「严重吗」：第二句自身没有话题。
     """
     got = smart_doctor._resolve_with_context(
-        INTENT_FALLBACK, None, _ctx(INTENT_LAB, "血糖"))
+        INTENT_FALLBACK, None, _ctx(INTENT_LAB, "血糖"), question="严重吗")
     assert got == (INTENT_LAB, "血糖")
 
 
@@ -650,7 +650,8 @@ def test_context_fills_entity_when_intent_matches():
 
     「我的血糖结果正常吗」→「它正常吗」：能判出是在问检验，但不知问哪项。
     """
-    got = smart_doctor._resolve_with_context(INTENT_LAB, None, _ctx(INTENT_LAB, "血糖"))
+    got = smart_doctor._resolve_with_context(
+        INTENT_LAB, None, _ctx(INTENT_LAB, "血糖"), question="它正常吗")
     assert got == (INTENT_LAB, "血糖")
 
 
@@ -662,31 +663,33 @@ def test_context_does_not_leak_across_intents():
     患者拿到"未找到用药记录"，**比不补还糟**。
     """
     got = smart_doctor._resolve_with_context(
-        INTENT_MEDICATION, None, _ctx(INTENT_LAB, "血糖"))
+        INTENT_MEDICATION, None, _ctx(INTENT_LAB, "血糖"), question="医生开的药怎么吃")
     assert got == (INTENT_MEDICATION, None)
 
 
 def test_context_does_not_override_a_recognized_entity():
     """本轮自己判出了实体 → 一律以本轮为准，不受上一轮影响。"""
     got = smart_doctor._resolve_with_context(
-        INTENT_LAB, "血脂", _ctx(INTENT_LAB, "血糖"))
+        INTENT_LAB, "血脂", _ctx(INTENT_LAB, "血糖"), question="我的血脂正常吗")
     assert got == (INTENT_LAB, "血脂")
 
 
 def test_no_context_is_unchanged():
     """不传 context 等价于单轮问答。"""
-    assert smart_doctor._resolve_with_context(INTENT_LAB, None, None) == (INTENT_LAB, None)
     assert smart_doctor._resolve_with_context(
-        INTENT_FALLBACK, None, _ctx("")) == (INTENT_FALLBACK, None)
+        INTENT_LAB, None, None, question="它正常吗") == (INTENT_LAB, None)
+    assert smart_doctor._resolve_with_context(
+        INTENT_FALLBACK, None, _ctx(""), question="它正常吗") == (INTENT_FALLBACK, None)
 
 
 def test_ask_uses_context_and_reports_entity(demo_db):
     """端到端：「它正常吗」接在血糖之后，应真的查到血糖。"""
-    r = smart_doctor.ask("它正常吗", "P001", context=_ctx(INTENT_LAB, "血糖"))
+    r = smart_doctor.ask("它正常吗", "P001", context=_ctx(INTENT_LAB, "血糖", personal=True))
     assert r["intent"] == INTENT_LAB
     assert r["entity"] == "血糖"
     assert r["data"] is not None
     assert r["data"]["rows"], "应真的查到了本人的血糖记录"
+    assert {row[0] for row in r["data"]["rows"]} == {"血糖"}
 
 
 def test_ask_reports_entity_for_next_turn(demo_db):

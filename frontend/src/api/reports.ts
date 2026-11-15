@@ -1,5 +1,5 @@
 import { apiGet } from './client'
-import type { DetectionMetrics, ReportDetail, ReportSummary, Token } from './models'
+import type { ReportDetail, ReportSummary, Token } from './models'
 import { tokenScope } from './scope'
 
 /**
@@ -15,9 +15,6 @@ export const fetchReports = (token: Token, limit = 20) =>
 
 export const fetchReport = (token: Token, id: number) =>
   apiGet<ReportDetail>(`/api/reports/${id}?${tokenScope(token)}`)
-
-export const fetchDetectionMetrics = () =>
-  apiGet<DetectionMetrics>('/api/metrics/detection')
 
 /** 导出走浏览器下载，不经 fetch。 */
 export const exportReportUrl = (token: Token, id: number) =>

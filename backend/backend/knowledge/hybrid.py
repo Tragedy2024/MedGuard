@@ -142,7 +142,12 @@ class DenseIndex:
         except Exception:
             self._np = None  # numpy 不可用 → Python 余弦兜底
 
-    def search(self, query: str, top_k: int) -> List[Tuple[corpus.Doc, float]]:
+    def search(self, query: str, top_k: int, *,
+               filters: Optional[corpus.MetadataFilter] = None) -> List[Tuple[corpus.Doc, float]]:
+        eligible = [i for i, doc in enumerate(self.docs)
+                    if filters is None or filters.matches(doc)]
+        if not eligible or top_k <= 0:
+            return []
         qv = list(self._encoder.encode_query(query))
         if not qv:
             return []
@@ -153,20 +158,21 @@ class DenseIndex:
                 nq = float(np.linalg.norm(q))
                 if nq > 0:
                     q = q / nq
-                scores = self._np @ q
+                matrix = self._np if len(eligible) == len(self.docs) else self._np[eligible]
+                scores = matrix @ q
                 order = np.argsort(-scores)
                 hits = []
                 for i in order:
                     s = float(scores[i])
                     if s < self._min_score:
                         break
-                    hits.append((self.docs[int(i)], s))
+                    hits.append((self.docs[eligible[int(i)]], s))
                     if len(hits) >= top_k:
                         break
                 return hits
             except Exception:
                 pass  # 运行时故障 → 走 Python 逐条余弦
-        hits = [(d, _cosine(qv, v)) for d, v in zip(self.docs, self._vectors)]
+        hits = [(self.docs[i], _cosine(qv, self._vectors[i])) for i in eligible]
         hits = [(d, s) for d, s in hits if s >= self._min_score]
         hits.sort(key=lambda x: x[1], reverse=True)
         return hits[:top_k]
@@ -335,14 +341,17 @@ class HybridRetriever:
                        cache_label="opencmkg")
             if self._extra_docs and encoder is not None else None)
 
-    def search(self, query: str, top_k: int = 3) -> List[Tuple[corpus.Doc, float]]:
+    def search(self, query: str, top_k: int = 3, *,
+               filters: Optional[corpus.MetadataFilter] = None) -> List[Tuple[corpus.Doc, float]]:
+        if top_k <= 0:
+            return []
         primary_rankings: List[List[Tuple[corpus.Doc, float]]] = [
             self._bm25.search(query, top_k=self._candidate_k,
-                              min_score=self._bm25_min_score)
+                              min_score=self._bm25_min_score, filters=filters)
         ]
         if self._dense is not None:
             try:
-                primary_rankings.append(self._dense.search(query, self._candidate_k))
+                primary_rankings.append(self._dense.search(query, self._candidate_k, filters=filters))
             except Exception as exc:  # noqa: BLE001 - 运行时故障必须降级
                 print(f"[rag] BGE 查询失败，回退 BM25：{exc}", flush=True)
                 self._dense = None
@@ -353,14 +362,14 @@ class HybridRetriever:
             try:
                 rankings.append(self._extra_bm25.search(
                     query, top_k=self._candidate_k,
-                    min_score=self._bm25_min_score))
+                    min_score=self._bm25_min_score, filters=filters))
                 weights.append(self._extra_weight)
             except Exception as exc:  # noqa: BLE001 - 第二知识源任何时候都不能连累检索
                 print(f"[rag] OpenCMKG BM25 检索失败，弃用：{exc}", flush=True)
                 self._extra_bm25 = None
         if self._extra_dense is not None:
             try:
-                rankings.append(self._extra_dense.search(query, top_k=self._candidate_k))
+                rankings.append(self._extra_dense.search(query, top_k=self._candidate_k, filters=filters))
                 weights.append(self._extra_weight)
             except Exception as exc:  # noqa: BLE001
                 print(f"[rag] OpenCMKG BGE 查询失败，弃用：{exc}", flush=True)
@@ -450,9 +459,19 @@ def get_retriever(kb: Dict[str, Any]) -> HybridRetriever:
 
 
 def search(kb: Dict[str, Any], query: str,
-           top_k: int = 3) -> List[Tuple[corpus.Doc, float]]:
+           top_k: int = 3, *,
+           filters: Optional[corpus.MetadataFilter] = None) -> List[Tuple[corpus.Doc, float]]:
     """模块唯一业务接口。证据不足时返回空列表，不强行补足 top-k。"""
-    return get_retriever(kb).search(query, top_k=top_k)
+    if top_k <= 0:
+        return []
+    if filters is not None:
+        available = corpus.build_docs(kb)
+        if not any(filters.matches(d) for d in available):
+            extra = opencmkg.load_docs() if config.RAG_OPENCMKG_ENABLED else ()
+            if not any(filters.matches(d) for d in extra):
+                # 所需字段/实体不存在时，无需初始化 BGE 或编码查询。
+                return []
+    return get_retriever(kb).search(query, top_k=top_k, filters=filters)
 
 
 def runtime_status() -> Dict[str, Any]:

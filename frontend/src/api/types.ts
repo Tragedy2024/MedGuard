@@ -871,18 +871,15 @@ export interface components {
         };
         /**
          * SmartDoctorContext
-         * @description 上一轮的识别结果——用来解析「它」「那个」这类**指代**。
-         *
-         *     为什么带的是**已解析的结果**而不是上一轮的原话：链式追问会退化。
-         *     「我的血糖结果正常吗」→「它正常吗」→「严重吗」，如果每一轮都把
-         *     **原话**传下去，第二轮回解析「它正常吗」同样得不到实体，第三轮就断了。
-         *     传解析结果则每轮都在往前推进。
+         * @description 上一轮的识别结果，用于解析明确的指代式追问。
          */
         SmartDoctorContext: {
             /** Intent */
             intent: string;
             /** Entity */
             entity?: string | null;
+            /** @default false */
+            personal: boolean;
         };
         /**
          * SmartDoctorDataBlock
@@ -997,6 +994,24 @@ export interface components {
              * @default
              */
             trace_id: string;
+            retrieval_plan?: components["schemas"]["SmartDoctorRetrievalPlan"] | null;
+        };
+        /**
+         * SmartDoctorRetrievalPlan
+         * @description 服务器选择的取数策略；用于追踪，不赋予任何数据访问权限。
+         */
+        SmartDoctorRetrievalPlan: {
+            /**
+             * Strategy
+             * @enum {string}
+             */
+            strategy: "personal_sql" | "structured_lookup" | "hybrid" | "clarify" | "insufficient";
+            /** Reason */
+            reason: string;
+            /** Filters */
+            filters?: {
+                [key: string]: string[];
+            };
         };
         /**
          * Token

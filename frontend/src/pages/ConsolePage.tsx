@@ -6,6 +6,7 @@ import { useAuth } from '../store/auth'
 import { presetsFor } from '../store/presets'
 import { AdmissionPanel } from '../components/AdmissionPanel'
 import { DegradationBadge } from '../components/DegradationBadge'
+import { ECL_TEXT } from '../components/EclTag'
 import { ResultTable } from '../components/ResultTable'
 import { errorStatus, errorText } from '../api/client'
 
@@ -171,7 +172,7 @@ function Console() {
               <p>
                 {slow
                   ? '首次提问约需一分钟，之后就快了。审计阶段仍不调用模型、不访问数据库。'
-                  : '先判断访问边界，再检查中间结果是否会暴露受控列。'}
+                  : `先判断访问边界，再检查中间结果是否会暴露 ${ECL_TEXT.controlled} 列。`}
               </p>
             </div>
           </div>

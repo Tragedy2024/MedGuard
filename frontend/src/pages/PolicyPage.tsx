@@ -85,7 +85,7 @@ export function PolicyPage() {
 
       <p className="hint">
         策略是<strong>会腐烂的资产</strong>——新增一列若未标注，医盾会
-        <strong>静默放行</strong>该列（SSA 对未标注列默认按「自由」处理）。
+        <strong>静默放行</strong>该列（SSA 对未标注列默认按「{ECL_TEXT.free}」处理）。
         因此本平台把逐列标注做成一等公民的工作流，而非一次性配置。
       </p>
 

@@ -302,15 +302,10 @@ class HealthInfo(BaseModel):
 # ════════════════════════════════════════════════════════════════
 
 class SmartDoctorContext(BaseModel):
-    """上一轮的识别结果——用来解析「它」「那个」这类**指代**。
-
-    为什么带的是**已解析的结果**而不是上一轮的原话：链式追问会退化。
-    「我的血糖结果正常吗」→「它正常吗」→「严重吗」，如果每一轮都把
-    **原话**传下去，第二轮回解析「它正常吗」同样得不到实体，第三轮就断了。
-    传解析结果则每轮都在往前推进。
-    """
+    """上一轮的识别结果，用于解析明确的指代式追问。"""
     intent: str
     entity: Optional[str] = None
+    personal: bool = False
 
 
 class SmartDoctorRequest(BaseModel):
@@ -359,6 +354,13 @@ class SmartDoctorEvidenceInfo(BaseModel):
     message: str = ""
 
 
+class SmartDoctorRetrievalPlan(BaseModel):
+    """服务器选择的取数策略；用于追踪，不赋予任何数据访问权限。"""
+    strategy: Literal["personal_sql", "structured_lookup", "hybrid", "clarify", "insufficient"]
+    reason: str
+    filters: Dict[str, List[str]] = Field(default_factory=dict)
+
+
 class SmartDoctorResponse(BaseModel):
     intent: Literal["lab", "medication", "symptom", "disease", "fallback"]
     # 本轮命中的知识条目名（如「血糖」）。前端拿它作为下一轮的 context 回传，
@@ -376,3 +378,4 @@ class SmartDoctorResponse(BaseModel):
     audit_status: Literal["not_applicable", "passed", "blocked"] = "not_applicable"
     report_id: Optional[int] = None
     trace_id: str = ""
+    retrieval_plan: Optional[SmartDoctorRetrievalPlan] = None

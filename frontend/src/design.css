@@ -1303,22 +1303,6 @@ a { color: inherit; }
 }
 .metrics-export:hover { border-bottom-color: var(--on-brand); }
 
-/* ── 检测效能 ───────────────────────────────────────── */
-
-.metrics-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 14px; }
-@media (max-width: 760px) { .metrics-grid { grid-template-columns: 1fr; } }
-
-.metric {
-  background: var(--paper-raised); border: 1px solid var(--line); border-radius: 2px;
-  padding: 24px 18px; text-align: center;
-}
-.metric-value {
-  font-family: var(--font-mono); font-size: 44px; font-weight: 500; line-height: 1.05;
-  color: var(--brand-deep); font-feature-settings: 'tnum' 1;
-}
-.metric-name { font-size: 13.5px; color: var(--ink-soft); margin: 7px 0 9px; }
-.metric-detail { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-faint); }
-
 /* ── 安全报告：左列表 + 右详情 ─────────────────────── */
 
 .report-split { display: grid; grid-template-columns: minmax(260px, 330px) 1fr; gap: 22px; align-items: start; }
@@ -1406,7 +1390,6 @@ a { color: inherit; }
 /* ⑤ 层次：卡片离开地面一点点。阴影**带品牌色相**而不是黑，与冷蓝地面同源。 */
 .card,
 .panel,
-.metric,
 .schema-table,
 .report-list button {
   box-shadow: 0 1px 2px rgba(18, 54, 90, 0.045);
@@ -1419,7 +1402,7 @@ a { color: inherit; }
 
 /* ⑥ 圆角分级：内层紧、外层松。全站 2px 时，嵌套看起来像同一层。 */
 .ecl, .col-pk, .plan-id, .count, .table-chip, .metrics-scope { border-radius: 2px; }
-.card, .panel, .metric, .schema-table, .admission, .event-card, .plan-item { border-radius: 3px; }
+.card, .panel, .schema-table, .admission, .event-card, .plan-item { border-radius: 3px; }
 .empty-state, .login-mark, .brand-mark { border-radius: 4px; }
 
 /* ⑦ 视口高度用 dvh —— iOS Safari 的 100vh 会在地址栏收放时跳。 */
@@ -1430,17 +1413,6 @@ html { scroll-behavior: smooth; }
 
 /* ⑨ 孤行：正文段落统一交给浏览器处理末行 */
 .hint, .domain-note, .metrics-caveat, .rewrite-log li { text-wrap: pretty; }
-
-/* ⑩ 三张等宽卡片是最泛的 AI 布局。效能指标只有三个，改成
-    **主次分明**：禁止列检出是这套引擎最核心的能力，给它更大的权重。 */
-.metrics-grid { grid-template-columns: 1.4fr 1fr 1fr; }
-.metrics-grid > .metric:first-child { text-align: left; padding-left: 26px; }
-.metrics-grid > .metric:first-child .metric-value { font-size: 56px; }
-
-@media (max-width: 760px) {
-  .metrics-grid { grid-template-columns: 1fr; }
-  .metrics-grid > .metric:first-child .metric-value { font-size: 44px; }
-}
 
 /* ⑫ 路由转场 —— 来自 ui-ux-pro-max 的 gsap 域：
    「**Exit animation should always resolve faster than entrance**，

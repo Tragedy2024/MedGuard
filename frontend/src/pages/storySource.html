@@ -23,8 +23,9 @@
   <a href="#problem" data-chapter-link="problem" aria-label="02 噪声"><span>02</span><i></i><b>噪声</b></a>
   <a href="#pivot" data-chapter-link="pivot" aria-label="03 重构"><span>03</span><i></i><b>重构</b></a>
   <a href="#platform" data-chapter-link="platform" aria-label="04 平台"><span>04</span><i></i><b>平台</b></a>
-  <a href="#data" data-chapter-link="data" aria-label="05 数据"><span>05</span><i></i><b>数据</b></a>
-  <a href="#security" data-chapter-link="security" aria-label="06 安全"><span>06</span><i></i><b>安全</b></a>
+  <a href="#roles" data-chapter-link="roles" aria-label="05 使用场景"><span>05</span><i></i><b>使用场景</b></a>
+  <a href="#data" data-chapter-link="data" aria-label="06 数据"><span>06</span><i></i><b>数据</b></a>
+  <a href="#security" data-chapter-link="security" aria-label="07 安全"><span>07</span><i></i><b>安全</b></a>
 </nav>
 
 <main id="main">
@@ -65,7 +66,7 @@
     </aside>
 
     <div class="hero-foot">
-      <a class="scroll-cue" href="#problem">向下，进入故事的六个章节 <span aria-hidden="true">↓</span></a>
+      <a class="scroll-cue" href="#problem">向下，继续了解医盾 <span aria-hidden="true">↓</span></a>
       <button class="live-chip" id="motionHome" type="button" aria-pressed="false"><i aria-hidden="true"></i><span id="gpuStatus">实时生成 · WEBGL2</span></button>
     </div>
   </section>
@@ -74,7 +75,7 @@
     <div class="chapter-inner">
       <header class="section-head" data-reveal>
         <div>
-          <p class="section-index">02 / 06 · 背景</p>
+          <p class="section-index">02 / 07 · 背景</p>
           <h2 id="problem-title">信息很多，<br>但<em>下一步</em>并不清楚。</h2>
         </div>
         <p class="section-lead">搜到的内容越来越多，真正能放心参考的却不容易找到。用户需要的不是再打开几个网页，而是先弄清楚：这条信息从哪里来，和自己有没有关系，接下来应该怎么办。</p>
@@ -122,14 +123,14 @@
 
       <div class="problem-quote" data-reveal>
         <strong>问题不是“没有信息”，<br>而是没有一条可以走完的路。</strong>
-        <p>从提出问题、核对来源，到理解自己的数据、知道下一步去哪里——每一段都需要重新建立信任。MedGuard 医盾从这条断开的路径开始。</p>
+        <p>诊室里，医生想快一点查到需要的信息。回家后，患者还想弄明白报告和用药。医院信息科要把账号开给对的人，让每个人只看到自己有权查看的资料。</p>
       </div>
     </div>
   </section>
 
   <section class="pivot" id="pivot" data-chapter="pivot" aria-labelledby="pivot-title">
     <div class="chapter-inner">
-      <p class="eyebrow" data-reveal>03 / 06 · 重构</p>
+      <p class="eyebrow" data-reveal>03 / 07 · 重构</p>
       <h2 id="pivot-title" data-reveal>把散落的答案，<br>接成一条<em>可验证</em>的路径。</h2>
       <p class="pivot-copy" data-reveal>医学知识问题，先找到依据，再组织回答；涉及院内数据时，系统会先检查查询计划，确认可以访问后才执行。<br>回答会标明来源。谁能看、能看到多少，由登录身份决定；检查过程可以在安全报告中回看。</p>
       <div class="pivot-mark" data-reveal aria-hidden="true">
@@ -147,7 +148,7 @@
     <div class="chapter-inner">
       <header class="section-head" data-reveal>
         <div>
-          <p class="section-index">04 / 06 · 平台</p>
+          <p class="section-index">04 / 07 · 平台</p>
           <h2 id="platform-title">一个入口，<br>连接问题与<em>下一步</em>。</h2>
         </div>
         <p class="section-lead">这不只是一个搜索框。用户可以在同一处查知识、看报告、找就医方向，也可以在授权范围内查询院内记录。每一步都会说明内容来自哪里、当前身份可以查看什么。</p>
@@ -183,11 +184,66 @@
     </div>
   </section>
 
+  <section class="chapter role-story" id="roles" data-chapter="roles" aria-labelledby="roles-title">
+    <div class="chapter-inner">
+      <header class="section-head" data-reveal>
+        <div>
+          <p class="section-index">05 / 07 · 使用场景</p>
+          <h2 id="roles-title">一次就诊，<br>三个人<em>怎么用医盾</em>？</h2>
+        </div>
+        <p class="section-lead">医生在院内查工作所需的数据，患者回家后能再看自己的记录。两边用的是同一个入口，账号由医院信息科统一开通。</p>
+      </header>
+
+      <div class="role-story-grid">
+        <article class="role-story-card" data-reveal>
+          <span class="role-story-name">医生</span>
+          <h3>少花时间找数据</h3>
+          <p>想知道各科室接诊量，直接用中文提问。系统先审计，再返回权限范围内的统计，省去手动翻表和汇总的步骤。</p>
+        </article>
+        <article class="role-story-card" data-reveal style="--delay: .08s">
+          <span class="role-story-name">患者</span>
+          <h3>回家后，再看看自己的记录</h3>
+          <p>忘了上次血糖是多少，或者想再看医生开的药怎么吃，登录后就能查自己的检验和用药记录，查看相应的说明。</p>
+        </article>
+        <article class="role-story-card role-story-card-admin" data-reveal style="--delay: .16s">
+          <span class="role-story-name">信息科管理员</span>
+          <h3>把账号和患者身份对上</h3>
+          <p>开通账号时设置角色、核对绑定。日常可以维护数据源和查询策略，也能在安全报告里回看查询的审计结果。</p>
+        </article>
+      </div>
+
+      <div class="role-onboarding">
+        <header class="role-onboarding-head" data-reveal>
+          <h3>患者账号怎么开通？</h3>
+          <p>账号绑定的是患者编号，同一个编号可以关联这个患者的多次就诊记录。</p>
+        </header>
+        <ol class="role-onboarding-steps" role="list">
+          <li data-reveal>
+            <strong>医院建档</strong>
+            <span>医院建立患者档案，生成患者编号。</span>
+          </li>
+          <li data-reveal style="--delay: .06s">
+            <strong>确认是否开通</strong>
+            <span>医院按自己的流程决定是否为患者开通。</span>
+          </li>
+          <li data-reveal style="--delay: .12s">
+            <strong>信息科建号并绑定</strong>
+            <span>创建患者账号，绑定院内患者编号。</span>
+          </li>
+          <li data-reveal style="--delay: .18s">
+            <strong>患者登录查看</strong>
+            <span>登录后，按绑定的身份查本人的记录。</span>
+          </li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
   <section class="chapter data-section" id="data" data-chapter="data" aria-labelledby="data-title">
     <div class="chapter-inner">
       <header class="data-head" data-reveal>
         <div>
-          <p class="section-index">05 / 06 · 数据底座</p>
+          <p class="section-index">06 / 07 · 数据底座</p>
           <h2 id="data-title">开源数据，<br>先被理解，<br>才被使用。</h2>
         </div>
         <p class="data-source">
@@ -249,7 +305,7 @@
   <section class="chapter security" id="security" data-chapter="security" aria-labelledby="security-title">
     <div class="chapter-inner security-grid">
       <div class="security-copy" data-reveal>
-        <p class="section-index">06 / 06 · 安全</p>
+        <p class="section-index">07 / 07 · 安全</p>
         <h2 id="security-title">答案抵达之前，<br>先经过一道<em>静态安全门</em>。</h2>
         <p class="lead">在查询真正执行前，医盾会先检查：当前身份能不能查，以及查询过程中是否带出了不需要的敏感字段。这一步只分析查询计划，不调用模型，也不读取数据库；规则和输入相同，审计结果也相同。</p>
         <div class="security-metrics">

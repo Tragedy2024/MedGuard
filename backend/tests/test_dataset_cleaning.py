@@ -1,5 +1,6 @@
 """OpenCMKG 派生 JSON 的污染回归测试。"""
 import importlib.util
+import io
 import json
 from pathlib import Path
 
@@ -104,3 +105,30 @@ def test_generated_medical_json_has_no_confirmed_pollution(tmp_path):
         "中枢神经抑制药", "HBV与HCV", "白细胞计数(WBC)",
     ]:
         assert polluted not in symptom_values
+
+
+def test_source_rebuild_preserves_csv_and_isolates_unreviewed_relations(tmp_path):
+    b = _builder()
+    triples = tmp_path / "triples.txt"
+    triples.write_text(
+        "示例病,disease_belong_department,小儿内科\n"
+        "示例病,disease_belong_department,呼吸内科\n"
+        '示例病,disease_need_check,"耳,鼻,咽拭子细菌培养"\n'
+        "示例病,disease_acompany_disease,另一疾病\n"
+        "示例病,disease_recommand_drug,示例药品\n"
+        "示例病,SameAs,另一疾病\n"
+        ",SameAs,另一疾病\n",
+        encoding="utf-8",
+    )
+    log = io.StringIO()
+    disease, symptoms, links = b._make_tables(*b._read_source(triples, log))
+    card = disease["diseases"]["示例病"]
+    assert card["checks"] == ["耳,鼻,咽拭子细菌培养"]
+    assert card["source_lines"]["checks"] == [3]
+    assert card["departments"] == ["小儿内科", "呼吸内科"]
+    assert "dept" not in card
+    assert symptoms["alias_map"]["auto"] == {}
+    assert [json.loads(line)["line"] for line in log.getvalue().splitlines()] == [4, 5, 6, 7]
+    doc = b._make_documents(disease, symptoms, links)["documents"][0]
+    assert "耳,鼻,咽拭子细菌培养" in doc["text"]
+    assert "示例药品" not in doc["text"]

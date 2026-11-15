@@ -53,15 +53,31 @@ def load_docs() -> List[corpus.Doc]:
                     text=e.get("text") or "",
                     source="OpenCMKG",
                     source_title="OpenCMKG（开源中文医学知识图谱）",
-                    source_version=e.get("source_version") or "",
+                    source_version=str(e.get("source_version") or
+                                       (data.get("_meta") or {}).get("generated") or ""),
                     license=e.get("license") or "仅学术研究，不得商用",
                     quality_tier="opencmkg",
+                    entity_id=e.get("key") or name,
+                    sections=_sections(e.get("text") or ""),
                 ))
         except Exception:  # noqa: BLE001 - 文件缺失/损坏/形状异常都降级，
             # 第二知识源不能以任何方式连累第一知识源（含 JSON 顶层非对象等形状错误）
             docs = []
         _CACHE = docs
         return docs
+
+
+def _sections(text: str):
+    """只识别导出脚本的字段标签，未知字段不猜测。"""
+    labels = {"关联症状": "symptoms", "关联检查": "checks",
+              "就诊科室": "department", "可能就诊科室": "department",
+              "关联疾病": "diseases"}
+    out = []
+    for part in text.split("；"):
+        label, sep, value = part.partition("：")
+        if sep and label in labels and value.strip():
+            out.append((labels[label], part))
+    return tuple(out)
 
 
 def reset() -> None:

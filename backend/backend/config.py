@@ -6,6 +6,7 @@
   （默认与 MedGuard 同级的 NL2SQL 仓库），最后回退到已安装的包。
   仓库挪位置、或接入真实数据源时，只需改环境变量，不动代码。
 """
+import json
 import os
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -117,6 +118,35 @@ METADATA_DATABASE_URL = "" if _TESTING else (
 LLM_API_KEY = (os.environ.get("OPENAI_API_KEY") or "") if not _TESTING else ""
 LLM_API_BASE = os.environ.get("OPENAI_API_BASE") or "https://api.deepseek.com/v1"
 LLM_MODEL = os.environ.get("MODEL_NAME") or "deepseek-v4-pro"
+
+# 有 Key 时自动启用，产品仍只发送内置示例或人工审核的公开问句。
+_JEV_MODE = os.environ.get("MEDGUARD_JEV_ENABLED", "auto").strip().lower()
+JEV_API_KEY = (os.environ.get("JEV_API_KEY", "").strip()
+               if not _TESTING and _JEV_MODE in {"auto", "1"} else "")
+JEV_ENABLED = bool(JEV_API_KEY)
+_DEFAULT_JEV_QUESTIONS = frozenset({
+    "甲状腺结节是咋回事",
+    "帕金森病这几个字是什么意思",
+    "黄斑变性是个啥情况",
+})
+
+
+def _approved_jev_questions() -> frozenset[str]:
+    if not JEV_API_KEY:
+        return frozenset()
+    configured = os.environ.get("MEDGUARD_JEV_APPROVED_QUESTIONS")
+    if configured is None:
+        return _DEFAULT_JEV_QUESTIONS
+    try:
+        questions = json.loads(configured)
+    except ValueError:
+        return frozenset()
+    if not isinstance(questions, list):
+        return frozenset()
+    return frozenset(q.strip() for q in questions if isinstance(q, str) and q.strip())
+
+
+JEV_APPROVED_QUESTIONS = _approved_jev_questions()
 
 # ── RAG 检索（默认尝试本地 BGE；不可用时自动降级为 BM25）──────────
 #

@@ -34,7 +34,7 @@ const TASKS: Task[] = [
     label: '我不舒服，不知道挂什么科',
     prompt: '请描述您的具体症状，例如：我胸痛、我头晕、我胃痛',
   },
-  { key: 'lab', label: '帮我看懂检查报告', question: '帮我看懂检查报告' },
+  { key: 'lab', label: '帮我看懂检查报告', question: '帮我看懂我的检查报告' },
   { key: 'med', label: '医生开的药怎么吃', question: '医生给我开的药怎么吃' },
   {
     key: 'disease',
@@ -103,7 +103,11 @@ function SmartDoctor() {
     // 把**上一轮的识别结果**交给后端，用来解析「它」「那个」这类指代。
     const prev = messages.filter((m) => m.role === 'doctor' && m.resp).at(-1)?.resp
     const context = prev
-      ? { intent: prev.intent, entity: prev.entity ?? null }
+      ? {
+          intent: prev.intent,
+          entity: prev.entity ?? null,
+          personal: prev.retrieval_plan?.strategy === 'personal_sql' && prev.audit_status === 'passed',
+        }
       : undefined
 
     setMessages((m) => [...m, { role: 'user', text: question }])

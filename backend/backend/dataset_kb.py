@@ -16,12 +16,11 @@
 事实与建议**不混同**——这和医盾「零 LLM」的立场是一致的：
 能确定的部分不交给模型，交给模型的部分明确标注。
 
-**口语映射不是医学知识，是语言常识**：「嗓子疼」=「咽痛」任何中文使用者
-都知道，不涉及"什么病、怎么治"。23 条由数据集的 `SameAs` 同义边自动推导，
-8 条人工补（见 build_dataset_tables.py 的 MANUAL_ALIASES）。
+口语映射使用构建脚本的显式清单。加载器仍兼容旧文件的 auto 字段。
 """
 import json
 import os
+import re
 import threading
 from typing import Any, Dict, List, Optional
 
@@ -57,7 +56,8 @@ def source_note(filename: str = SYMPTOM_FILE) -> str:
     name = meta.get("source", "")
     if not name:
         return ""
-    return f"{name}（开源中文医学知识图谱）"
+    review = meta.get("review_status")
+    return f"{name}（{review}）" if review else f"{name}（开源中文医学知识图谱）"
 
 
 # ── 症状 → 就诊科室 ──────────────────────────────────────────
@@ -115,13 +115,22 @@ DISEASE_FIELDS = [
 ]
 
 
-def lookup_disease(name: str) -> Optional[Dict[str, Any]]:
-    """查一个疾病的事实卡片。解析不到返回 None。"""
+def lookup_disease(name: str, *, exact: bool = False) -> Optional[Dict[str, Any]]:
+    """查疾病事实卡。exact 仅允许规范名或归一化后相同的名称。"""
     if not name:
         return None
     diseases = _load(DISEASE_FILE).get("diseases") or {}
     if name in diseases:
         return {"matched": name, "facts": diseases[name]}
+
+    from backend.knowledge.corpus import normalize_entity
+    normalized = normalize_entity(name)
+    for canonical in diseases:
+        if normalize_entity(canonical) == normalized:
+            return {"matched": canonical, "facts": diseases[canonical]}
+    # 显式子型不能以包含匹配回退到父疾病。
+    if exact or re.match(r"[12]型", normalized):
+        return None
 
     # 疾病名也可能有别名（数据集的 SameAs），目前只做前缀/包含的保守匹配：
     # 「2型糖尿病」→「糖尿病」这类。**不做模糊匹配**——错配疾病比答不上来更糟。
@@ -129,6 +138,11 @@ def lookup_disease(name: str) -> Optional[Dict[str, Any]]:
         if d and (d in name or name in d):
             return {"matched": d, "facts": diseases[d]}
     return None
+
+
+def disease_names() -> List[str]:
+    """供任务路由做完整名字匹配，读进程缓存，不加载向量模型。"""
+    return list((_load(DISEASE_FILE).get("diseases") or {}).keys())
 
 
 def match_disease(question: str) -> Optional[str]:
@@ -164,5 +178,6 @@ def disease_fact_lines(facts: Dict[str, Any]) -> List[Dict[str, str]]:
         if vals:
             out.append({"ref_title": label, "ref_kind": "数据集事实",
                         "ref_source": source_note(DISEASE_FILE),
-                        "ref_excerpt": "、".join(vals)})
+                        "ref_excerpt": "、".join(vals[:5]),
+                        "ref_total": len(vals)})
     return out

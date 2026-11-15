@@ -48,7 +48,9 @@ from typing import Any, Dict, List, Optional, Tuple
 import yaml
 
 from backend import config
-from backend import dataset_kb
+from backend import dataset_kb, jev_client
+from backend.knowledge.corpus import MetadataFilter
+from backend.knowledge.strategy import DEPARTMENT_QUESTION_SIGNALS, VAGUE_SYMPTOM_SIGNALS
 from backend.redflags import check as redflag_check
 from backend.labels import DEGRADATION_MESSAGES
 from backend.schemas import Token
@@ -163,12 +165,25 @@ def load_knowledge() -> Dict[str, Any]:
 
 # ── 意图识别（确定性关键词，零 LLM） ──────────────────────────
 
-_ASK_DEPT = ("挂什么科", "看什么科", "挂哪个科", "该挂", "挂科", "看哪个科",
-             "去哪个科", "什么科室")
+_DEPARTMENT_FOLLOWUP = re.compile(
+    r"(?:请问)?(?:它|这个病|这种病|该病|那(?:么)?)?(?:应该|该|要)?"
+    r"(?:去|到)?(?:挂|看|去|到)?(?:什么|哪个|哪一|哪|啥)科(?:室)?[？?。！!\s]*"
+)
+_FOLLOWUP = re.compile(
+    r"(?:那(?:么)?[，, ]*)?(?:它|这个(?:病|结果|药)?|那个(?:结果|药)?|这项(?:检查)?|这种(?:病|药)?)?"
+    r"(?:还|又|也|到底)?(?:正常吗|正常么|正不正常|严重吗|严重么|怎么办|"
+    r"什么意思|有影响吗|为什么(?:会发生)?|怎么(?:吃|服用)|有什么(?:用|副作用)|呢)[？?。！!\s]*"
+)
+_COLLOQUIAL_SYMPTOMS = {
+    "睡不踏实": "睡眠障碍",
+    "睡不安稳": "睡眠障碍",
+    "没力气": "乏力",
+}
 _MED_SIGNALS = ("怎么吃", "怎么服用", "用法", "用量", "吃法", "服药", "吃药",
-                "服用")
+                "服用", "开的药", "开的啥", "开了啥", "开了什么药", "处方", "药单",
+                "用药记录")
 _LAB_SIGNALS = ("报告", "结果", "检查", "化验", "指标", "正常吗", "正常么",
-                "参考范围", "检测")
+                "参考范围", "检测", "抽血", "验过")
 _DISEASE_SIGNALS = ("想了解", "是什么病", "这种病", "这个病", "了解一下",
                     "科普")
 # 2026-10 医学安全评测（C7）发现：「颈椎病一般做什么检查」被 _LAB_SIGNALS
@@ -280,12 +295,25 @@ def parse_intent(question: str) -> Tuple[str, Optional[str]]:
     diseases = kb.get("diseases") or {}
     symptoms = kb.get("symptoms") or []
 
-    # 0) 明确要挂科 → symptom（感冒了该挂什么科，不能落到 disease）
-    if any(s in question for s in _ASK_DEPT):
+    # 含症状的挂科问题保留导诊路径。完整病名中的词不算用户自述症状。
+    if any(s in question for s in DEPARTMENT_QUESTION_SIGNALS):
+        disease = max(
+            [dataset_kb.match_disease(question) or "",
+             *(name for name in diseases if name in question)],
+            key=len,
+        )
+        symptom_query = question
+        if disease and not _symptom_key_matched(disease, symptoms):
+            symptom_query = question.replace(disease, "")
         for sym in symptoms:
             for k in (sym.get("aliases") or []):
-                if k and k in question:
+                if k and k in symptom_query:
                     return INTENT_SYMPTOM, k
+        for phrase, canonical in _COLLOQUIAL_SYMPTOMS.items():
+            if phrase in symptom_query:
+                return INTENT_SYMPTOM, canonical
+        if disease:
+            return INTENT_DISEASE, disease
         return INTENT_SYMPTOM, None
 
     # 1) 用药（命中药名或出现"怎么吃/用法"信号）
@@ -356,7 +384,10 @@ def parse_intent(question: str) -> Tuple[str, Optional[str]]:
         for k in (sym.get("aliases") or []):
             if k and k in question:
                 return INTENT_SYMPTOM, k
-    if any(s in question for s in ("不舒服", "症状", "哪里难受")):
+    for phrase, canonical in _COLLOQUIAL_SYMPTOMS.items():
+        if phrase in question:
+            return INTENT_SYMPTOM, canonical
+    if any(s in question for s in ("不舒服", "症状", *VAGUE_SYMPTOM_SIGNALS)):
         return INTENT_SYMPTOM, None
 
     return INTENT_FALLBACK, None
@@ -598,24 +629,32 @@ def _parse_llm_json(text: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def _retrieve_context(question: str, top_k: int = 3) -> List[Dict[str, Any]]:
+def _retrieve_context(question: str, top_k: int = 3, *,
+                      filters: Optional[MetadataFilter] = None) -> List[Dict[str, Any]]:
     """从知识库里检索与问题相关的条目 —— **RAG 的检索（R）那一步**。
 
-    纯本地 BM25，**这一步不调模型**。检索不可用时返回空列表：知识库检索
-    失败不该连累整个问答，没有上下文就退回原来的纯生成路径。
+    本地 BGE + BM25，经元数据过滤后融合排名；BGE 不可用时降为 BM25。
+    检索失败或过滤无命中返回空列表，上层不得无证据生成医学事实。
 
     注意与实体识别的区别：那里问"用户在问**哪一条**"（用别名精确匹配），
     这里问"哪些条目的**内容**与问题相关"——所以索引含正文，见
     backend/knowledge/corpus.py 的 doc_text_for_index。
     """
     try:
-        from backend.knowledge import corpus, hybrid
+        from backend.knowledge import corpus, hybrid, strategy
         kb = load_knowledge()
         if not kb:
             return []
-        hits = hybrid.search(kb, question, top_k=top_k)
+        if filters is None:
+            intent, entity = parse_intent(question)
+            plan = strategy.choose(question, intent, entity, kb,
+                                   disease_names=dataset_kb.disease_names())
+            if plan.strategy in {"clarify", "insufficient"}:
+                return []
+            filters = plan.filters
+        hits = hybrid.search(kb, question, top_k=top_k, filters=filters)
     except Exception as exc:      # noqa: BLE001 - 检索失败不连累问答
-        print(f"[smart-doctor] 知识库检索不可用，退回无上下文作答：{exc}",
+        print(f"[smart-doctor] 知识库检索不可用，返回空证据：{exc}",
               flush=True)
         return []
 
@@ -627,7 +666,7 @@ def _retrieve_context(question: str, top_k: int = 3) -> List[Dict[str, Any]]:
             "ref_title": doc.name,
             "ref_kind": corpus.KIND_LABELS.get(doc.kind, ""),
             "ref_source": doc.source,
-            "ref_excerpt": doc.text,
+            "ref_excerpt": corpus.evidence_text(doc, filters),
             "ref_id": doc.id,
             "ref_score": round(score, 2),
             "ref_source_type": (
@@ -636,6 +675,9 @@ def _retrieve_context(question: str, top_k: int = 3) -> List[Dict[str, Any]]:
             "ref_quality_tier": doc.quality_tier,
             "ref_source_version": doc.source_version,
             "ref_license": doc.license,
+            "ref_entity": doc.entity_id or doc.key,
+            "ref_fields": [k for k, text in doc.sections if text
+                           and (not filters.fields or k in filters.fields)],
         })
     return refs
 
@@ -805,9 +847,32 @@ def _apply_ai_fallback(base: Dict[str, Any], question: str) -> bool:
     """
     if not config.LLM_API_KEY:
         return False
-    refs = _retrieve_context(question)
+    if base.get("retrieval_plan"):
+        base["retrieval_plan"]["strategy"] = "hybrid"
+        base["retrieval_plan"]["reason"] = "直接查表不足，使用受元数据约束的混合检索"
+    selected_filters = (base.get("retrieval_plan") or {}).get("filters") or {}
+    if selected_filters:
+        filters = MetadataFilter(**{k: tuple(v) for k, v in selected_filters.items()})
+        refs = _retrieve_context(question, filters=filters)
+    else:
+        refs = _retrieve_context(question)
     if not refs:
         return False
+    plan = base.get("retrieval_plan") or {}
+    wanted = (plan.get("filters") or {}).get("entities") or []
+    if len(wanted) > 1:
+        from backend.knowledge.corpus import normalize_entity
+        found = {normalize_entity(r.get("ref_entity") or "") for r in refs}
+        if not all(normalize_entity(e) in found for e in wanted):
+            base["interpretation"] = {
+                "source": _SOURCE_KB, "title": "比较资料不足",
+                "text": "未找到覆盖所有比较对象的证据，暂不能给出完整比较。",
+                "items": refs,
+            }
+            base["advice"] = {"source": _SOURCE_KB, "text": "请补充具体对象或咨询医生。",
+                              "actions": ["补充比较对象"], "urgent": False}
+            base["_evidence_insufficient"] = True
+            return True
     ai = ai_triage(question, refs=refs)
     if ai is None:
         # 模型不可用、输出不合法或证据门禁不通过时，仍可直接展示原始证据；
@@ -843,39 +908,16 @@ def _apply_ai_fallback(base: Dict[str, Any], question: str) -> bool:
 # ── 入口 ──────────────────────────────────────────────────────
 
 def _resolve_with_context(intent: str, entity: Optional[str],
-                          context: Optional[Dict[str, Any]]
+                          context: Optional[Dict[str, Any]], *, question: str
                           ) -> Tuple[str, Optional[str]]:
-    """用上一轮的识别结果补上这一轮缺失的部分（「它」「那个」这类指代）。
-
-    **规则刻意保守**——只在确实缺信息时才补，两种情形：
-
-      1. 本轮**完全没识别出意图**（fallback）→ 整轮沿用上一轮。
-         「我的血糖结果正常吗」→「严重吗」：第二句自身没有话题，
-         但它显然是接着上一句问的。
-      2. 本轮识别出了意图、但**没识别出实体**，且**意图与上一轮相同**
-         → 只把实体补上。
-         「我的血糖结果正常吗」→「它正常吗」：第二句能判出是在问检验
-         （「正常吗」是检验信号），但不知道问的是哪一项。
-
-    **第 2 条的"意图相同"是关键，不是多余的谨慎。** 患者先问血糖、再问
-    「医生开的药怎么吃」，意图从 lab 变成 medication——这时**绝不能**把
-    「血糖」当药品名带过去：那会去查 `drug_name='血糖'`，一条都查不到，
-    患者拿到的是"未找到用药记录"，比不补还糟。
-    """
-    if not context:
+    """只给指代式短追问补上一轮已识别的对象。"""
+    if not context or entity or not _FOLLOWUP.fullmatch(question.strip()):
         return intent, entity
-
     prev_intent = context.get("intent")
     prev_entity = context.get("entity")
-    if not prev_intent:
-        return intent, entity
-
-    if intent == INTENT_FALLBACK:
-        return prev_intent, prev_entity or entity
-
-    if entity is None and prev_entity and intent == prev_intent:
-        return intent, prev_entity
-
+    if prev_entity and prev_intent in {INTENT_LAB, INTENT_MEDICATION, INTENT_SYMPTOM, INTENT_DISEASE}:
+        if intent in {INTENT_FALLBACK, prev_intent}:
+            return prev_intent, prev_entity
     return intent, entity
 
 
@@ -886,6 +928,10 @@ def _finalize(base: Dict[str, Any], question: str) -> Dict[str, Any]:
     确定性规则层（backend/redflags.py），不受模型是否可用影响。
     """
     base["evidence"] = _evidence_status(base)
+    if base.pop("_evidence_insufficient", False):
+        base["evidence"] = {"status": "insufficient", "references": len(
+            (base.get("interpretation") or {}).get("items") or []),
+            "model_used": False, "message": "现有证据未覆盖本次问题。"}
     flags = redflag_check(question)
     advice = base.get("advice")
     if advice and flags:
@@ -964,12 +1010,37 @@ def ask(question: str, subject_id: str,
         datasource_id: str = config.DEMO_DATASOURCE_ID) -> Dict[str, Any]:
     """处理一次提问，返回三块结构的响应（供路由直接返回）。
 
-    `context` 是上一轮的 `{intent, entity}`，用于解析指代（见
+    `context` 是上一轮的意图、实体及本人记录标记，用于解析指代（见
     _resolve_with_context）。不传即等价于单轮问答。
     """
     kb = load_knowledge()
     raw_intent, raw_entity = parse_intent(question)
-    intent, entity = _resolve_with_context(raw_intent, raw_entity, context)
+    intent, entity = _resolve_with_context(raw_intent, raw_entity, context, question=question)
+    if (raw_intent == INTENT_SYMPTOM and raw_entity is None and context
+            and context.get("intent") == INTENT_DISEASE and context.get("entity")
+            and _DEPARTMENT_FOLLOWUP.fullmatch(question.strip())):
+        intent, entity = INTENT_DISEASE, context["entity"]
+    personal_followup = False
+    if raw_entity is None and entity and intent in {INTENT_LAB, INTENT_MEDICATION}:
+        canonical_names = kb.get("lab_tests" if intent == INTENT_LAB else "medications") or {}
+        if entity not in canonical_names:
+            entity = None
+        elif context and context.get("personal") is True:
+            personal_followup = True
+
+    jev_route = None
+    if (intent == INTENT_FALLBACK and jev_client.is_approved(question.strip())
+            and not redflag_check(question)):
+        jev_route = jev_client.classify(question.strip())
+        if jev_route == INTENT_DISEASE:
+            entity = dataset_kb.match_disease(question)
+            if entity:
+                intent = INTENT_DISEASE
+            else:
+                jev_route = "clarify"
+        elif jev_route == INTENT_SYMPTOM:
+            intent = INTENT_SYMPTOM
+            jev_route = "clarify"
     subject = subject_id or ""
 
     base = {
@@ -986,13 +1057,97 @@ def ask(question: str, subject_id: str,
         "trace_id": "",
     }
 
+    from backend.knowledge import corpus, strategy
+    plan = strategy.choose(question, intent, entity, kb,
+                           disease_names=dataset_kb.disease_names(),
+                           personal_followup=personal_followup)
+    if jev_route == "clarify":
+        plan = strategy.RetrievalPlan("clarify", "请补充具体病名或主要症状")
+    elif jev_route == "out_of_scope":
+        plan = strategy.RetrievalPlan("insufficient", "这个问题超出智慧医生的咨询范围")
+    base["retrieval_plan"] = plan.describe()
+    if jev_route in {INTENT_DISEASE, "clarify", "out_of_scope"}:
+        base["retrieval_plan"]["reason"] = f"Jev 辅助分类。{plan.reason}"
+    if plan.strategy != "personal_sql":
+        base["admission"] = {"passed": True, "reason": None,
+                             "checked_tables": [], "bound_to_subject": False}
+        base["degradation"] = {"level": "L0", "label": "通过", "message_cn": "", "message": ""}
+    if plan.strategy in {"clarify", "insufficient"}:
+        text = plan.reason
+        if not text.endswith("？"):
+            text += "。请提供具体症状、疾病名称或希望比较的对象。"
+        base["interpretation"] = {
+            "source": _SOURCE_KB,
+            "title": "请补充具体信息" if plan.strategy == "clarify" else "暂缺对应资料",
+            "text": text,
+            "items": [],
+        }
+        base["advice"] = {"source": _SOURCE_KB, "text": "资料不足时无法作进一步判断。",
+                          "actions": ["补充问题信息"], "urgent": False}
+        base["_evidence_insufficient"] = True
+        return _finalize(base, question)
+    if plan.strategy == "hybrid":
+        if _apply_ai_fallback(base, question):
+            return _finalize(base, question)
+        base["interpretation"] = {
+            "source": _SOURCE_KB, "title": "换个问法试试",
+            "text": "暂未取得足够的可用资料。请补充具体症状或疾病名称；也可以询问本人检查结果和用药记录。",
+            "items": [],
+        }
+        base["advice"] = {"source": _SOURCE_KB, "text": "急性剧烈不适请直接急诊就诊。",
+                          "actions": ["补充具体问题"], "urgent": False}
+        base["_evidence_insufficient"] = True
+        return _finalize(base, question)
+    if intent == INTENT_DISEASE and entity and plan.filters.fields == ("department",):
+        # 对科室只认规范名或书写归一后的准确匹配，避免用相似疾病代答。
+        name = plan.filters.entities[0] if len(plan.filters.entities) == 1 else entity
+        info = dataset_kb.lookup_disease(name, exact=True)
+        facts = info["facts"] if info else {}
+        departments = facts.get("departments") or ([facts["dept"]] if facts.get("dept") else [])
+        source = dataset_kb.source_note(dataset_kb.DISEASE_FILE) if info else "资料不足"
+        if not departments:
+            text = "当前资料未收录这个疾病的就诊科室，可向医院导诊台咨询。"
+        elif len(departments) > 1:
+            text = "资料记录了多个科室，具体挂号请向医院导诊台确认。"
+        else:
+            text = "以下为资料记录的就诊科室。"
+        base["interpretation"] = {
+            "source": source, "title": f"{info['matched'] if info else name} · 就诊科室",
+            "text": text,
+            "items": [{"ref_title": dept, "ref_kind": "就诊科室", "ref_source": source,
+                       "ref_source_type": "open_dataset", "ref_quality_tier": "opencmkg"}
+                      for dept in departments],
+        }
+        base["_evidence_insufficient"] = not departments
+        # 使用现有红旗检查。普通挂科回答只展示科室卡，无重复建议区。
+        base["advice"] = {"source": source, "text": "", "actions": [], "urgent": False}
+        reply = _finalize(base, question)
+        if not reply["advice"]["urgent"]:
+            reply["advice"] = None
+        return reply
+    if plan.strategy == "structured_lookup" and intent in {INTENT_LAB, INTENT_MEDICATION}:
+        docs = [d for d in corpus.build_docs(kb) if plan.filters.matches(d)]
+        base["interpretation"] = {
+            "source": _SOURCE_KB, "title": "相关知识说明",
+            "text": ("以下是知识库中的通用资料。" if docs else
+                     "当前知识库没有覆盖您询问的内容。"),
+            "items": [{"ref_title": d.name, "ref_source": d.source,
+                       "ref_excerpt": corpus.evidence_text(d, plan.filters)} for d in docs],
+        }
+        base["advice"] = {"source": _SOURCE_KB, "text": "具体诊疗和用药请遵医嘱。",
+                          "actions": [], "urgent": False}
+        base["_evidence_insufficient"] = not bool(docs)
+        return _finalize(base, question)
+
     # ── 检查报告解读 ──
-    if intent == INTENT_LAB:
+    if plan.strategy == "personal_sql" and intent == INTENT_LAB:
         # parse_intent 只给**主**检验项；这里取全部命中项，问题里提到几个
         # 就查几个（"我的血脂和血糖结果正常吗"不能只回血糖）。
         tests = _find_entities(question, kb.get("lab_tests") or {})
         if tests:
             entity = tests[0]
+        elif entity:
+            tests = [entity]
         plan = _build_lab_plan(subject, tests)
         personal = fetch_personal_data(
             plan, subject, question=question, token=token,
@@ -1061,7 +1216,7 @@ def ask(question: str, subject_id: str,
         return _finalize(base, question)
 
     # ── 用药说明 ──
-    if intent == INTENT_MEDICATION:
+    if plan.strategy == "personal_sql" and intent == INTENT_MEDICATION:
         plan = _build_medication_plan(subject, entity)
         personal = fetch_personal_data(
             plan, subject, question=question, token=token,
@@ -1142,23 +1297,13 @@ def ask(question: str, subject_id: str,
                     for c in cands
                 ],
             }
-            # 解读与建议交给 AI，**来源标注「AI 智能导诊」**——
-            # 与上面来自数据集的科室候选分开，绝不混同。
-            cands_text = "、".join(
-                f"{c['department']}（{c['disease_count']} 个相关疾病）"
-                for c in cands[:3])
-            advice = _ai_explain(question, facts=f"候选就诊科室：{cands_text}",
-                                 system=_AI_EXPLAIN_SYMPTOM)
-            if advice:
-                base["advice"] = advice
-            else:
-                base["advice"] = {
-                    "source": dataset_kb.source_note(),
-                    "text": (f"建议优先咨询{top}。若症状加重或持续不缓解，"
-                             "请及时就医；急性剧烈不适应直接急诊。"),
-                    "actions": [f"请咨询{top}", "症状加重或持续不缓解请及时就医"],
-                    "urgent": False,
-                }
+            base["advice"] = {
+                "source": dataset_kb.source_note(),
+                "text": (f"建议优先咨询{top}。若症状加重或持续不缓解，"
+                         "请及时就医；急性剧烈不适应直接急诊。"),
+                "actions": [f"请咨询{top}", "症状加重或持续不缓解请及时就医"],
+                "urgent": False,
+            }
             return _finalize(base, question)
 
         # 数据集里查不到 → AI 兜底（或确定性引导）
@@ -1187,7 +1332,20 @@ def ask(question: str, subject_id: str,
         info = dataset_kb.lookup_disease(entity or "")
         if info:
             facts = info["facts"]
-            dept = facts.get("dept") or "相应科室"
+            missing_fields = []
+            if plan.filters.fields:
+                fields = {"department": "dept"}
+                missing_fields = [k for k in plan.filters.fields if not facts.get(fields.get(k, k))]
+                facts = {fields.get(k, k): facts[fields.get(k, k)]
+                         for k in plan.filters.fields if facts.get(fields.get(k, k))}
+                if not facts:
+                    base["interpretation"] = {"source": _SOURCE_KB, "title": "暂缺对应字段资料",
+                        "text": "已找到该疾病，但资料没有覆盖您询问的内容。", "items": []}
+                    base["advice"] = {"source": _SOURCE_KB, "text": "请咨询医生获取进一步解释。",
+                                      "actions": [], "urgent": False}
+                    base["_evidence_insufficient"] = True
+                    return _finalize(base, question)
+            dept = info["facts"].get("dept")
             base["interpretation"] = {
                 "source": dataset_kb.source_note(dataset_kb.DISEASE_FILE),
                 "title": f"关于「{info['matched']}」",
@@ -1195,23 +1353,16 @@ def ask(question: str, subject_id: str,
                          "请以医生判断为准。"),
                 "items": dataset_kb.disease_fact_lines(facts),
             }
-            # 解读与建议交给 AI，来源标注「AI 智能导诊」——与上面的事实分开
-            lines = [f"- {label}：{'、'.join(facts[k])}"
-                     for k, label in dataset_kb.DISEASE_FIELDS if facts.get(k)]
-            advice = _ai_explain(
-                question,
-                facts=f"疾病：{info['matched']}\n所属科室：{dept}\n"
-                      + "\n".join(lines),
-                system=_AI_EXPLAIN_DISEASE)
-            if advice:
-                base["advice"] = advice
-            else:
-                base["advice"] = {
-                    "source": dataset_kb.source_note(dataset_kb.DISEASE_FILE),
-                    "text": f"建议就诊科室：{dept}。具体诊疗请遵医嘱。",
-                    "actions": [f"可咨询{dept}", "具体诊疗请遵医嘱"],
-                    "urgent": False,
-                }
+            if missing_fields:
+                base["interpretation"]["text"] += " 部分询问内容尚未收录，以下仅展示已有字段。"
+                base["_evidence_insufficient"] = True
+            base["advice"] = {
+                "source": dataset_kb.source_note(dataset_kb.DISEASE_FILE),
+                "text": (f"建议就诊科室：{dept}。具体诊疗请遵医嘱。" if dept
+                         else "当前资料未给出明确的就诊科室，可向医院导诊台咨询。"),
+                "actions": [f"可咨询{dept}"] if dept else ["咨询医院导诊台"],
+                "urgent": False,
+            }
             return _finalize(base, question)
 
         # 数据集里没有这个疾病 → AI 兜底
