@@ -40,6 +40,7 @@ REM 别的环境上（实测就是栽在这里）。每一处候选都必须真跑一次 import。
 set "PY="
 
 if defined MEDGUARD_PYTHON call :try "%MEDGUARD_PYTHON%"
+if not defined PY call :try "%~dp0.venv\Scripts\python.exe"
 if not defined PY for %%p in (python.exe) do call :try "%%~$PATH:p"
 if not defined PY (
   for /f "delims=" %%b in ('conda info --base 2^>nul') do call :try "%%b\envs\medguard\python.exe"
