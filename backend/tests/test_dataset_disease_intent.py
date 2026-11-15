@@ -82,3 +82,8 @@ def test_disease_check_phrasing_not_hijacked_by_lab():
     # 没有疾病名的检查措辞不受影响
     assert sd.parse_intent("我想做个体检")[0] != "disease"
     assert sd.parse_intent("我的血糖怎么检查")[0] != "disease"
+
+
+def test_disease_fact_phrasing_reaches_dataset_card():
+    """完整疾病名 + 明确事实问法应走事实卡，不依赖 RAG 或模型。"""
+    assert sd.parse_intent("帕金森病的早期表现是什么") == ("disease", "帕金森病")

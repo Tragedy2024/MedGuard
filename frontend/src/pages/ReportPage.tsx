@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { exportReportUrl, fetchReport, fetchReports } from '../api/reports'
 import type { ReportDetail, ReportSummary, Token, TokenType } from '../api/models'
 import { beijingTime } from '../lib/time'
@@ -36,6 +37,8 @@ function Reports() {
   const [reports, setReports] = useState<ReportSummary[]>([])
   const [detail, setDetail] = useState<ReportDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [searchParams] = useSearchParams()
+  const requestedId = Number(searchParams.get('report'))
 
   // 安全报告按令牌身份隔离：列表、详情、导出三处都要带上发起人身份，
   // 后端据此过滤。漏传会 422——身份不是可选项。
@@ -53,12 +56,16 @@ function Reports() {
     fetchReports(token)
       .then((list) => {
         setReports(list)
-        if (list.length > 0) void select(list[0].id)
+        const requested = Number.isInteger(requestedId)
+          ? list.find((item) => item.id === requestedId)
+          : undefined
+        if (requested) void select(requested.id)
+        else if (list.length > 0) void select(list[0].id)
       })
       .catch((e) => setError(errorText(e)))
     // 只在挂载时拉一次列表（令牌在登录期内不变；换账号会重新登录并重挂载）
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token])
+  }, [token, requestedId])
 
   // 未登录时 App 外壳渲染的是登录页，这里只是把类型收窄。
   if (!session) return null

@@ -111,10 +111,16 @@ app.include_router(smart_doctor.router)
 @app.get("/api/health", response_model=HealthInfo)
 def health():
     """健康检查：算法层可用性 + 各路由挂载状态。"""
+    from backend import config
+    from backend.db import metadata_ready
     from backend.deps import algo_available, list_policy_ids
+    from backend.knowledge.hybrid import runtime_status
     return {
         "status": "ok",
         "algo_engine": "available" if algo_available() else "unavailable",
+        "metadata_store": "available" if metadata_ready() else "unavailable",
+        "llm": "configured" if config.LLM_API_KEY else "unconfigured",
+        "rag": runtime_status(),
         "policies": list_policy_ids(),
         # 从 OpenAPI schema 取，而不是遍历 `app.routes`：新版 FastAPI 的
         # include_router 挂上去的是没有 `.path` 的 `_IncludedRouter` 包装体，

@@ -6,14 +6,15 @@
   2. 通俗解读    （来源：医院审核知识库）
   3. 下一步建议  （来源：医院审核知识库）
 
-知识库未覆盖的问法（其他不舒服的症状、未收录的疾病等）→ **AI 兜底**：
-调用与 NL→SQL 同一通道的大模型生成三块回答，来源标注「AI 智能导诊」，
-与人工审核的知识库诚实区分。未配置 API Key 或调用失败时自动回退到
-确定性引导文案，**绝不 500**。
+知识库未覆盖的问法不会交给模型凭记忆自由回答。RAG 先取回可追溯证据，
+模型只能把证据改写成通俗中文；每条主张还要通过证据 ID、数字与药品名的
+确定性门禁。无证据、未配置 API Key、调用失败或校验失败时，回退到原始
+证据或确定性引导文案，**绝不 500**。
 
 关键设计：
-- **医盾管线完全复用**：取数走的计划与查询控制台一样，先 `admission_check_plan`
-  再 `deps.audit_plan`，层一确保"只能读取本人"，层二确保中间结果不泄露。
+- **医盾管线完全复用**：智慧医生和查询控制台都只能调用
+  `routers.query.run_audited_plan`。层一确保"只能读取本人"，层二确保中间
+  结果不泄露；执行前还校验 SQL 哈希，并把完整决策落入安全报告。
   自由提问（/api/query/direct）缓存里的计划同样适用——本模块构造的计划
   目标是验证过的物理名，直接构造即可。
 - **知识库优先，AI 兜底**：知识库是人工审核的确定性内容（离线、毫秒级）；
@@ -39,9 +40,9 @@
 """
 import os
 import re
-import sqlite3
 import sys
 import threading
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
@@ -49,9 +50,8 @@ import yaml
 from backend import config
 from backend import dataset_kb
 from backend.redflags import check as redflag_check
-from backend.admission import admission_check_plan
-from backend.deps import audit_plan
-from backend.labels import DEGRADATION_LABELS, DEGRADATION_MESSAGES
+from backend.labels import DEGRADATION_MESSAGES
+from backend.schemas import Token
 
 # ── 意图类型 ──────────────────────────────────────────────────
 INTENT_LAB = "lab"            # 帮我看懂检查报告 / 我的血糖结果正常吗
@@ -176,6 +176,11 @@ _DISEASE_SIGNALS = ("想了解", "是什么病", "这种病", "这个病", "了�
 # 扫描），单独的「我想做个体检」不受影响（无疾病名命中时仍走原路径）。
 _DISEASE_CHECK_SIGNALS = ("做什么检查", "做哪些检查", "怎么检查",
                           "该做什么检查", "需要做什么检查")
+# 只在问题里同时出现数据集的完整疾病名时生效；不会把单独的「我有哪些症状」
+# 猜成某种疾病。用于覆盖「帕金森病的早期表现」这类事实卡问法。
+_DISEASE_FACT_SIGNALS = ("早期表现", "常见表现", "常见症状", "有哪些症状",
+                         "什么症状", "如何治疗", "怎么治疗", "治疗方法",
+                         "有哪些并发症", "常见并发症")
 
 
 def _names_of(key: str, entry: Any) -> List[str]:
@@ -293,6 +298,7 @@ def parse_intent(question: str) -> Tuple[str, Optional[str]]:
     disease_hit = _find_disease(question, diseases)
     disease_signaled = any(s in question for s in _DISEASE_SIGNALS)
     disease_check_signaled = any(s in question for s in _DISEASE_CHECK_SIGNALS)
+    disease_fact_signaled = any(s in question for s in _DISEASE_FACT_SIGNALS)
 
     # 2) 出现「想了解 / 是什么病 / 科普」这类**疾病意图词**（或「做什么检查」
     #    这类指向疾病的检查措辞）时，疾病优先。否则「我想了解高血脂」会被
@@ -300,7 +306,7 @@ def parse_intent(question: str) -> Tuple[str, Optional[str]]:
     #    YAML 疾病优先；未命中时扫描数据集疾病名（7495 个，规范名精确
     #    最长匹配、不模糊匹配）——补上「帕金森病」「颈椎病」这类常见病问法
     #    （评审 A1）。
-    if disease_signaled or disease_check_signaled:
+    if disease_signaled or disease_check_signaled or disease_fact_signaled:
         if disease_hit:
             return INTENT_DISEASE, disease_hit[1]
         dataset_name = dataset_kb.match_disease(question)
@@ -399,71 +405,63 @@ def _build_medication_plan(subject: str, drug: Optional[str], limit: int = 5) ->
     }]
 
 
-def _execute(sql: str) -> Tuple[Optional[List[str]], List[List[Any]]]:
-    """执行单条 SQL（与查询路由同一套连接配置）。失败返回 (None, [])。"""
-    db = config.BUSINESS_DB
-    if not db or not os.path.exists(db):
-        return None, []
-    con = sqlite3.connect(db)
-    con.text_factory = lambda b: b.decode(errors="ignore")
-    try:
-        cur = con.execute(sql)
-        cols = [d[0] for d in cur.description] if cur.description else []
-        rows = [list(r) for r in cur.fetchall()]
-        return cols, rows
-    except sqlite3.Error:
-        return None, []
-    finally:
-        con.close()
+@dataclass(frozen=True)
+class PersonalDataResult:
+    admission: Dict[str, Any]
+    degradation: Dict[str, Any]
+    columns: Optional[List[str]]
+    rows: List[List[Any]]
+    sql_after: str
+    report_id: Optional[int] = None
+    trace_id: str = ""
+
+    def __iter__(self):
+        """保留原有五元组解包接口，报告信息通过属性读取。"""
+        yield self.admission
+        yield self.degradation
+        yield self.columns
+        yield self.rows
+        yield self.sql_after
 
 
-def fetch_personal_data(plan: List[dict], subject: str
-                        ) -> Tuple[Dict[str, Any], Dict[str, Any], Optional[List[str]], List[List[Any]], str]:
-    """走层一 + 层二拿到本人数据。
+def fetch_personal_data(
+    plan: List[dict], subject: str, *, question: str = "",
+    token: Optional[Token] = None, datasource_id: str = config.DEMO_DATASOURCE_ID,
+    persist: bool = False,
+) -> PersonalDataResult:
+    """经统一审计—执行 seam 读取本人数据。
 
     Returns:
-        (admission_dict, degradation_dict, columns, rows, sql_after)
+        ``PersonalDataResult``；为兼容旧调用仍可按原五元组解包，报告编号与
+        追踪号通过 ``report_id`` / ``trace_id`` 属性读取。
     - admission_dict / degradation_dict：与查询路由同构，前端可直接复用
     - 层一拒绝时 columns=None（不发查询、不执行）
     - sql_after：层二改写后的最终 SQL（展示"医盾拦了什么"的证据）
+    - report_id：生产路由持久化后的安全报告编号；纯函数测试为 None
+    - trace_id：审计决策编号；层一直接拒绝时为空
+
+    这里不再自行审计或执行 SQL。查询控制台与智慧医生共用
+    ``routers.query.run_audited_plan``，因此空审计计划、哈希绑定、数据源
+    就绪门禁与报告落盘只有一份实现。
     """
-    adm = admission_check_plan(plan, subject)
-    if not adm.passed:
-        # 层一拒绝：这就是"涉及其他患者信息"的正当场合，用 labels.py 的口径。
-        return adm.to_dict(), {"level": "L3",
-                               "label": DEGRADATION_LABELS["L3"],
-                               "message_cn": adm.reason or DEGRADATION_MESSAGES["L3"],
-                               "message": ""}, \
-            None, [], plan[0]["sql"]
+    from backend.routers.query import run_audited_plan
 
-    outcome = audit_plan(plan, config.DEMO_DATASOURCE_ID)
-    sql_after = {sq["id"]: sq["sql"] for sq in outcome.audited_plan}
-    if not sql_after:
-        sql_after = {sq["id"]: sq["sql"] for sq in plan}
+    effective_token = token or Token(
+        type="patient", subject_id=subject, account=None)
+    response, decision, report_id = run_audited_plan(
+        plan, question or "智慧医生读取本人记录", effective_token,
+        datasource_id, persist=persist)
 
-    level = outcome.degradation_level
-    # 算法层给了更准确的就用它（解析失败时是 PARSE_FAILED_LABEL/MESSAGE，
-    # 与 L3 默认的"涉及其他患者信息"语义不同，不可混用），否则按等级取
-    # labels.py 的默认——与 routers/query.py 的组装方式保持一致。
-    label = outcome.degradation_label or DEGRADATION_LABELS.get(level, "")
-    message_cn = (outcome.degradation_message_cn
-                  or DEGRADATION_MESSAGES.get(level, ""))
-
-    if level == "L3":
-        return adm.to_dict(), {"level": level, "label": label,
-                               "message_cn": message_cn,
-                               "message": outcome.degradation_message}, \
-            None, [], sql_after.get(plan[-1]["id"], "")
-
-    final_id = plan[-1]["id"]
-    final_sql = sql_after.get(final_id, "")
-    cols, rows = _execute(final_sql)
-
-    # 层二改写后的 SQL 一并返回给前端展示（"医盾拦截了什么"的证据）
-    return adm.to_dict(), {"level": level, "label": label,
-                           "message_cn": message_cn,
-                           "message": outcome.degradation_message}, \
-        cols, rows, final_sql
+    adm = response.admission.model_dump()
+    deg = response.degradation.model_dump()
+    final_sql = response.plan[-1].sql_after if response.plan else ""
+    trace_id = decision.decision_id if decision else ""
+    if response.result is None:
+        return PersonalDataResult(
+            adm, deg, None, [], final_sql, report_id, trace_id)
+    return PersonalDataResult(
+        adm, deg, response.result.columns, response.result.rows,
+        final_sql, report_id, trace_id)
 
 
 def _unavailable(adm: Dict[str, Any], deg: Dict[str, Any], what: str
@@ -528,15 +526,13 @@ def interpret_lab(test_name: str, value_text: str) -> Optional[Dict[str, Any]]:
 # 本人数据读取，永远不把数据发给模型——AI 只做解释，不碰数据。
 # 未配置 Key / 调用失败 / 输出无法解析 → 返回 None，由调用方回退引导。
 
-_AI_SYSTEM = """你是医院审核知识库的临床导诊专家。请用通俗易懂的中文回答患者的健康咨询。
+_AI_SYSTEM = """你是医疗知识证据的通俗转述助手。
 
 要求：
-1. 只回答医疗知识层面的建议，不得编造患者本人的检查数据、诊断结果或用药记录。
-2. 明确说明是否需要就医、建议咨询哪个科室；出现危急信号（剧烈胸痛、呼吸困难、意识模糊、大出血等）必须给出紧急就医提示。
-3. 措辞谨慎：不替患者下诊断结论，建议以医生面诊为准。
-
-只输出一个 JSON，不要输出任何其他文字：
-{"title": "对咨询内容的简短标题（10字内）", "text": "通俗解释（2-4句）", "advice": "建议（是否需要就医、挂什么科、做什么）", "actions": ["行动建议1", "行动建议2", "行动建议3"], "urgent": true 或 false}"""
+1. 只能转述系统提供的证据，不得使用模型记忆补充医学事实。
+2. 不得编造患者本人的检查数据、诊断结果或用药记录。
+3. 不替患者下诊断结论；证据不足时必须承认不足。
+4. 紧急程度由系统的确定性红旗规则负责，模型不得自行判断。"""
 
 
 def _call_llm(prompt: str) -> str:
@@ -634,6 +630,12 @@ def _retrieve_context(question: str, top_k: int = 3) -> List[Dict[str, Any]]:
             "ref_excerpt": doc.text,
             "ref_id": doc.id,
             "ref_score": round(score, 2),
+            "ref_source_type": (
+                "open_dataset" if doc.quality_tier == "opencmkg"
+                else "curated_kb"),
+            "ref_quality_tier": doc.quality_tier,
+            "ref_source_version": doc.source_version,
+            "ref_license": doc.license,
         })
     return refs
 
@@ -644,20 +646,34 @@ def _build_ai_prompt(question: str, refs: List[Dict[str, Any]]) -> str:
     有检索结果时把它放进上下文，并要求模型**优先依据这些条目**作答、
     不足以回答时明说不确定。没有检索结果时**如实说明**，而不是假装有依据。
     """
+    lines = "\n".join(
+        f"- ID={r['ref_id']}｜{r['ref_title']}（{r['ref_kind']}）："
+        f"{r['ref_excerpt']}"
+        for r in refs
+    )
     if refs:
-        lines = "\n".join(
-            f"{i}. {r['ref_title']}（{r['ref_kind']}）：{r['ref_excerpt']}"
-            for i, r in enumerate(refs, 1)
-        )
-        block = (
+        evidence_block = (
             "\n\n【本院知识库中与该问题可能相关的条目】\n"
             f"{lines}\n\n"
-            "请**优先依据上面这些条目**作答。若它们不足以回答，"
-            "请明确说明不确定，**不要编造**。\n"
+            "优先依据上面这些条目；它们也是本次允许使用的全部证据。\n"
         )
     else:
-        block = ("\n\n（本院知识库中没有检索到相关条目，"
-                 "请基于通用医学常识谨慎作答，并说明这一点。）\n")
+        evidence_block = (
+            "\n\n本院知识库没有检索到相关条目。必须输出 insufficient，"
+            "claims 为空，不得补写任何医学事实。\n"
+        )
+    block = (
+        evidence_block +
+        "你只能使用上面的证据，不得利用模型记忆补充症状、病因、药品、"
+        "剂量、检查或治疗信息，不要编造。每条医学事实必须引用实际存在的证据ID；"
+        "证据不足时输出 insufficient，不得猜测。\n"
+        "只输出以下 JSON：\n"
+        "{\"answer_mode\":\"grounded 或 insufficient\","
+        "\"title\":\"简短标题\","
+        "\"claims\":[{\"text\":\"一条医学事实\","
+        "\"evidence_ids\":[\"证据ID\"]}],"
+        "\"uncertainty\":\"必要的边界说明\"}\n"
+    )
     return (
         f"{_AI_SYSTEM}{block}\n"
         f"患者的咨询内容：{question.strip()}\n\n"
@@ -669,12 +685,13 @@ def ai_triage(question: str, refs: Optional[List[Dict[str, Any]]] = None
               ) -> Optional[Dict[str, Any]]:
     """AI 兜底作答。成功返回三块内容，失败返回 None（调用方回退引导）。
 
-    `refs` 是已检索到的知识条目（见 _retrieve_context）。不传表示没有
-    上下文——那条路径仍可用，但只有带上下文时答案才是**有依据的**。
+    `refs` 是已检索到的知识条目（见 _retrieve_context）。没有证据时直接
+    返回 None；模型记忆不属于本系统允许使用的医学来源。
     """
-    if not config.LLM_API_KEY:
+    refs = refs or []
+    if not config.LLM_API_KEY or not refs:
         return None
-    prompt = _build_ai_prompt(question, refs or [])
+    prompt = _build_ai_prompt(question, refs)
     try:
         raw = _call_llm(prompt)
     except Exception as exc:  # noqa: BLE001 - 网络/鉴权异常统一回退
@@ -683,71 +700,41 @@ def ai_triage(question: str, refs: Optional[List[Dict[str, Any]]] = None
 
     data = _parse_llm_json(raw)
     if not data:
-        # 输出无法解析：只保留一段文本，不返回空壳结构
-        snippet = " ".join((raw or "").split())
-        if not snippet:
-            return None
-        # 解析不了 = 判断不了紧急程度。Schmitt-Thompson / ESI 的一致口径是
-        # "when in doubt, escalate"——宁可多给一次安全网提示，也不把"未知"
-        # 静默当成"不急"。横幅文案本身是「请留意重症信号」，不是诊断结论。
-        return {
-            "title": "AI 智能导诊",
-            "text": snippet[:500],
-            "advice": "如症状持续或加重，请及时就医面诊。",
-            "actions": ["症状加重及时就医"],
-            "urgent": True,
-        }
-
-    def _s(*keys: str, default: str = "") -> str:
-        for k in keys:
-            v = data.get(k)
-            if isinstance(v, str) and v.strip():
-                return v.strip()
-        return default
-
-    raw_actions = data.get("actions")
-    if isinstance(raw_actions, str):
-        # 模型常把数组压成一句顿号串。直接迭代字符串会逐字符展开成
-        # ['补','充','水','分',…]，前端渲染成十几个单字条目。
-        raw_actions = re.split(r"[、,，;；\n]", raw_actions)
-    elif not isinstance(raw_actions, list):
-        raw_actions = []
-    actions = [a.strip() for a in raw_actions
-               if isinstance(a, str) and a.strip()]
-    advice = _s("advice", default="如症状持续或加重，请及时就医面诊。")
+        return None
+    from backend.knowledge.grounding import (render_grounded_text,
+                                             validate_grounded_payload)
+    errors = validate_grounded_payload(data, refs)
+    if errors:
+        print("[smart-doctor] 证据校验未通过，回退确定性证据模板："
+              + "；".join(errors), flush=True)
+        return None
+    text = render_grounded_text(data)
+    if not text:
+        return None
     return {
-        "title": _s("title", default="AI 智能导诊"),
-        "text": _s("text", default=advice),
-        "advice": advice,
-        "actions": actions or ["症状持续或加重请及时就医"],
-        "urgent": _as_bool(data.get("urgent")),
+        "title": str(data.get("title") or "有依据的知识解读").strip(),
+        "text": text,
+        "advice": "以上内容仅用于帮助理解资料，不能替代医生面诊。",
+        "actions": ["携带相关资料咨询医生", "症状持续或加重请及时就医"],
+        # 紧急程度只由确定性红旗规则在 _finalize 中提升，模型无权决定。
+        "urgent": False,
     }
 
 
-_AI_EXPLAIN_SYMPTOM = """你是医院导诊台的护士。患者描述了症状，系统已从知识库中
-给出候选就诊科室。请用通俗的中文给出解读与建议。
+_AI_EXPLAIN_SYMPTOM = """患者描述了症状，系统已从知识库中给出候选就诊科室。
+请只把给出的事实改写成通俗中文。
 
 要求：
 1. 不替患者下诊断结论——不说"您患了 XX 病"这类话。
-2. 建议要具体：该挂什么科、是否需要尽快就医。
-3. 出现危急信号（剧烈胸痛、呼吸困难、意识模糊、大出血等）必须提示立即就医。
-4. 症状描述不足时可建议患者补充。
+2. 不得补充事实中没有出现的疾病、检查、药物或治疗信息。"""
 
-只输出一个 JSON，不要输出任何其他文字：
-{"text": "对症状的通俗解读（2-3句）", "advice": "建议（挂什么科、是否尽快就医）", "actions": ["行动建议1", "行动建议2"], "urgent": true 或 false}"""
-
-_AI_EXPLAIN_DISEASE = """你是医院导诊台的护士。患者想了解一种疾病，系统已从知识库中
+_AI_EXPLAIN_DISEASE = """患者想了解一种疾病，系统已从知识库中
 取出该疾病的相关条目（常见症状、常用检查、常用药物、可能并发症、治疗方式）。
 请用**通俗的中文**把这些条目讲给患者听，并给出就诊建议。
 
 要求：
 1. 以系统给出的条目为准，**不要补充条目之外的医学断言**，不替患者下诊断。
-2. 说明该疾病该挂哪个科、什么情况下需要尽快就医。
-3. 涉及用药时提醒"遵医嘱，勿自行用药"。
-4. 措辞让非医学背景的人能看懂，避免堆砌术语。
-
-只输出一个 JSON，不要输出任何其他文字：
-{"text": "通俗解读（3-5句）", "advice": "就诊建议", "actions": ["行动建议1", "行动建议2"], "urgent": true 或 false}"""
+2. 措辞让非医学背景的人能看懂，避免堆砌术语。"""
 
 
 def _ai_explain(question: str, *, facts: str, system: str
@@ -763,11 +750,21 @@ def _ai_explain(question: str, *, facts: str, system: str
     """
     if not config.LLM_API_KEY:
         return None
+    evidence = [{
+        "ref_id": "structured:current-facts",
+        "ref_title": "本次结构化事实",
+        "ref_excerpt": facts,
+    }]
     prompt = (
         f"{system}\n\n"
         f"患者的咨询：{question.strip()}\n"
-        f"知识库给出的事实：\n{facts}\n\n"
-        "请按要求输出 JSON。"
+        f"知识库给出的事实（ID=structured:current-facts）：\n{facts}\n\n"
+        "每条医学事实必须引用 structured:current-facts。"
+        "只输出 JSON："
+        "{\"answer_mode\":\"grounded\",\"title\":\"简短标题\","
+        "\"claims\":[{\"text\":\"一条事实\","
+        "\"evidence_ids\":[\"structured:current-facts\"]}],"
+        "\"uncertainty\":\"边界说明\"}"
     )
     try:
         raw = _call_llm(prompt)
@@ -778,26 +775,21 @@ def _ai_explain(question: str, *, facts: str, system: str
     if not data:
         return None
 
-    def _s(key: str) -> str:
-        v = data.get(key)
-        return v.strip() if isinstance(v, str) and v.strip() else ""
-
-    actions = data.get("actions")
-    if isinstance(actions, str):
-        # 模型常把数组压成一句顿号串，直接迭代会逐字符展开
-        actions = re.split(r"[、,，;；\n]", actions)
-    elif not isinstance(actions, list):
-        actions = []
-    actions = [a.strip() for a in actions if isinstance(a, str) and a.strip()]
-
-    text, advice = _s("text"), _s("advice")
-    if not (text or advice):
+    from backend.knowledge.grounding import (render_grounded_text,
+                                             validate_grounded_payload)
+    errors = validate_grounded_payload(data, evidence)
+    if errors:
+        print("[smart-doctor] 结构化事实解读未通过证据校验："
+              + "；".join(errors), flush=True)
+        return None
+    text = render_grounded_text(data)
+    if not text:
         return None
     return {
         "source": _SOURCE_AI,
-        "text": " ".join(x for x in (text, advice) if x),
-        "actions": actions,
-        "urgent": _as_bool(data.get("urgent")),
+        "text": text,
+        "actions": ["携带相关资料咨询医生", "具体诊疗请遵医嘱"],
+        "urgent": False,
     }
 
 
@@ -814,9 +806,25 @@ def _apply_ai_fallback(base: Dict[str, Any], question: str) -> bool:
     if not config.LLM_API_KEY:
         return False
     refs = _retrieve_context(question)
+    if not refs:
+        return False
     ai = ai_triage(question, refs=refs)
     if ai is None:
-        return False
+        # 模型不可用、输出不合法或证据门禁不通过时，仍可直接展示原始证据；
+        # 但不再展示任何未经证据支持的模型文本。
+        base["interpretation"] = {
+            "source": refs[0].get("ref_source") or _SOURCE_KB,
+            "title": "检索到的相关资料",
+            "text": "模型解释未通过证据校验，以下仅展示可追溯的原始资料。",
+            "items": refs,
+        }
+        base["advice"] = {
+            "source": _SOURCE_KB,
+            "text": "现有资料不足以支持进一步判断，请咨询医生。",
+            "actions": ["携带相关资料咨询医生"],
+            "urgent": False,
+        }
+        return True
     base["interpretation"] = {
         "source": _SOURCE_AI,
         "title": ai["title"],
@@ -877,6 +885,7 @@ def _finalize(base: Dict[str, Any], question: str) -> Dict[str, Any]:
     与前面所有分支（知识库、数据集、RAG、AI 判定）正交——红旗是
     确定性规则层（backend/redflags.py），不受模型是否可用影响。
     """
+    base["evidence"] = _evidence_status(base)
     flags = redflag_check(question)
     advice = base.get("advice")
     if advice and flags:
@@ -896,8 +905,63 @@ def _finalize(base: Dict[str, Any], question: str) -> Dict[str, Any]:
     return base
 
 
+def _evidence_status(base: Dict[str, Any]) -> Dict[str, Any]:
+    """从最终回答结构确定性推导证据状态，所有回答出口共用。"""
+    interpretation = base.get("interpretation") or {}
+    advice = base.get("advice") or {}
+    items = interpretation.get("items") or []
+    refs = [item for item in items
+            if isinstance(item, dict) and item.get("ref_id")]
+    interpretation_source = str(interpretation.get("source") or "")
+    advice_source = str(advice.get("source") or "")
+    model_used = _SOURCE_AI in {interpretation_source, advice_source}
+
+    if model_used and refs:
+        return {
+            "status": "grounded",
+            "references": len(refs),
+            "model_used": True,
+            "message": "模型仅负责改写，展示内容已通过证据 ID 门禁。",
+        }
+    if refs:
+        return {
+            "status": "raw_evidence",
+            "references": len(refs),
+            "model_used": False,
+            "message": "模型输出未通过门禁，本轮仅展示可追溯的原始资料。",
+        }
+    is_curated_source = (
+        interpretation_source == _SOURCE_KB
+        or "OpenCMKG" in interpretation_source
+        or "开源数据" in interpretation_source
+    )
+    if is_curated_source:
+        title = str(interpretation.get("title") or "")
+        if "换个问法" in title or "无法" in title:
+            return {
+                "status": "insufficient",
+                "references": 0,
+                "model_used": False,
+                "message": "现有资料不足，系统没有生成新的医学结论。",
+            }
+        return {
+            "status": "curated",
+            "references": 0,
+            "model_used": model_used,
+            "message": "回答来自医院审核资料或结构化开源数据。",
+        }
+    return {
+        "status": "not_applicable",
+        "references": 0,
+        "model_used": model_used,
+        "message": "本轮没有可展示的医学证据。",
+    }
+
+
 def ask(question: str, subject_id: str,
-        context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        context: Optional[Dict[str, Any]] = None, *,
+        token: Optional[Token] = None,
+        datasource_id: str = config.DEMO_DATASOURCE_ID) -> Dict[str, Any]:
     """处理一次提问，返回三块结构的响应（供路由直接返回）。
 
     `context` 是上一轮的 `{intent, entity}`，用于解析指代（见
@@ -915,6 +979,11 @@ def ask(question: str, subject_id: str,
         "data": None,
         "interpretation": None,
         "advice": None,
+        # 知识问答不访问主库，故默认不适用；只有 lab/medication 数据读取
+        # 才由统一审计—执行管线填入报告编号与决策追踪号。
+        "audit_status": "not_applicable",
+        "report_id": None,
+        "trace_id": "",
     }
 
     # ── 检查报告解读 ──
@@ -925,9 +994,18 @@ def ask(question: str, subject_id: str,
         if tests:
             entity = tests[0]
         plan = _build_lab_plan(subject, tests)
-        adm, deg, cols, rows, final_sql = fetch_personal_data(plan, subject)
+        personal = fetch_personal_data(
+            plan, subject, question=question, token=token,
+            datasource_id=datasource_id, persist=token is not None)
+        adm, deg, cols, rows, final_sql = personal
+        report_id, trace_id = personal.report_id, personal.trace_id
         base["admission"] = adm
         base["degradation"] = deg
+        base["audit_status"] = (
+            "blocked" if not adm.get("passed") or deg.get("level") == "L3"
+            else "passed")
+        base["report_id"] = report_id
+        base["trace_id"] = trace_id
         if cols is None:
             base["interpretation"], base["advice"] = _unavailable(adm, deg, "检查数据")
             return _finalize(base, question)
@@ -985,9 +1063,18 @@ def ask(question: str, subject_id: str,
     # ── 用药说明 ──
     if intent == INTENT_MEDICATION:
         plan = _build_medication_plan(subject, entity)
-        adm, deg, cols, rows, final_sql = fetch_personal_data(plan, subject)
+        personal = fetch_personal_data(
+            plan, subject, question=question, token=token,
+            datasource_id=datasource_id, persist=token is not None)
+        adm, deg, cols, rows, final_sql = personal
+        report_id, trace_id = personal.report_id, personal.trace_id
         base["admission"] = adm
         base["degradation"] = deg
+        base["audit_status"] = (
+            "blocked" if not adm.get("passed") or deg.get("level") == "L3"
+            else "passed")
+        base["report_id"] = report_id
+        base["trace_id"] = trace_id
         if cols is None:
             base["interpretation"], base["advice"] = _unavailable(adm, deg, "用药记录")
             return _finalize(base, question)

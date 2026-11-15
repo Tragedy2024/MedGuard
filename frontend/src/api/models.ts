@@ -42,6 +42,7 @@ export type ReportDetail = Schemas['ReportDetail']
 
 export type MetricValue = Schemas['MetricValue']
 export type DetectionMetrics = Schemas['DetectionMetrics']
+export type HealthInfo = Schemas['HealthInfo']
 
 /* ── 从契约**派生**的联合类型 ───────────────────────────────────
    这几条刻意不手写：手写一份就会和后端各改各的。

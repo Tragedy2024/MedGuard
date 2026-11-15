@@ -69,7 +69,6 @@ def _sql_sha256(sql: str) -> str:
 @router.post("", response_model=QueryResponse)
 def run_query(req: QueryRequest):
     verified(req.token)
-    t0 = time.perf_counter()
     queries = _load_queries()
     spec = queries.get(req.question_id)
     if spec is None:
@@ -83,9 +82,29 @@ def run_query(req: QueryRequest):
         for sq in spec["plan"]
     ]
 
-    resp, decision = _pipeline(plan, spec["question"], req.token, req.datasource_id, t0)
-    _persist(spec["question"], req.token, resp, decision)
+    resp, _decision, _report_id = run_audited_plan(
+        plan, spec["question"], req.token, req.datasource_id)
     return resp
+
+
+def run_audited_plan(plan: list, question: str, token: Token,
+                     datasource_id: str, *, persist: bool = True
+                     ) -> Tuple[QueryResponse, Optional[AuditDecision], Optional[int]]:
+    """统一的审计—执行接口。
+
+    查询控制台与智慧医生都必须跨过这个 seam；调用方只能提交计划，不能
+    自行拼接审计结果或直接执行 SQL。模块内部保证：层一准入、层二审计、
+    审计—执行哈希绑定、只读执行与报告持久化按固定顺序发生。
+
+    ``persist=False`` 仅供无真实登录令牌的纯函数级测试使用；生产路由必须
+    保持默认值，使每次数据访问都留下可回看的安全报告。
+    """
+    t0 = time.perf_counter()
+    resp, decision = _pipeline(
+        plan, question, token, datasource_id, t0)
+    report_id = (_persist(question, token, resp, decision)
+                 if persist else None)
+    return resp, decision, report_id
 
 
 def _pipeline(plan: list, question: str, token: Token,
@@ -258,7 +277,6 @@ def run_direct_query(req: DirectQueryRequest):
     Rule C 拆分与跨域 JOIN 事件。
     """
     verified(req.token)
-    t0 = time.perf_counter()
     question = (req.question or "").strip()
     if not question:
         raise HTTPException(status_code=422, detail="问题不能为空")
@@ -294,8 +312,8 @@ def run_direct_query(req: DirectQueryRequest):
         query_cache.store(question, plan, req.token.type,
                           req.token.subject_id, source="llm")
 
-    resp, decision = _pipeline(plan, question, req.token, req.datasource_id, t0)
-    _persist(question, req.token, resp, decision)
+    resp, _decision, _report_id = run_audited_plan(
+        plan, question, req.token, req.datasource_id)
     return resp
 
 
@@ -327,7 +345,7 @@ def _execute(sql: Optional[str], db_path: Optional[str] = None) -> Optional[Resu
 
 
 def _persist(question: str, token: Token, resp: QueryResponse,
-             decision: Optional[AuditDecision] = None) -> None:
+             decision: Optional[AuditDecision] = None) -> Optional[int]:
     """落盘一条审计报告。
 
     存的是**整个令牌身份**而不只是 type：安全报告要按发起人隔离。隔离依据
@@ -337,9 +355,9 @@ def _persist(question: str, token: Token, resp: QueryResponse,
     """
     db_path = config.METADATA_DB
     if not metadata_ready():
-        return
+        return None
     try:
-        save_report(db_path, {
+        return save_report(db_path, {
             "question": question,
             "token_type": token.type,
             "subject_id": token.subject_id,
@@ -353,3 +371,4 @@ def _persist(question: str, token: Token, resp: QueryResponse,
     except MetadataUnavailable as exc:
         # 查询本身已经成功；持久化失败不该把 200 变成 500。
         print(f"[reports] 审计报告未落盘：{exc}", flush=True)
+        return None

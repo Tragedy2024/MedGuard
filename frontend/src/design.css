@@ -1647,6 +1647,33 @@ html { scroll-behavior: smooth; }
 /* ── 三块卡片 ── */
 .sd-answer { display: flex; flex-direction: column; gap: 12px; }
 
+.sd-answer-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding: 3px 1px 1px;
+}
+.sd-status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper-raised);
+  color: var(--muted);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+.sd-status-pill.is-passed,
+.sd-status-pill.is-grounded,
+.sd-status-pill.is-curated { border-color: color-mix(in oklch, var(--brand) 34%, var(--line)); color: var(--brand); }
+.sd-status-pill.is-blocked,
+.sd-status-pill.is-insufficient { border-color: color-mix(in oklch, #b54a40 35%, var(--line)); color: #994037; }
+.sd-status-pill.is-raw_evidence { border-color: color-mix(in oklch, #a16a16 36%, var(--line)); color: #8b5b12; }
+.sd-status-message { color: var(--muted); font-size: 11.5px; line-height: 1.5; }
+
 .sd-block {
   background: var(--paper-raised);
   border: 1px solid var(--line, #dfe5ec);
@@ -1682,6 +1709,23 @@ html { scroll-behavior: smooth; }
   white-space: pre-wrap;
 }
 
+.sd-audit-proof {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 14px;
+  border: 1px solid color-mix(in oklch, var(--brand) 28%, var(--line));
+  border-radius: 10px;
+  background: color-mix(in oklch, var(--brand-bg) 76%, transparent);
+  color: var(--muted);
+  font-size: 12px;
+}
+.sd-audit-proof a { color: var(--brand); font-weight: 650; text-decoration: none; white-space: nowrap; }
+.sd-audit-proof a:hover { text-decoration: underline; }
+.sd-audit-proof.is-unavailable { border-color: color-mix(in oklch, #a16a16 28%, var(--line)); background: #fbf6e9; color: #76511a; }
+.sd-audit-proof code { color: inherit; font-size: 10.5px; }
+
 .sd-items { list-style: none; padding: 0; margin: 8px 0 0; display: flex; flex-direction: column; gap: 10px; }
 .sd-item {
   border-top: 1px dashed var(--line, #dfe5ec);
@@ -1714,6 +1758,17 @@ html { scroll-behavior: smooth; }
   font-size: 10.5px;
   letter-spacing: 0.04em;
   color: var(--ink-faint);
+}
+.sd-ref-meta { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+.sd-ref-meta > span {
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--paper-sunken);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  line-height: 1.35;
 }
 .sd-caution { color: var(--layer1, #c0392b); }
 

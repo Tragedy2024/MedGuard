@@ -33,4 +33,6 @@ def ask(req: SmartDoctorRequest):
         )
     # 上一轮的识别结果（用于解析「它」「那个」这类指代）。不传即单轮问答。
     context = req.context.model_dump() if req.context else None
-    return smart_doctor.ask(question, req.token.subject_id, context=context)
+    return smart_doctor.ask(
+        question, req.token.subject_id, context=context,
+        token=req.token, datasource_id=req.datasource_id)

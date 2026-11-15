@@ -388,24 +388,32 @@ class HybridRetriever:
 
 _LOCK = threading.Lock()
 _RETRIEVER: Optional[HybridRetriever] = None
+_DENSE_FAILURE = ""
 
 
 def _optional_encoder() -> Optional[Encoder]:
+    global _DENSE_FAILURE
     if not config.RAG_DENSE_ENABLED:
+        _DENSE_FAILURE = "BGE 未启用，使用 BM25"
         return None
     try:
-        return BGEEncoder(config.RAG_DENSE_MODEL)
+        encoder = BGEEncoder(config.RAG_DENSE_MODEL)
+        _DENSE_FAILURE = ""
+        return encoder
     except Exception as exc:  # noqa: BLE001 - 可选 adapter 失败必须安全回退
         print(f"[rag] FlagEmbedding 不可用，尝试 FastEmbed：{exc}", flush=True)
     try:
-        return FastEmbedEncoder(config.RAG_DENSE_MODEL)
+        encoder = FastEmbedEncoder(config.RAG_DENSE_MODEL)
+        _DENSE_FAILURE = ""
+        return encoder
     except Exception as exc:  # noqa: BLE001 - 两种 adapter 都失败才回退
         print(f"[rag] BGE 不可用，回退 BM25：{exc}", flush=True)
+        _DENSE_FAILURE = f"BGE 加载失败，已回退 BM25：{type(exc).__name__}"
         return None
 
 
 def get_retriever(kb: Dict[str, Any]) -> HybridRetriever:
-    global _RETRIEVER
+    global _RETRIEVER, _DENSE_FAILURE
     with _LOCK:
         if _RETRIEVER is None:
             docs = corpus.build_docs(kb)
@@ -432,6 +440,7 @@ def get_retriever(kb: Dict[str, Any]) -> HybridRetriever:
                 if encoder is None:
                     raise
                 print(f"[rag] BGE 建索引失败，回退 BM25：{exc}", flush=True)
+                _DENSE_FAILURE = f"BGE 建索引失败，已回退 BM25：{type(exc).__name__}"
                 _RETRIEVER = HybridRetriever(
                     docs, candidate_k=config.RAG_CANDIDATE_K,
                     extra_docs=extra_docs,
@@ -446,7 +455,45 @@ def search(kb: Dict[str, Any], query: str,
     return get_retriever(kb).search(query, top_k=top_k)
 
 
+def runtime_status() -> Dict[str, Any]:
+    """返回当前进程的真实检索状态；不会为了健康检查而加载大模型。"""
+    with _LOCK:
+        retriever = _RETRIEVER
+        if retriever is None:
+            if config.RAG_DENSE_ENABLED:
+                status = "pending"
+                mode = "BGE + BM25（首次检索时加载）"
+                reason = "检索器尚未初始化"
+            else:
+                status = "bm25"
+                mode = "BM25"
+                reason = "BGE 未启用"
+            return {
+                "status": status,
+                "mode": mode,
+                "dense_enabled": bool(config.RAG_DENSE_ENABLED),
+                "open_cmk_enabled": bool(config.RAG_OPENCMKG_ENABLED),
+                "primary_documents": 0,
+                "extra_documents": 0,
+                "reason": reason,
+            }
+
+        dense_active = retriever._dense is not None
+        extra_active = retriever._extra_bm25 is not None
+        degraded = bool(config.RAG_DENSE_ENABLED and not dense_active)
+        return {
+            "status": "degraded" if degraded else ("full" if dense_active else "bm25"),
+            "mode": "BGE + BM25" if dense_active else "BM25",
+            "dense_enabled": dense_active,
+            "open_cmk_enabled": extra_active,
+            "primary_documents": len(retriever.docs),
+            "extra_documents": len(retriever._extra_docs) if extra_active else 0,
+            "reason": _DENSE_FAILURE if degraded else "",
+        }
+
+
 def reset() -> None:
-    global _RETRIEVER
+    global _RETRIEVER, _DENSE_FAILURE
     with _LOCK:
         _RETRIEVER = None
+        _DENSE_FAILURE = ""

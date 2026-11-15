@@ -173,6 +173,33 @@
 .top-title-row h1 { margin: 0; font-family: var(--font-body); font-size: 17.5px; font-weight: 600; letter-spacing: -0.01em; }
 .live-status { display: inline-flex; align-items: center; gap: 5px; color: var(--ok); font-size: 10.5px; letter-spacing: 0.03em; }
 .live-status::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px color-mix(in oklch, var(--ok) 12%, transparent); animation: live-pulse 2.8s ease-in-out infinite; }
+.live-status.is-degraded { color: #9a6518; }
+.live-status.is-degraded::before { background: #b77a20; box-shadow: 0 0 0 3px color-mix(in oklch, #b77a20 14%, transparent); }
+.runtime-status { position: relative; }
+.runtime-status > summary { list-style: none; cursor: pointer; }
+.runtime-status > summary::-webkit-details-marker { display: none; }
+.runtime-status > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
+.runtime-popover {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 10px);
+  left: 0;
+  width: min(330px, calc(100vw - 32px));
+  padding: 14px 15px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: color-mix(in oklch, var(--surface-raised) 96%, transparent);
+  box-shadow: 0 14px 38px color-mix(in oklch, var(--fg) 14%, transparent);
+  color: var(--fg-soft);
+  font-size: 11.5px;
+}
+.runtime-popover > strong { display: block; margin-bottom: 9px; color: var(--fg); font-size: 12.5px; }
+.runtime-popover dl { display: grid; gap: 6px; margin: 0; }
+.runtime-popover dl > div { display: flex; justify-content: space-between; gap: 18px; }
+.runtime-popover dt { color: var(--muted); }
+.runtime-popover dd { margin: 0; text-align: right; }
+.runtime-popover p { margin: 8px 0 0; line-height: 1.55; }
+.runtime-reason { padding-top: 8px; border-top: 1px solid var(--border); color: #8a5a18; }
 @keyframes live-pulse { 0%,100% { opacity: 1; } 50% { opacity: .42; } }
 .top-right { display: flex; align-items: center; gap: 20px; margin-left: auto; }
 .audit-meter {

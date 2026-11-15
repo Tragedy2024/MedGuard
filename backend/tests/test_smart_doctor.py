@@ -311,39 +311,46 @@ def test_api_smart_doctor_empty_question(tmp_path, monkeypatch):
 # 故换成**行政管理类**问法「怎么办出院手续」——它永远不会成为医学知识条目，
 # 以后再扩写知识库也不会再撞坏这组夹具。
 
+def _grounding_ref():
+    return [{
+        "ref_id": "kb:knee",
+        "ref_title": "膝部不适",
+        "ref_kind": "症状",
+        "ref_excerpt": "膝部不适持续或加重时，应咨询医生。",
+        "ref_source": "测试知识库",
+    }]
+
+
 def test_ai_fallback_uses_llm_when_configured(demo_db, monkeypatch):
-    """配置了 Key 且模型正常返回 → 回答来自 AI，来源标注「AI 智能导诊」。"""
+    """模型只有提交可核验的证据 ID，生成内容才允许展示。"""
     import json as _json
     from backend import config as _config
     monkeypatch.setattr(_config, "LLM_API_KEY", "sk-test")
+    monkeypatch.setattr(smart_doctor, "_retrieve_context", lambda q: _grounding_ref())
     monkeypatch.setattr(
         smart_doctor, "_call_llm",
         lambda prompt: _json.dumps({
-            "title": "出院手续咨询",
-            "text": "出院手续请到住院部前台办理。",
-            "advice": "请携带押金单到住院部结算窗口办理。",
-            "actions": ["携带押金单", "到结算窗口", "办理出院"],
-            "urgent": False,
+            "answer_mode": "grounded",
+            "title": "膝部不适",
+            "claims": [{
+                "text": "膝部不适持续或加重时，应咨询医生。",
+                "evidence_ids": ["kb:knee"],
+            }],
+            "uncertainty": "不能替代面诊。",
         }, ensure_ascii=False),
     )
-    r = smart_doctor.ask("怎么办理出院手续", "P001")
+    r = smart_doctor.ask("我膝盖疼怎么办", "P001")
     assert r["interpretation"]["source"] == "AI 智能导诊"
-    assert "住院部" in r["interpretation"]["text"]
-    assert r["advice"]["actions"] == ["携带押金单", "到结算窗口", "办理出院"]
+    assert "持续或加重" in r["interpretation"]["text"]
+    assert r["advice"]["actions"] == ["携带相关资料咨询医生", "症状持续或加重请及时就医"]
     assert r["advice"]["urgent"] is False
 
 
 def test_ai_fallback_marks_urgent(demo_db, monkeypatch):
-    from backend import config as _config
-    monkeypatch.setattr(_config, "LLM_API_KEY", "sk-test")
-    monkeypatch.setattr(
-        smart_doctor, "_call_llm",
-        lambda prompt: '{"title": "胸痛", "text": "剧烈胸痛需警惕心脏问题。", '
-                       '"advice": "请立即就医。", "actions": ["立即急诊"], "urgent": true}',
-    )
-    r = smart_doctor.ask("我胸口突然很疼", "P001")
-    assert r["interpretation"]["source"] == "AI 智能导诊"
+    """紧急度来自确定性红旗规则，不接受模型自报 urgent。"""
+    r = smart_doctor.ask("我突然剧烈胸痛", "P001")
     assert r["advice"]["urgent"] is True
+    assert "立即前往急诊就医" in r["advice"]["actions"]
 
 
 def test_ai_fallback_without_key_keeps_guide(demo_db, monkeypatch):
@@ -387,15 +394,17 @@ def test_ai_call_failure_falls_back_to_guide(demo_db, monkeypatch):
     assert "换个问法" in r["interpretation"]["title"]
 
 
-def test_ai_dirty_output_kept_as_text(demo_db, monkeypatch):
-    """模型输出不是 JSON 但非空 → 把原样文本作为解读，不丢回答。"""
+def test_ai_dirty_output_is_not_displayed(demo_db, monkeypatch):
+    """非结构化模型文本没有证据绑定，不得直接展示给患者。"""
     from backend import config as _config
     monkeypatch.setattr(_config, "LLM_API_KEY", "sk-test")
+    monkeypatch.setattr(smart_doctor, "_retrieve_context", lambda q: _grounding_ref())
     monkeypatch.setattr(smart_doctor, "_call_llm",
                         lambda p: "根据您的情况，建议先观察，症状加重请就医。")
     r = smart_doctor.ask("我膝盖疼怎么办", "P001")
-    assert r["interpretation"]["source"] == "AI 智能导诊"
-    assert "建议先观察" in r["interpretation"]["text"]
+    assert r["interpretation"]["source"] == "测试知识库"
+    assert "原始资料" in r["interpretation"]["text"]
+    assert "建议先观察" not in r["interpretation"]["text"]
 
 
 def test_ai_empty_output_falls_back_to_guide(demo_db, monkeypatch):
@@ -542,15 +551,17 @@ def test_lab_query_covers_all_mentioned_tests(demo_db):
 # ── 回归：AI 兜底的输出形态与 YAML 空值 ────────────────────────
 
 def test_ai_actions_string_is_split_not_iterated(demo_db, monkeypatch):
-    """模型把 actions 输出成字符串时，不能逐字符展开成单字条目。"""
+    """模型不能自定义医疗行动项；展示的是平台固定安全建议。"""
     from backend import config as _config
     monkeypatch.setattr(_config, "LLM_API_KEY", "sk-test")
+    monkeypatch.setattr(smart_doctor, "_retrieve_context", lambda q: _grounding_ref())
     monkeypatch.setattr(
         smart_doctor, "_call_llm",
-        lambda p: '{"title":"t","text":"x","advice":"y",'
-                  '"actions":"补充水分、清淡饮食","urgent":false}')
+        lambda p: '{"answer_mode":"grounded","title":"t",'
+                  '"claims":[{"text":"膝部不适持续或加重时，应咨询医生。",'
+                  '"evidence_ids":["kb:knee"]}],"uncertainty":""}')
     r = smart_doctor.ask("我膝盖疼怎么办", "P001")
-    assert r["advice"]["actions"] == ["补充水分", "清淡饮食"]
+    assert r["advice"]["actions"] == ["携带相关资料咨询医生", "症状持续或加重请及时就医"]
 
 
 def test_ai_urgent_string_false_is_not_truthy(demo_db, monkeypatch):
@@ -565,16 +576,14 @@ def test_ai_urgent_string_false_is_not_truthy(demo_db, monkeypatch):
 
 
 def test_ai_unparsable_output_escalates(demo_db, monkeypatch):
-    """解析不了 = 判断不了紧急度 → 不静默当成"不急"。
-
-    Schmitt-Thompson 与 ESI 的一致口径是 when in doubt, escalate；横幅文案
-    本身是「请留意重症信号」，不是诊断结论。
-    """
+    """解析失败时回到原始证据；是否紧急仍只由红旗规则决定。"""
     from backend import config as _config
     monkeypatch.setattr(_config, "LLM_API_KEY", "sk-test")
+    monkeypatch.setattr(smart_doctor, "_retrieve_context", lambda q: _grounding_ref())
     monkeypatch.setattr(smart_doctor, "_call_llm", lambda p: "这不是 JSON")
     r = smart_doctor.ask("我膝盖疼怎么办", "P001")
-    assert r["advice"]["urgent"] is True
+    assert r["advice"]["urgent"] is False
+    assert r["interpretation"]["title"] == "检索到的相关资料"
 
 
 def test_parse_llm_json_skips_braces_inside_strings():

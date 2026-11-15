@@ -277,9 +277,23 @@ class DetectionMetrics(BaseModel):
     source: str
 
 
+class RagHealthInfo(BaseModel):
+    """当前进程实际使用的检索链路，而不是部署文档里的期望配置。"""
+    status: Literal["pending", "full", "degraded", "bm25"]
+    mode: str
+    dense_enabled: bool
+    open_cmk_enabled: bool
+    primary_documents: int = 0
+    extra_documents: int = 0
+    reason: str = ""
+
+
 class HealthInfo(BaseModel):
     status: str
     algo_engine: str
+    metadata_store: str
+    llm: str
+    rag: RagHealthInfo
     policies: List[str]
     routes: List[str]
 
@@ -335,6 +349,16 @@ class SmartDoctorAdvice(BaseModel):
     urgent: bool = False
 
 
+class SmartDoctorEvidenceInfo(BaseModel):
+    """本轮解释内容的证据状态；与数据访问审计状态分开。"""
+    status: Literal[
+        "not_applicable", "curated", "grounded", "raw_evidence", "insufficient"
+    ] = "not_applicable"
+    references: int = 0
+    model_used: bool = False
+    message: str = ""
+
+
 class SmartDoctorResponse(BaseModel):
     intent: Literal["lab", "medication", "symptom", "disease", "fallback"]
     # 本轮命中的知识条目名（如「血糖」）。前端拿它作为下一轮的 context 回传，
@@ -346,3 +370,9 @@ class SmartDoctorResponse(BaseModel):
     data: Optional[SmartDoctorDataBlock] = None
     interpretation: Optional[SmartDoctorInterpretation] = None
     advice: Optional[SmartDoctorAdvice] = None
+    evidence: SmartDoctorEvidenceInfo = Field(default_factory=SmartDoctorEvidenceInfo)
+    # 本轮是否访问院内数据，以及访问是否经过统一安全管线。纯知识问答不查库，
+    # 用 not_applicable；lab/medication 则必须是 passed 或 blocked。
+    audit_status: Literal["not_applicable", "passed", "blocked"] = "not_applicable"
+    report_id: Optional[int] = None
+    trace_id: str = ""

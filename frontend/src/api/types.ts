@@ -528,6 +528,11 @@ export interface components {
             status: string;
             /** Algo Engine */
             algo_engine: string;
+            /** Metadata Store */
+            metadata_store: string;
+            /** Llm */
+            llm: string;
+            rag: components["schemas"]["RagHealthInfo"];
             /** Policies */
             policies: string[];
             /** Routes */
@@ -687,6 +692,38 @@ export interface components {
             degradation: components["schemas"]["DegradationInfo"];
             metrics: components["schemas"]["MetricsInfo"];
             result?: components["schemas"]["ResultSet"] | null;
+        };
+        /**
+         * RagHealthInfo
+         * @description 当前进程实际使用的检索链路，而不是部署文档里的期望配置。
+         */
+        RagHealthInfo: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "full" | "degraded" | "bm25";
+            /** Mode */
+            mode: string;
+            /** Dense Enabled */
+            dense_enabled: boolean;
+            /** Open Cmk Enabled */
+            open_cmk_enabled: boolean;
+            /**
+             * Primary Documents
+             * @default 0
+             */
+            primary_documents: number;
+            /**
+             * Extra Documents
+             * @default 0
+             */
+            extra_documents: number;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
         };
         /**
          * RegisterRequest
@@ -870,6 +907,33 @@ export interface components {
             degradation_level: string;
         };
         /**
+         * SmartDoctorEvidenceInfo
+         * @description 本轮解释内容的证据状态；与数据访问审计状态分开。
+         */
+        SmartDoctorEvidenceInfo: {
+            /**
+             * Status
+             * @default not_applicable
+             * @enum {string}
+             */
+            status: "not_applicable" | "curated" | "grounded" | "raw_evidence" | "insufficient";
+            /**
+             * References
+             * @default 0
+             */
+            references: number;
+            /**
+             * Model Used
+             * @default false
+             */
+            model_used: boolean;
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+        };
+        /**
          * SmartDoctorInterpretation
          * @description 通俗解读（来源：医院审核知识库）。
          *
@@ -919,6 +983,20 @@ export interface components {
             data?: components["schemas"]["SmartDoctorDataBlock"] | null;
             interpretation?: components["schemas"]["SmartDoctorInterpretation"] | null;
             advice?: components["schemas"]["SmartDoctorAdvice"] | null;
+            evidence?: components["schemas"]["SmartDoctorEvidenceInfo"];
+            /**
+             * Audit Status
+             * @default not_applicable
+             * @enum {string}
+             */
+            audit_status: "not_applicable" | "passed" | "blocked";
+            /** Report Id */
+            report_id?: number | null;
+            /**
+             * Trace Id
+             * @default
+             */
+            trace_id: string;
         };
         /**
          * Token

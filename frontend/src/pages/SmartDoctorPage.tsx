@@ -10,6 +10,7 @@
  *   下一步建议 → 「来源：医院审核知识库」
  */
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { Link } from 'react-router-dom'
 import { askSmartDoctor } from '../api/smartDoctor'
 import type { SmartDoctorResponse } from '../api/models'
 import { AliasProvider, useAliases } from '../store/aliases'
@@ -45,6 +46,14 @@ const TASKS: Task[] = [
 const SOURCE_DATA = '医院主库'
 const SOURCE_AI = 'AI 智能导诊'
 const SOURCE_DATASET = 'OpenCMKG 开源数据集'
+
+const EVIDENCE_LABEL: Record<string, string> = {
+  not_applicable: '暂无证据状态',
+  curated: '结构化资料',
+  grounded: '证据约束生成',
+  raw_evidence: '仅展示原始证据',
+  insufficient: '证据不足',
+}
 
 interface Message {
   role: 'user' | 'doctor'
@@ -323,9 +332,28 @@ function AnswerView({
   const columns = resp.data?.columns ?? []
   const items = resp.interpretation?.items ?? []
   const actions = resp.advice?.actions ?? []
+  const evidence = resp.evidence ?? {
+    status: 'not_applicable' as const,
+    references: 0,
+    model_used: false,
+    message: '后端尚未返回证据状态。',
+  }
 
   return (
     <div className="answer-block sd-answer">
+      <div className="sd-answer-status" aria-label="本次回答状态">
+        {resp.audit_status !== 'not_applicable' && (
+          <span className={`sd-status-pill is-${resp.audit_status}`}>
+            {resp.audit_status === 'passed' ? '数据访问已审计' : '数据访问已阻止'}
+          </span>
+        )}
+        <span className={`sd-status-pill is-${evidence.status}`}>
+          {EVIDENCE_LABEL[evidence.status] ?? evidence.status}
+          {evidence.references > 0 ? ` · ${evidence.references} 条依据` : ''}
+        </span>
+        <span className="sd-status-message">{evidence.message}</span>
+      </div>
+
       {resp.data && rows.length > 0 && (
         <div className="answer-section source-hospital sd-block">
           <h5>您的院内数据 <span className="sd-source-tag">{SOURCE_DATA}</span></h5>
@@ -380,6 +408,19 @@ function AnswerView({
           )}
         </div>
       )}
+
+      {resp.report_id != null && (
+        <div className="sd-audit-proof">
+          <span>本次院内查询已通过统一安全管线并留痕</span>
+          <Link to={`/reports?report=${resp.report_id}`}>查看本次安全报告 →</Link>
+        </div>
+      )}
+      {resp.audit_status === 'passed' && resp.report_id == null && (
+        <div className="sd-audit-proof is-unavailable">
+          <span>本次数据访问已通过审计，但安全报告存储当前不可用</span>
+          {resp.trace_id && <code>追踪号 {resp.trace_id.slice(0, 12)}</code>}
+        </div>
+      )}
     </div>
   )
 }
@@ -393,6 +434,9 @@ function InterpretationRow({
   aliasOf: (q: string) => string
 }) {
   if (item.ref_title !== undefined) {
+    const sourceType = item.ref_source_type === 'open_dataset' ? '开源数据' : '医院审核资料'
+    const quality = item.ref_quality_tier === 'opencmkg' ? '扩展资料' : '核心资料'
+    const score = typeof item.ref_score === 'number' ? item.ref_score.toFixed(2) : ''
     return (
       <>
         <div className="sd-item-line">
@@ -402,6 +446,13 @@ function InterpretationRow({
         <div className="sd-item-text sd-ref">
           {item.ref_excerpt ? <span>{String(item.ref_excerpt)}</span> : null}
           {item.ref_source ? <span className="sd-ref-source">出处：{String(item.ref_source)}</span> : null}
+          <span className="sd-ref-meta">
+            <span>{sourceType}</span>
+            <span>{quality}</span>
+            {score && <span>匹配分 {score}</span>}
+            {item.ref_source_version ? <span>版本 {String(item.ref_source_version)}</span> : null}
+            {item.ref_license ? <span>许可：{String(item.ref_license)}</span> : null}
+          </span>
         </div>
       </>
     )

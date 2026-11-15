@@ -17,6 +17,8 @@ import { ConsolePage } from './pages/ConsolePage'
 import { ReportPage } from './pages/ReportPage'
 import { SmartDoctorPage } from './pages/SmartDoctorPage'
 import { UserAdminPage } from './pages/UserAdminPage'
+import { fetchHealth } from './api/health'
+import type { HealthInfo } from './api/models'
 
 const ALL: UserRole[] = ['admin', 'staff', 'patient']
 
@@ -105,16 +107,72 @@ function WorkIcon({ name }: { name: IconKey }) {
   )
 }
 
+function RuntimeStatus({ health }: { health: HealthInfo | null }) {
+  const ragStatus = health?.rag.status
+  const warning = health?.algo_engine !== 'available' || ragStatus === 'degraded'
+  const suffix = ragStatus === 'degraded'
+    ? '检索已降级'
+    : ragStatus === 'bm25'
+      ? 'BM25'
+      : ragStatus === 'full'
+        ? 'BGE + BM25'
+        : ragStatus === 'pending'
+          ? '检索待加载'
+          : '状态读取中'
+  const auditLabel = health?.algo_engine === 'available' ? '审计在线' : '审计状态未知'
+
+  return (
+    <details className={`runtime-status ${warning ? 'is-warning' : ''}`}>
+      <summary aria-label="查看审计与检索运行状态">
+        <span className={`live-status ${ragStatus === 'degraded' ? 'is-degraded' : ''}`}>
+          {auditLabel} · {suffix}
+        </span>
+      </summary>
+      <div className="runtime-popover" role="status">
+        <strong>当前实际运行状态</strong>
+        {health ? (
+          <dl>
+            <div><dt>安全审计</dt><dd>{health.algo_engine === 'available' ? '可用' : '不可用'}</dd></div>
+            <div><dt>知识检索</dt><dd>{health.rag.mode}</dd></div>
+            <div><dt>核心资料</dt><dd>{health.rag.primary_documents || '首次检索后统计'}</dd></div>
+            <div><dt>第二知识源</dt><dd>{health.rag.open_cmk_enabled ? `${health.rag.extra_documents} 条` : '未启用'}</dd></div>
+            <div><dt>报告存储</dt><dd>{health.metadata_store === 'available' ? '可用' : '不可用'}</dd></div>
+            <div><dt>语言模型</dt><dd>{health.llm === 'configured' ? '已配置' : '未配置'}</dd></div>
+          </dl>
+        ) : <p>正在读取后端状态……</p>}
+        {health?.rag.reason && <p className="runtime-reason">{health.rag.reason}</p>}
+      </div>
+    </details>
+  )
+}
+
 function Shell() {
   const { session, signOut } = useAuth()
   const location = useLocation()
   const [sideOpen, setSideOpen] = useState(false)
+  const [health, setHealth] = useState<HealthInfo | null>(null)
   const contentRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
     setSideOpen(false)
     contentRef.current?.scrollTo({ top: 0 })
   }, [location.pathname])
+
+  useEffect(() => {
+    if (!session) return
+    let active = true
+    const refresh = () => {
+      void fetchHealth()
+        .then((value) => { if (active) setHealth(value) })
+        .catch(() => { if (active) setHealth(null) })
+    }
+    refresh()
+    const timer = window.setInterval(refresh, 10_000)
+    return () => {
+      active = false
+      window.clearInterval(timer)
+    }
+  }, [session])
 
   if (!session) {
     return (
@@ -218,7 +276,7 @@ function Shell() {
               <p className="top-crumb">安全工作区</p>
               <div className="top-title-row">
                 <h1>{currentTitle}</h1>
-                <span className="live-status">审计在线</span>
+                <RuntimeStatus health={health} />
               </div>
             </div>
             <div className="top-right">
