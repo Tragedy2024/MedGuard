@@ -14,6 +14,23 @@
 - **BGE 模型权重、在线模型服务和界面素材**：分别按模型卡、服务条款和素材
   许可证使用，不由项目 MIT 许可证重新授权。
 
+## 随仓库提交的合成演示数据
+
+- `backend/demo/disease_facts.synthetic.json`
+- `backend/demo/symptom_departments.synthetic.json`
+
+这两份文件由团队自行编写，采用项目 MIT 许可证，仅用于演示与自动化测试。
+它们的 `_meta.source` 明确标注「合成演示数据（非临床）」，不代表 OpenCMKG、
+医院审核知识库或任何临床结论。真实 OpenCMKG 派生文件存在时优先使用真实文件；
+仓库不随附 OpenCMKG 原始或派生数据。
+
+## 可选在线服务
+
+- **TypeSafe Jev**（`api.typesafe.ai`）：可选的公开问句分类服务，按服务条款使用。
+  只有精确命中 `MEDGUARD_JEV_APPROVED_QUESTIONS` 的非敏感问句才会发送；
+  默认内置 3 条合成问句；未配置 Key 或调用失败时自动关闭，不影响核心功能。
+  Key 只存在于本地 `.env`，不随仓库分发。
+
 ## 前期研究成果
 
 安全审计引擎由当前参赛队员在前期论文研究中形成。本次比赛复用该前期成果，

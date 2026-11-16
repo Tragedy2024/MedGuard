@@ -59,12 +59,14 @@ function fail(name, detail) {
   console.log(`  ✗ ${name}  ${detail}`)
 }
 function check(name, cond, detail = '') {
-  cond ? ok(name, detail) : fail(name, detail || '(断言不成立)')
+  if (cond) ok(name, detail)
+  else fail(name, detail || '(断言不成立)')
 }
 function checkEq(name, actual, expected) {
   const a = JSON.stringify(actual)
   const e = JSON.stringify(expected)
-  a === e ? ok(name, `= ${e}`) : fail(name, `期望 ${e}，实际 ${a}`)
+  if (a === e) ok(name, `= ${e}`)
+  else fail(name, `期望 ${e}，实际 ${a}`)
 }
 
 // ── 后端：探测 → 必要时自己起 ──────────────────────────────────
@@ -283,8 +285,12 @@ async function apiChecks() {
         (body.interpretation?.title ?? '').includes('帕金森病'))
       check('事实卡条目非空（不依赖模型）',
         (body.interpretation?.items ?? []).length > 0)
-      check('出处标注为开源知识图谱',
-        (body.interpretation?.source ?? '').includes('OpenCMKG'))
+      // 有 OpenCMKG 派生数据时标 OpenCMKG；新克隆没有该数据时
+      // dataset_kb 回退到随仓库提交的合成演示数据。两种来源都必须如实标注，
+      // 不能把合成数据冒充成开源知识图谱。
+      const src = body.interpretation?.source ?? ''
+      check('出处标注为开源知识图谱或合成演示数据',
+        src.includes('OpenCMKG') || src.includes('合成演示数据'))
     }
   }
 
@@ -539,8 +545,13 @@ async function uiChecks(browser) {
       await page.click('.sd-ask button')
       await page.waitForTimeout(500)
       checkEq('智慧医生 · 首轮不带 context', seen[0]?.context ?? null, null)
-      checkEq('智慧医生 · 追问带上上一轮的 intent/entity',
-        seen[1]?.context ?? null, { intent: 'lab', entity: '血糖' })
+      // 只断言本用例关心的字段：context 还会携带 personal 等状态，
+      // 用整对象相等会把「新增字段」误判成回归。
+      const ctx2 = seen[1]?.context ?? null
+      check('智慧医生 · 追问带上上一轮的 intent/entity',
+        ctx2?.intent === 'lab' && ctx2?.entity === '血糖')
+      check('智慧医生 · 追问 context 带 personal 标记',
+        ctx2?.personal === false)
     } catch (e) {
       fail('智慧医生 · 多轮上下文', String(e).slice(0, 80))
     }

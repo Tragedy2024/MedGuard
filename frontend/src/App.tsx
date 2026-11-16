@@ -39,8 +39,9 @@ interface NavItem {
  * 不在于能进哪些页面。这正是演示要证明的：同一套界面、同一个问题，
  * 两类令牌给出不同结果。
  *
- * 患者多一个「智慧医生」入口，且它是患者登录后的默认页。管理员多出
- * 「数据源」「安全策略」「用户管理」：那是平台配置，不该开放给临床用户。
+ * 患者默认进入「智慧医生」；同一平台下的「可信查询」是透明查询/审计视图，
+ * 用于核对 SQL 与安全报告，不是第二个系统。管理员多出「数据源」「安全策略」
+ * 「用户管理」：那是平台配置，不该开放给临床用户。
  */
 function navItems(role: UserRole): NavItem[] {
   const items: NavItem[] = [
@@ -55,7 +56,13 @@ function navItems(role: UserRole): NavItem[] {
     { to: '/scope', label: '可查范围', note: '业务字段与边界', icon: 'scope', roles: ['patient'] },
     { to: '/policy', label: '安全策略', note: '字段标注与规则', icon: 'policy', roles: ['admin'] },
     { to: '/users', label: '用户管理', note: '账号与角色', icon: 'users', roles: ['admin'] },
-    { to: '/console', label: '可信问答', note: '查询控制台', icon: 'ask', roles: ALL },
+    {
+      to: '/console',
+      label: role === 'patient' ? '可信查询' : '可信问答',
+      note: role === 'patient' ? '查 SQL 与审计' : '查询控制台',
+      icon: 'ask',
+      roles: ALL,
+    },
     { to: '/reports', label: '安全报告', note: '审计证据', icon: 'reports', roles: ALL },
   ]
   return items.filter((i) => i.roles.includes(role))

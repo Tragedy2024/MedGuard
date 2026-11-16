@@ -100,7 +100,11 @@ function Reports() {
 
       {reports.length === 0 ? (
         <div className="result-empty">
-          <p>暂无记录。到可信问答提一次问，这里会留下对应的安全证据。</p>
+          <p>
+            暂无记录。到
+            {session?.token.type === 'patient' ? '可信查询' : '可信问答'}
+            提一次问，这里会留下对应的安全证据。
+          </p>
         </div>
       ) : (
         <div className="reports-layout">

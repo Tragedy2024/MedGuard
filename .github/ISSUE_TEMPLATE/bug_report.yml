@@ -1,0 +1,67 @@
+name: Bug 报告
+description: 报告可复现的功能错误（不要放真实患者数据或密钥）
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。请先确认问题能在**合成演示数据**上复现。
+        **不要在 issue 中粘贴真实患者数据、密钥或内部地址。**
+  - type: textarea
+    id: what
+    attributes:
+      label: 发生了什么
+      description: 实际行为与期望行为
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. ./start_demo.sh
+        2. 登录 patient / medguard
+        3. 提问 "..."
+        4. 看到 ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望结果
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: 版本 / commit
+      placeholder: "f2af82b"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: 影响范围
+      multiple: true
+      options:
+        - 查询控制台 / NL2SQL
+        - 医盾审计（层一/层二）
+        - 智慧医生 / RAG / Jev
+        - 登录 / 令牌 / 报告隔离
+        - 前端界面
+        - 数据准备 / 复现
+        - 文档
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志或截图
+      description: 请先抹掉密钥、真实数据和内部地址
+      render: shell
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: 确认
+      options:
+        - label: 我确认内容中不含真实患者数据、密钥或内部地址
+          required: true

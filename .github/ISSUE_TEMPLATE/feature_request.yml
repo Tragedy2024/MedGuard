@@ -1,0 +1,47 @@
+name: 功能建议
+description: 提出新能力、评测或开源改进建议
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 要解决的问题
+      description: 请描述用户场景，而不是直接给实现方案
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 建议方案
+      description: 可以包含接口、数据、评测或文档方面的想法
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 备选方案 / 不做的理由
+  - type: dropdown
+    id: area
+    attributes:
+      label: 影响范围
+      multiple: true
+      options:
+        - AI / RAG / 模型
+        - 安全审计
+        - 数据与知识库
+        - 前端体验
+        - 评测与复现
+        - 开源工程化
+  - type: textarea
+    id: impact
+    attributes:
+      label: 安全、隐私与许可证影响
+      description: 是否引入新数据、新模型、新依赖？来源、版本、许可证是什么？
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: 确认
+      options:
+        - label: 我理解项目不接受用“模型自证清白”替代确定性校验
+          required: true

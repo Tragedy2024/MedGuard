@@ -1672,6 +1672,15 @@ html { scroll-behavior: smooth; }
 
 .sd-sql { margin-top: 8px; }
 .sd-sql summary { font-size: 12px; color: var(--muted, #6b7280); cursor: pointer; }
+.sd-query-more {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--brand);
+  text-decoration: none;
+}
+.sd-query-more:hover { text-decoration: underline; }
 .sd-sql pre {
   background: var(--paper-sunken);
   border-radius: 8px;

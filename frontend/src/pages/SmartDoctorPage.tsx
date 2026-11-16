@@ -374,10 +374,15 @@ function AnswerView({
             </table>
           </div>
           {resp.data.sql_after && (
-            <details className="sd-sql">
-              <summary>查看本次查询（经医盾审计）</summary>
-              <pre>{inlineAlias(resp.data.sql_after) ?? resp.data.sql_after}</pre>
-            </details>
+            <>
+              <details className="sd-sql">
+                <summary>查看本次查询（经医盾审计）</summary>
+                <pre>{inlineAlias(resp.data.sql_after) ?? resp.data.sql_after}</pre>
+              </details>
+              <Link className="sd-query-more" to="/console">
+                想看完整 SQL 与审计事件？去可信查询 →
+              </Link>
+            </>
           )}
         </div>
       )}

@@ -9,7 +9,31 @@
 
 `FastAPI` · `React 19` · `TypeScript` · `SQLite` · `sqlglot`
 
+[![CI](https://github.com/Tragedy2024/MedGuard/actions/workflows/ci.yml/badge.svg)](https://github.com/Tragedy2024/MedGuard/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg)](https://www.python.org/)
+
 </div>
+
+---
+
+> **评审/新克隆快速入口**
+>
+> ```bash
+> cd backend && pip install -r requirements.txt && python -m pytest -q   # 完整数据 386；合成回退 385 + 1 skip
+> cd .. && ./start_demo.sh                                               # http://localhost:8000
+> ```
+>
+> 新克隆默认使用**合成演示知识**（`*.synthetic.json`，界面明确标注“非临床”），
+> 核心审计/双令牌/血糖路径开箱可跑。需要完整 OpenCMKG 疾病/症状/检索文档时：
+>
+> ```bash
+> cd backend
+> python scripts/prepare_demo_data.py --download --proxy http://127.0.0.1:7897
+> python scripts/prewarm_rag.py
+> ```
+>
+> 半决赛材料见 [`docs/competition/`](docs/competition/README.md)。
 
 ---
 
@@ -116,6 +140,18 @@ backend/demo/disease_facts.json              本地生成，已由 .gitignore �
 自行下载固定版本的 OpenCMKG 三元组并运行脚本，即可在本地复现派生文件。
 由于上游未明确授予派生数据再分发权，仓库不提交原始数据、派生 JSON 或其向量缓存。
 
+**新克隆没有派生文件时**：`dataset_kb` 回退到随仓库提交的
+`disease_facts.synthetic.json` / `symptom_departments.synthetic.json`
+（MIT，`_meta.source` 明确标注「合成演示数据（非临床）」）。
+真实 OpenCMKG 派生文件存在时优先使用真实文件；真实文件存在但损坏时
+**不**回退，避免把数据故障伪装成正常。一条命令准备完整数据：
+
+```bash
+cd backend
+python scripts/prepare_demo_data.py --download --proxy http://127.0.0.1:7897
+python scripts/prewarm_rag.py
+```
+
 构建脚本读取标准 CSV，将科室、症状与检查关系生成三份本地派生 JSON。
 疾病卡保存原始行号与完整列表，默认页面每个字段最多展示五项。科室冲突保留候选，
 单一科室字段仅在结果唯一时生成。口语映射来自脚本中的显式清单。
@@ -192,7 +228,8 @@ MEDGUARD_RAG_DENSE_MODEL=BAAI/bge-small-zh-v1.5
 自定义 `MEDGUARD_JEV_APPROVED_QUESTIONS` 会替换内置清单，仅填写合成或人工审核过的
 非敏感问句。只有规则未识别且与清单完整匹配的问句会发给 TypeSafe。Jev 提供公开
 知识分类或澄清提示，疾病对象由本地知识库匹配。本人记录仅通过本地判定、身份准入
-和审计流程读取。调用固定使用 `jev-1.14.0`，800 毫秒内未得到可用结果则沿用常规兜底。
+和审计流程读取。调用固定使用 `jev-1.14.0`，默认 2.5 秒内未得到可用结果则沿用
+常规兜底（`MEDGUARD_JEV_TIMEOUT_SEC` 可调，范围 0.1–10 秒）。
 
 ### OpenCMKG 第二知识源（默认关，可选的召回扩充）
 
@@ -279,12 +316,14 @@ Vite 已配好 proxy，把 `/api` 转发到 `8000`，**无需处理跨域**。
 
 | 账号 | 密码 | 身份 | 能进哪些页 |
 |---|---|---|---|
-| `admin` | `medguard` | 医院管理员（信息科） | 数据源 / 安全策略 / **用户管理** / 查询控制台 / 安全报告 |
-| `doctor` | `medguard` | 医护人员（医生001·心内科） | 可查范围 / 查询控制台 / 安全报告 |
-| `patient` | `medguard` | 病患（患者001） | 可查范围 / 查询控制台 / 安全报告 |
+| `admin` | `medguard` | 医院管理员（信息科） | 数据源 / 安全策略 / **用户管理** / 可信问答（查询控制台）/ 安全报告 |
+| `doctor` | `medguard` | 医护人员（医生001·心内科） | 可查范围 / 可信问答（查询控制台）/ 安全报告 |
+| `patient` | `medguard` | 病患（患者001） | **智慧医生** / 可查范围 / 可信查询 / 安全报告 |
 
 > **身份决定能进哪些页面，令牌决定能查到什么数据**——两者正交。
-> 医护与病患的页面完全相同，差别只在令牌；患者额外拥有「智慧医生」（可信就医助手，登录后默认页）——那是患者视角的主入口，其余页面照常。这正是演示矩阵成立的前提。
+> 医护与病患的工作区结构相同，差别只在令牌；患者默认进入「智慧医生」（可信就医助手），
+> 「可信查询」是同一平台下的透明查询/审计视图，用于核对 SQL 与安全报告，
+> 不是第二个系统。这正是演示矩阵成立的前提。
 > 身份**不可在界面上随手切换**，必须退出后重新登录——
 > 对一个以安全为卖点的产品，"能随便切身份"本身就是可信度问题。
 
@@ -554,6 +593,11 @@ python -c "from backend.deps import algo_available; print(algo_available())"
 
 | 文档 | 内容 |
 |---|---|
+| [`docs/competition/README.md`](docs/competition/README.md) | 半决赛材料索引、提交前检查清单 |
+| [`docs/competition/story-script.md`](docs/competition/story-script.md) | 故事版 6 分钟脚本：一个入口、两个故事、三层证据 |
+| [`docs/competition/technical-report.md`](docs/competition/technical-report.md) | 技术报告：机制、数据、评测、合规、边界 |
+| [`docs/competition/demo-script.md`](docs/competition/demo-script.md) | 6 分钟演示逐镜头脚本 |
+| [`docs/competition/ppt-outline.md`](docs/competition/ppt-outline.md) | 12–14 页 PPT 大纲（无学校/导师标识） |
 | [`docs/superpowers/specs/2026-09-10-medguard-design.md`](docs/superpowers/specs/2026-09-10-medguard-design.md) | 设计文档：威胁模型、两层模型、算法接口契约、已知风险 |
 | [`docs/TestPlan.txt`](docs/TestPlan.txt) | 测试资产全景、演示缓存、验收清单、未覆盖项 |
 | [`docs/superpowers/plans/2026-09-10-team-conventions.md`](docs/superpowers/plans/2026-09-10-team-conventions.md) | 团队规范：契约冻结、代码约定、质量门 |
