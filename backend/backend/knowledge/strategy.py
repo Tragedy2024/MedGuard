@@ -55,16 +55,63 @@ class RetrievalPlan:
                 "filters": {k: list(v) for k, v in asdict(self.filters).items() if v}}
 
 
+_COMPOUND_SEP = re.compile(r"[和与、及/]")
+
+
+def _split_compound(name: str,
+                    canonical_of: Dict[str, str]) -> Tuple[str, ...]:
+    """把「糖尿病和高血压」这类合并病名拆成两个已知实体。
+
+    OpenCMKG 是从网页聚合的图谱，疾病名里混着「A和B」这种合并条目。
+    如果按最长字面匹配把它当成一个实体，A 和 B 都会被它“包住”而丢掉，
+    比较题于是被误判成「需要明确两个对象」。
+
+    只在**所有部分都能映射到规范实体键**时才拆；返回的是规范键，
+    不是用户原话——「心梗」要映射到「心肌梗死」，否则元数据过滤
+    匹配不到知识库条目。否则保留原名：宁可把合并名当一个条目，
+    也不要把一个真实病名拆错。
+    """
+    if not _COMPOUND_SEP.search(name):
+        return ()
+    parts = tuple(part.strip() for part in _COMPOUND_SEP.split(name) if part.strip())
+    if len(parts) < 2:
+        return ()
+    keys = []
+    for part in parts:
+        key = canonical_of.get(corpus.normalize_entity(part))
+        if not key:
+            return ()
+        keys.append(key)
+    if len(set(keys)) < 2:
+        return ()
+    return tuple(dict.fromkeys(keys))
+
+
 def _entities(question: str, kb: Dict[str, Any], disease_names=()) -> Tuple[str, ...]:
     """仅完整名字/规范别名字面命中，去掉被更长实体包含的命中。"""
+    docs = corpus.build_docs(kb)
+    canonical_of: Dict[str, str] = {}
+    for doc in docs:
+        key = doc.entity_id or doc.key
+        for alias in (doc.name, *doc.aliases):
+            if alias:
+                canonical_of.setdefault(corpus.normalize_entity(alias), key)
+    for name in disease_names:
+        if name:
+            canonical_of.setdefault(corpus.normalize_entity(name), name)
+
     hits = []
-    for doc in corpus.build_docs(kb):
+    for doc in docs:
         for alias in (doc.name, *doc.aliases):
             if alias and alias in question:
                 hits.append((alias, doc.entity_id or doc.key, doc.kind))
     for name in disease_names:
         if name and name in question:
-            hits.append((name, name, "disease"))
+            parts = _split_compound(name, canonical_of)
+            if parts:
+                hits.extend((part, part, "disease") for part in parts)
+            else:
+                hits.append((name, name, "disease"))
     return tuple(dict.fromkeys(key for alias, key, _ in hits
                               if not any(alias != other and alias in other
                                          for other, _, _ in hits)))

@@ -148,6 +148,22 @@ def _approved_jev_questions() -> frozenset[str]:
 
 JEV_APPROVED_QUESTIONS = _approved_jev_questions()
 
+
+def _bounded_float(name: str, default: float,
+                   low: float, high: float) -> float:
+    """读取有界浮点环境变量；非法值回退默认值，越界钳制。"""
+    try:
+        value = float(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        value = float(default)
+    return min(max(value, low), high)
+
+
+# Jev 分类的等待上限。实测 TypeSafe 单次 0.6–0.9s；原先 0.8s 在抖动时会
+# 频繁静默回退。默认 2.5s，仍是有界等待；只在精确白名单问句上生效，
+# 不影响本人记录读取或普通问答。
+JEV_TIMEOUT_SEC = _bounded_float("MEDGUARD_JEV_TIMEOUT_SEC", 2.5, 0.1, 10.0)
+
 # ── RAG 检索（默认尝试本地 BGE；不可用时自动降级为 BM25）──────────
 #
 # BGE 使用延迟加载：首次真正检索时才初始化；未安装 FlagEmbedding 则立即降级。

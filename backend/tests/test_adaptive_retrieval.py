@@ -215,6 +215,24 @@ def test_comparison_needs_both_entities_before_generation(facts, monkeypatch):
     assert "比较资料不足" in out["interpretation"]["title"]
 
 
+def test_compound_dataset_name_does_not_swallow_comparison_entities(facts):
+    """OpenCMKG 里有「糖尿病和高血压」这种合并病名。
+
+    最长匹配若把它当成一个实体，两个真实疾病都会被它“包住”而丢掉，
+    比较题就被误判成「需要明确两个对象」。拆分后必须保留两个实体。
+    """
+    cards = dataset_kb._CACHE[dataset_kb.DISEASE_FILE]["diseases"]
+    cards["高血压"] = {"dept": "心血管内科", "checks": ["检查B"]}
+    cards["糖尿病和高血压"] = {"dept": "内分泌科", "checks": ["检查C"]}
+
+    plan = strategy.choose(
+        "糖尿病和高血压有什么区别", "disease", "糖尿病",
+        sd.load_knowledge(), disease_names=dataset_kb.disease_names())
+
+    assert plan.strategy == "hybrid"
+    assert set(plan.filters.entities) == {"糖尿病", "高血压"}
+
+
 def test_subtype_normalization_keeps_identity():
     f = corpus.MetadataFilter(entities=("一型糖尿病",))
     assert f.matches(doc("1型糖尿病"))

@@ -33,12 +33,34 @@ SYMPTOM_FILE = "symptom_departments.json"
 DISEASE_FILE = "disease_facts.json"
 
 
+def _synthetic_path(filename: str) -> str:
+    """合成演示数据的伴随文件名：disease_facts.json → disease_facts.synthetic.json。"""
+    stem, ext = os.path.splitext(filename)
+    return os.path.join(config.DEMO_DIR, f"{stem}.synthetic{ext or '.json'}")
+
+
 def _load(filename: str) -> Dict[str, Any]:
-    """加载一份数据集表（进程内缓存；读取失败不缓存）。"""
+    """加载一份数据集表（进程内缓存；读取失败不缓存）。
+
+    **主文件缺失时回退到随仓库提交的 `.synthetic.json`**：OpenCMKG 的
+    许可不允许随仓库分发原始/派生数据，新克隆默认没有主文件；合成文件
+    让疾病/症状路径开箱可跑，但 `_meta.source` 必须明确标注
+    「合成演示数据（非临床）」，不得冒充 OpenCMKG。
+
+    主文件**存在但损坏**时**不**回退：那说明数据本身出了问题，悄悄换成
+    合成数据会把故障伪装成正常。此时仍按原行为返回空表。
+    """
     with _LOCK:
         if filename in _CACHE:
             return _CACHE[filename]
         path = os.path.join(config.DEMO_DIR, filename)
+        if not os.path.exists(path):
+            synthetic = _synthetic_path(filename)
+            if not os.path.exists(synthetic):
+                return {}
+            print(f"[dataset] 未找到 {filename}，使用合成演示数据 "
+                  f"{os.path.basename(synthetic)}", flush=True)
+            path = synthetic
         try:
             with open(path, encoding="utf-8") as f:
                 data = json.load(f)
@@ -48,6 +70,12 @@ def _load(filename: str) -> Dict[str, Any]:
             return {}
         _CACHE[filename] = data
         return data
+
+
+def reset() -> None:
+    """丢掉进程内缓存（测试或热更新数据后调用）。"""
+    with _LOCK:
+        _CACHE.clear()
 
 
 def source_note(filename: str = SYMPTOM_FILE) -> str:

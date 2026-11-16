@@ -30,6 +30,7 @@ build/
 # 匹配不到 backend/data/。团队规范 §4.4 要求 .db 一律不入库。
 **/data/*.db
 **/data/*.db-journal
+**/data/*.db.bak
 # 运行时学习缓存（预置演示缓存 demo/query_cache.json 仍跟踪、只读）
 **/data/query_cache_learned.json
 # 本地生成的语义向量缓存，不属于源码或开放成果。
@@ -72,8 +73,17 @@ Thumbs.db
 # 评审工具留下的 pytest 缓存目录（本轮评审 P3）
 .pytest-review-*/
 
+# Impeccable design hook 的本地缓存/配置（工具产物，不属于交付物）
+.impeccable/
+
 # OpenCMKG 仅允许学术研究且未明确授予派生数据再分发权。
 # 仓库只开放生成脚本；使用者需自行取得上游数据并在本地生成这些文件。
 backend/demo/disease_facts.json
 backend/demo/symptom_departments.json
 backend/demo/rag_documents.json
+# 固定版本原始三元组（约 19MB）与本地审核目录，同样不入库。
+**/data/opencmkg/
+
+# 本地 BGE / FastEmbed 模型缓存：第三方权重，体积大（约 93MB），
+# 可由 fastembed / FlagEmbedding 重新下载；不要随源码提交。
+**/data/fastembed_cache/

@@ -10,7 +10,9 @@ from backend import config
 
 _URL = "https://api.typesafe.ai/v1/systemone"
 _MODEL = "jev-1.14.0"
-_TIMEOUT_SECONDS = 0.8
+# 与 config 保持一致：默认 2.5s，可用 MEDGUARD_JEV_TIMEOUT_SEC 调整。
+# 实测 TypeSafe 单次 0.6–0.9s，原先 0.8s 在抖动时会静默回退。
+_TIMEOUT_SECONDS = config.JEV_TIMEOUT_SEC
 _MIN_PROBABILITY = 0.75
 _CRITERIA = {
     "disease": "询问具体疾病的公共知识，例如定义、症状、检查或就诊科室",

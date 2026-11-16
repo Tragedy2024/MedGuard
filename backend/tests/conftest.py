@@ -10,7 +10,7 @@ import sys
 os.environ["MEDGUARD_TESTING"] = "1"
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-for p in (_ROOT, os.path.join(_ROOT, "backend")):
+for p in (_ROOT, os.path.join(_ROOT, "backend"), os.path.join(_ROOT, "scripts")):
     if p not in sys.path:
         sys.path.insert(0, p)
 

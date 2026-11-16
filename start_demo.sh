@@ -28,13 +28,14 @@ done
 
 # ── 1. 找 Python ──────────────────────────────────────────────
 #
-# 依赖装在 conda 环境 medguard 里，**不是** PATH 上的系统 Python：后者没有
-# sqlglot，服务起得来但一查就报 ModuleNotFoundError —— 这类故障在演示现场
-# 很难当场排查。所以这里逐个候选**验依赖**，验不过就继续找，全都不行才报错。
+# 依赖装在 conda 环境 medguard 里，**不是** PATH 上的系统 Python：后者可能
+# 有 fastapi/sqlglot 却没有 jieba，服务起得来但 /api/health 直接 500 —— 这类
+# 故障在演示现场很难当场排查。所以这里逐个候选**验依赖**，验不过就继续找，
+# 全都不行才报错。jieba 是硬依赖：health 与知识检索模块在导入时就需要它。
 #
 # 不能只靠 `conda activate`：非交互 shell 里它可能静默失败，然后 python 落到
 # 别的环境上。这也是为什么下面每一处都要跑一次 import 检查。
-_ok() { [ -n "${1:-}" ] && [ -x "$1" ] && "$1" -c "import fastapi, uvicorn, sqlglot" >/dev/null 2>&1; }
+_ok() { [ -n "${1:-}" ] && [ -x "$1" ] && "$1" -c "import fastapi, uvicorn, sqlglot, jieba" >/dev/null 2>&1; }
 
 PY=""
 for cand in \
@@ -57,7 +58,7 @@ if [ -z "$PY" ] && command -v conda >/dev/null 2>&1; then
 fi
 
 if [ -z "$PY" ]; then
-  echo "[错误] 找不到装了依赖（fastapi / uvicorn / sqlglot）的 Python。" >&2
+  echo "[错误] 找不到装了依赖（fastapi / uvicorn / sqlglot / jieba）的 Python。" >&2
   echo "       请先建好环境：" >&2
   echo "           conda create -n medguard python=3.12" >&2
   echo "           conda activate medguard && pip install -r backend/requirements.txt" >&2
@@ -68,8 +69,13 @@ fi
 
 # ── 2. 前端构建产物 ───────────────────────────────────────────
 #
-# 只在缺失或显式 --build 时构建。演示现场不该把时间花在等 Vite 打包上。
-if [ "$BUILD" = 1 ] || [ ! -f frontend/dist/index.html ]; then
+# 缺失或显式 --build 时构建；源码比产物新时也构建——dist 不进版本库，
+# 工作区可能留着一份很旧的产物（实测遇到过 9 月的 dist 配 10 月的源码）。
+# 演示现场不该把时间花在等 Vite 打包上，所以只在真有变化时构建。
+_dist_stale() {
+  [ -n "$(find frontend/src frontend/public frontend/index.html       frontend/package.json frontend/package-lock.json frontend/vite.config.ts       frontend/tsconfig.json frontend/tsconfig.app.json frontend/tsconfig.node.json       -newer frontend/dist/index.html -print -quit 2>/dev/null || true)" ]
+}
+if [ "$BUILD" = 1 ] || [ ! -f frontend/dist/index.html ] || _dist_stale; then
   echo "[构建] 正在构建前端…"
   if ! command -v npm >/dev/null 2>&1; then
     echo "[错误] 找不到 npm，无法构建前端。" >&2

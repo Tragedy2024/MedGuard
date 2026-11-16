@@ -5,6 +5,7 @@ REM
 REM   start_demo.bat            本机演示
 REM   start_demo.bat --lan      同时允许局域网访问（手机、另一台电脑都能开）
 REM   start_demo.bat --build    强制重新构建前端
+REM   start_demo.bat --no-open  不自动打开浏览器
 REM
 REM 后端会顺带托管前端构建产物（frontend\dist），所以只有**一个**进程：
 REM 少开一个终端，而且前后端同源 —— 浏览器不产生跨域预检，换端口、用局域网
@@ -15,16 +16,25 @@ REM 本文件以 **GBK** 保存：cmd 按 OEM 代码页读批处理，存成 UTF-8 的话中文
 REM 会被拆成乱码并当作命令执行（实测报一串"不是内部或外部命令"）。
 cd /d "%~dp0"
 
-set PORT=8000
+if not defined PORT set PORT=8000
 set LAN=0
 set BUILD=0
+set OPEN=1
 
 :parse
 if "%~1"=="" goto parsed
-if /i "%~1"=="--lan"   set LAN=1
-if /i "%~1"=="--build" set BUILD=1
-if /i "%~1"=="-h"      goto usage
-if /i "%~1"=="--help"  goto usage
+if /i "%~1"=="--lan"     set LAN=1
+if /i "%~1"=="--build"   set BUILD=1
+if /i "%~1"=="--no-open" set OPEN=0
+if /i "%~1"=="-h"        goto usage
+if /i "%~1"=="--help"    goto usage
+if /i "%~1"=="--lan"     goto next_arg
+if /i "%~1"=="--build"   goto next_arg
+if /i "%~1"=="--no-open" goto next_arg
+echo [错误] 未知参数：%~1
+echo         用 --help 查看用法。
+exit /b 2
+:next_arg
 shift
 goto parse
 :parsed
@@ -50,7 +60,7 @@ if not defined PY call :try "%USERPROFILE%\miniconda3\envs\medguard\python.exe"
 if not defined PY call :try "%ProgramData%\Anaconda3\envs\medguard\python.exe"
 
 if not defined PY (
-  echo [错误] 找不到装了依赖^(fastapi / uvicorn / sqlglot^)的 Python。
+  echo [错误] 找不到装了依赖^(fastapi / uvicorn / sqlglot / jieba^)的 Python。
   echo         请先建好环境：
   echo             conda create -n medguard python=3.12
   echo             conda activate medguard ^&^& pip install -r backend\requirements.txt
@@ -60,8 +70,15 @@ if not defined PY (
 )
 
 REM ── 2. 前端构建产物 ───────────────────────────────────────────
+REM
+REM dist 不进版本库，工作区里可能留着一份很旧的构建产物——实测遇到过
+REM 9 月的 dist 配 10 月的源码，页面还是改版前的。所以除了"缺失"和
+REM 显式 --build，源码比产物新时也要重新构建。
 if "%BUILD%"=="1" goto do_build
-if exist "frontend\dist\index.html" goto ready
+if not exist "frontend\dist\index.html" goto do_build
+call :dist_stale
+if errorlevel 1 goto do_build
+goto ready
 :do_build
 echo [构建] 正在构建前端...
 where npm >nul 2>nul
@@ -96,7 +113,9 @@ echo   停止    Ctrl+C
 echo.
 
 REM 等端口真起来再开浏览器，否则先看到一个连接失败页
+if "%OPEN%"=="0" goto skip_open
 start "" powershell -NoProfile -WindowStyle Hidden -Command "for($i=0;$i -lt 40;$i++){try{(New-Object Net.Sockets.TcpClient).Connect('127.0.0.1',%PORT%);Start-Process 'http://localhost:%PORT%';break}catch{Start-Sleep -Milliseconds 250}}"
+:skip_open
 
 cd backend
 REM --no-access-log：GET 端点把整个签名令牌放在查询串里，而 uvicorn 默认
@@ -107,12 +126,18 @@ if "%MEDGUARD_ACCESS_LOG%"=="1" set "ACCESS_LOG_FLAG="
 "!PY!" -m uvicorn backend.main:app --host %HOST% --port %PORT% !ACCESS_LOG_FLAG!
 goto :eof
 
+REM ── 子过程：源码是否比前端构建产物新 ──────────────────────────
+:dist_stale
+powershell -NoProfile -Command "if ((Get-ChildItem -Recurse -File 'frontend/src','frontend/public','frontend/index.html','frontend/package.json','frontend/package-lock.json','frontend/vite.config.ts','frontend/tsconfig.json','frontend/tsconfig.app.json','frontend/tsconfig.node.json' -ErrorAction SilentlyContinue | Measure-Object -Property LastWriteTime -Maximum).Maximum -gt (Get-Item 'frontend/dist/index.html').LastWriteTime) { exit 1 } else { exit 0 }" >nul 2>nul
+if errorlevel 1 exit /b 1
+exit /b 0
+
 REM ── 子过程：验证某个解释器是否齐活 ────────────────────────────
 :try
 if defined PY goto :eof
 if "%~1"=="" goto :eof
 if not exist "%~1" goto :eof
-"%~1" -c "import fastapi,uvicorn,sqlglot" >nul 2>nul
+"%~1" -c "import fastapi,uvicorn,sqlglot,jieba" >nul 2>nul
 if not errorlevel 1 set "PY=%~1"
 goto :eof
 
@@ -121,4 +146,5 @@ echo 用法：
 echo   start_demo.bat            本机演示
 echo   start_demo.bat --lan      同时允许局域网访问
 echo   start_demo.bat --build    强制重新构建前端
+echo   start_demo.bat --no-open  不自动打开浏览器
 exit /b 0
