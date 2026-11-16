@@ -55,6 +55,10 @@ class Doc:
 def normalize_entity(name: str) -> str:
     """只归一书写形式；不会把子型合并到父疾病。"""
     name = re.sub(r"\s+", "", name)
+    # OpenCMKG 的疾病名使用 ASCII 罗马数字（I型/II型）；先归一为阿拉伯数字，
+    # 再处理中文与 Unicode 罗马数字。II 必须在 I 之前替换。
+    name = re.sub(r"(?<![A-Za-z])II型", "2型", name)
+    name = re.sub(r"(?<![A-Za-z])I型", "1型", name)
     return re.sub(r"([一二ⅠⅡ])型", lambda m: {
         "一": "1", "二": "2", "Ⅰ": "1", "Ⅱ": "2",
     }[m[1]] + "型", name)

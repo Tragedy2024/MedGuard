@@ -11,13 +11,14 @@
  */
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { askSmartDoctor } from '../api/smartDoctor'
+import { askPatient, type PatientAskResponse } from '../api/patient'
 import type { SmartDoctorResponse } from '../api/models'
 import { AliasProvider, useAliases } from '../store/aliases'
 import { useAuth } from '../store/auth'
 import { errorText } from '../api/client'
 import { AdmissionPanel } from '../components/AdmissionPanel'
 import { DegradationBadge } from '../components/DegradationBadge'
+import { QueryAnswer } from '../components/QueryAnswer'
 
 const DATASOURCE = 'regional_health'
 
@@ -55,10 +56,19 @@ const EVIDENCE_LABEL: Record<string, string> = {
   insufficient: '证据不足',
 }
 
+/** 路由徽标文案：患者只需要知道「这次走到了哪里」。 */
+const ROUTE_LABEL: Record<PatientAskResponse['route'], string> = {
+  personal_record: '医院主库',
+  general_query: '医院主库',
+  knowledge: '知识库',
+  clarify: '请补充',
+  unsupported: '已拒绝',
+}
+
 interface Message {
   role: 'user' | 'doctor'
   text: string
-  resp?: SmartDoctorResponse
+  answer?: PatientAskResponse
 }
 
 export function SmartDoctorPage() {
@@ -101,7 +111,10 @@ function SmartDoctor() {
     setError(null)
     setTaskHint(null)
     // 把**上一轮的识别结果**交给后端，用来解析「它」「那个」这类指代。
-    const prev = messages.filter((m) => m.role === 'doctor' && m.resp).at(-1)?.resp
+    // 只有智慧医生回答带 intent/entity；通用查询没有可复用的解析结果。
+    const prev = messages
+      .filter((m) => m.role === 'doctor' && m.answer?.smart_doctor)
+      .at(-1)?.answer?.smart_doctor
     const context = prev
       ? {
           intent: prev.intent,
@@ -112,13 +125,14 @@ function SmartDoctor() {
 
     setMessages((m) => [...m, { role: 'user', text: question }])
     try {
-      const resp = await askSmartDoctor({
+      // 单输入框：路由完全由服务端决定，前端不先猜「这是查询还是问答」。
+      const answer = await askPatient({
         token: session.token,
         datasource_id: DATASOURCE,
         question,
         context,
       })
-      setMessages((m) => [...m, { role: 'doctor', text: question, resp }])
+      setMessages((m) => [...m, { role: 'doctor', text: question, answer }])
     } catch (e) {
       setError(errorText(e))
     } finally {
@@ -151,9 +165,13 @@ function SmartDoctor() {
     event.currentTarget.form?.requestSubmit()
   }
 
-  const lastResp = messages.filter((m) => m.role === 'doctor').at(-1)?.resp
-  const lastRows = lastResp?.data?.rows ?? []
-  const lastColumns = lastResp?.data?.columns ?? []
+  const lastAnswer = messages.filter((m) => m.role === 'doctor' && m.answer).at(-1)?.answer
+  const lastResp = lastAnswer?.smart_doctor
+  const lastQuery = lastAnswer?.query
+  const lastRows = lastQuery ? (lastQuery.result?.rows ?? []) : (lastResp?.data?.rows ?? [])
+  const lastColumns = lastQuery
+    ? (lastQuery.result?.columns ?? [])
+    : (lastResp?.data?.columns ?? [])
   const lastActions = lastResp?.advice?.actions ?? []
 
   return (
@@ -209,13 +227,28 @@ function SmartDoctor() {
                     <div className="msg-bubble"><p>{m.text}</p></div>
                   </div>
                 </div>
-              ) : m.resp ? (
+              ) : m.answer ? (
                 <div key={i} className="msg">
                   <span className="msg-avatar" aria-hidden="true">盾</span>
                   <div className="msg-main">
                     <div className="msg-who">智慧医生</div>
                     <div className="msg-bubble">
-                      <AnswerView resp={m.resp} aliasOf={aliasOf} inlineAlias={inlineAlias} />
+                      <RouteLine answer={m.answer} />
+                      {m.answer.smart_doctor ? (
+                        <AnswerView
+                          resp={m.answer.smart_doctor}
+                          aliasOf={aliasOf}
+                          inlineAlias={inlineAlias}
+                        />
+                      ) : m.answer.route === 'general_query' ? (
+                        <QueryAnswer query={m.answer.query} error={m.answer.error} />
+                      ) : m.answer.error ? (
+                        <div className="alert-error" role="alert">{m.answer.error}</div>
+                      ) : (
+                        <p className="query-answer-note">
+                          这次没有可展示的回答，请换一种说法再试。
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -270,7 +303,21 @@ function SmartDoctor() {
         <aside className="doctor-aside" aria-label="回答来源与任务">
           <section className="aside-card">
             <h3>本次使用的数据</h3>
-            {lastResp?.data && lastRows.length > 0 ? (
+            {lastQuery ? (
+              <>
+                <p>
+                  <span className="sd-source-tag">{SOURCE_DATA}</span>
+                  {lastQuery.admission.passed
+                    ? `共 ${lastRows.length} 条查询结果`
+                    : '查询在执行前被拒绝'}
+                </p>
+                <DegradationBadge degradation={lastQuery.degradation} />
+                {lastQuery.degradation.message_cn && <p>{lastQuery.degradation.message_cn}</p>}
+                {lastQuery.admission.passed && lastColumns.length > 0 && (
+                  <p>列名：{lastColumns.map((c) => aliasOf(c)).join('、')}</p>
+                )}
+              </>
+            ) : lastResp?.data && lastRows.length > 0 ? (
               <>
                 <p>
                   <span className="sd-source-tag">{SOURCE_DATA}</span>
@@ -315,6 +362,35 @@ function SmartDoctor() {
         </aside>
       </div>
     </section>
+  )
+}
+
+/**
+ * 本次提问的路由徽标。
+ *
+ * `data-route` 保留服务端返回的原始路由值（personal_record / general_query /
+ * knowledge / clarify / unsupported），文案再翻译成患者能读懂的去向；
+ * 层一拒绝时文案显示「已拒绝」，但路由值不变——拒绝是执行结果，不是另一条路由。
+ */
+function RouteLine({ answer }: { answer: PatientAskResponse }) {
+  const refused = answer.query
+    ? !answer.query.admission.passed
+    : answer.smart_doctor
+      ? !answer.smart_doctor.admission.passed
+      : false
+  const label = refused ? '已拒绝' : ROUTE_LABEL[answer.route]
+
+  return (
+    <div className="chat-route-line">
+      <span
+        className={`route-badge${refused ? ' is-refused' : ''}`}
+        data-route={answer.route}
+      >
+        <span className="route-badge-eyebrow">本次走</span>
+        {label}
+      </span>
+      {answer.reason && <span className="route-reason">{answer.reason}</span>}
+    </div>
   )
 }
 
@@ -379,8 +455,11 @@ function AnswerView({
                 <summary>查看本次查询（经医盾审计）</summary>
                 <pre>{inlineAlias(resp.data.sql_after) ?? resp.data.sql_after}</pre>
               </details>
-              <Link className="sd-query-more" to="/console">
-                想看完整 SQL 与审计事件？去可信查询 →
+              <Link
+                className="sd-query-more"
+                to={resp.report_id != null ? `/reports?report=${resp.report_id}` : '/reports'}
+              >
+                想看完整 SQL 与审计事件？去安全报告 →
               </Link>
             </>
           )}

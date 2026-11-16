@@ -102,7 +102,7 @@ function Reports() {
         <div className="result-empty">
           <p>
             暂无记录。到
-            {session?.token.type === 'patient' ? '可信查询' : '可信问答'}
+            {session?.token.type === 'patient' ? '智慧医生' : '可信问答'}
             提一次问，这里会留下对应的安全证据。
           </p>
         </div>

@@ -34,7 +34,7 @@
 - [ ] 无 OpenCMKG 数据时，合成回退路径全绿；
 - [ ] 完整知识：`prepare_demo_data.py` + `prewarm_rag.py` 跑通；
 - [ ] `npm ci && npm run build` 通过；
-- [ ] `npm run e2e` 48 项全绿（本地 Chrome 或 `PW_CHANNEL=chromium`）；
+- [ ] `npm run e2e` 52 项全绿（本地 Chrome 或 `PW_CHANNEL=chromium`）；
 - [ ] 断网演练一次：预置问题与缓存路径可完成演示。
 
 ### 演示

@@ -379,3 +379,36 @@ class SmartDoctorResponse(BaseModel):
     report_id: Optional[int] = None
     trace_id: str = ""
     retrieval_plan: Optional[SmartDoctorRetrievalPlan] = None
+
+
+# ════════════════════════════════════════════════════════════════
+# 患者统一入口（单输入框自动路由，见 .scratch/patient-unified-entry/CONTRACT.md）
+# ════════════════════════════════════════════════════════════════
+
+class PatientAskRequest(BaseModel):
+    """患者单输入框请求。
+
+    ``context`` 与 `/api/smart-doctor/ask` 同构：上一轮的 intent/entity/
+    personal，用于解析「它正常吗」这类指代式追问。
+    """
+    token: Token
+    datasource_id: str
+    question: str
+    context: Optional[SmartDoctorContext] = None
+
+
+class PatientAskResponse(BaseModel):
+    """患者单输入框响应。
+
+    两条数据访问路径互斥：``smart_doctor`` 对应本人记录/知识/澄清/不支持，
+    ``query`` 对应通用查询（内部仍是完整的 ``QueryResponse``，含层一、层二
+    与审计绑定证据）。翻译失败时 HTTP 仍是 200，``query`` 为 null、
+    ``error`` 给出可读中文原因。
+    """
+    route: Literal[
+        "personal_record", "general_query", "knowledge", "clarify", "unsupported"
+    ]
+    reason: str
+    smart_doctor: Optional[SmartDoctorResponse] = None
+    query: Optional[QueryResponse] = None
+    error: Optional[str] = None

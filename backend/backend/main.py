@@ -12,8 +12,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend import config
-from backend.routers import (auth, datasources, policies, query, reports,
-                             smart_doctor)
+from backend.routers import (auth, datasources, patient, policies, query,
+                             reports, smart_doctor)
 from backend.schemas import HealthInfo
 
 
@@ -106,6 +106,7 @@ app.include_router(policies.router)
 app.include_router(query.router)
 app.include_router(reports.router)
 app.include_router(smart_doctor.router)
+app.include_router(patient.router)
 
 
 @app.get("/api/health", response_model=HealthInfo)

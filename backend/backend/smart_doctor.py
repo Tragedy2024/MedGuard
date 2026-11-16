@@ -190,7 +190,9 @@ _DISEASE_SIGNALS = ("想了解", "是什么病", "这种病", "这个病", "了�
 # 的「检查」抢成检验意图。这类**指向疾病的检查措辞**归疾病意图（带数据集
 # 扫描），单独的「我想做个体检」不受影响（无疾病名命中时仍走原路径）。
 _DISEASE_CHECK_SIGNALS = ("做什么检查", "做哪些检查", "怎么检查",
-                          "该做什么检查", "需要做什么检查")
+                          "该做什么检查", "需要做什么检查",
+                          "有哪几种检查", "有哪些检查", "有什么检查")
+_DISEASE_DEFINITION_SIGNALS = ("是什么", "是啥", "怎么回事")
 # 只在问题里同时出现数据集的完整疾病名时生效；不会把单独的「我有哪些症状」
 # 猜成某种疾病。用于覆盖「帕金森病的早期表现」这类事实卡问法。
 _DISEASE_FACT_SIGNALS = ("早期表现", "常见表现", "常见症状", "有哪些症状",
@@ -337,6 +339,13 @@ def parse_intent(question: str) -> Tuple[str, Optional[str]]:
     if disease_signaled or disease_check_signaled or disease_fact_signaled:
         if disease_hit:
             return INTENT_DISEASE, disease_hit[1]
+        dataset_name = dataset_kb.match_disease(question)
+        if dataset_name:
+            return INTENT_DISEASE, dataset_name
+
+    # “甲状腺结节是什么/是啥/怎么回事”是疾病定义问题；只有数据集能命中原名时
+    # 才走疾病路径，避免把“胸痛是什么”这类症状问题误判成疾病。
+    if any(s in question for s in _DISEASE_DEFINITION_SIGNALS):
         dataset_name = dataset_kb.match_disease(question)
         if dataset_name:
             return INTENT_DISEASE, dataset_name
@@ -1074,7 +1083,8 @@ def ask(question: str, subject_id: str,
         base["degradation"] = {"level": "L0", "label": "通过", "message_cn": "", "message": ""}
     if plan.strategy in {"clarify", "insufficient"}:
         text = plan.reason
-        if not text.endswith("？"):
+        # “资料不足”已经有具体原因（如分型缺失），不再追加通用的补问句。
+        if plan.strategy == "clarify" and not text.endswith("？"):
             text += "。请提供具体症状、疾病名称或希望比较的对象。"
         base["interpretation"] = {
             "source": _SOURCE_KB,
@@ -1085,6 +1095,54 @@ def ask(question: str, subject_id: str,
         base["advice"] = {"source": _SOURCE_KB, "text": "资料不足时无法作进一步判断。",
                           "actions": ["补充问题信息"], "urgent": False}
         base["_evidence_insufficient"] = True
+        return _finalize(base, question)
+    if plan.strategy == "subtype_lookup":
+        entries = []
+        for subtype in plan.filters.entities:
+            info = dataset_kb.lookup_disease(subtype)
+            if not info:
+                continue
+            facts = info.get("facts") or {}
+            parts = []
+            dept = facts.get("dept") or "、".join(facts.get("departments") or [])
+            if dept:
+                parts.append(f"就诊科室：{dept}")
+            for key, label in dataset_kb.DISEASE_FIELDS:
+                values = facts.get(key) or []
+                if values:
+                    parts.append(f"{label}：{'、'.join(str(v) for v in values[:5])}")
+            display = corpus.normalize_entity(info.get("matched") or subtype)
+            entries.append({
+                "ref_title": display,
+                "ref_kind": "疾病分型",
+                "ref_source": dataset_kb.source_note(dataset_kb.DISEASE_FILE),
+                "ref_excerpt": "；".join(parts) or "该分型已收录，暂无字段明细。",
+            })
+        source = dataset_kb.source_note(dataset_kb.DISEASE_FILE)
+        compare = "比较" in plan.reason
+        base["interpretation"] = {
+            "source": source,
+            "title": (f"{entity}的分型对比（已收录）" if compare
+                      else f"{entity}的分型（已收录）"),
+            "text": ("以下分型来自开源医学知识图谱，标注为未经临床复核，"
+                     "仅供参考；可对照已收录字段，具体差异请咨询医生。"
+                     if compare else
+                     "以下分型来自开源医学知识图谱，标注为未经临床复核，"
+                     "仅供参考；具体分型请咨询医生。"),
+            "items": entries,
+        }
+        base["advice"] = {
+            "source": source,
+            "text": "分型判断需要结合血糖、胰岛功能与临床背景，请到内分泌科就诊确认。",
+            "actions": ["携带检查资料咨询内分泌科医生"],
+            "urgent": False,
+        }
+        if not entries:
+            base["_evidence_insufficient"] = True
+            base["interpretation"]["title"] = "暂缺分型明细"
+            base["interpretation"]["text"] = (
+                "已识别为分型问题，但当前资料没有可展示的分型明细。"
+            )
         return _finalize(base, question)
     if plan.strategy == "hybrid":
         if _apply_ai_fallback(base, question):
@@ -1111,8 +1169,9 @@ def ask(question: str, subject_id: str,
             text = "资料记录了多个科室，具体挂号请向医院导诊台确认。"
         else:
             text = "以下为资料记录的就诊科室。"
+        display = corpus.normalize_entity(info["matched"]) if info else corpus.normalize_entity(name)
         base["interpretation"] = {
-            "source": source, "title": f"{info['matched'] if info else name} · 就诊科室",
+            "source": source, "title": f"{display} · 就诊科室",
             "text": text,
             "items": [{"ref_title": dept, "ref_kind": "就诊科室", "ref_source": source,
                        "ref_source_type": "open_dataset", "ref_quality_tier": "opencmkg"}
@@ -1329,8 +1388,13 @@ def ask(question: str, subject_id: str,
                                "message_cn": "", "message": ""}
 
         # 事实来自**开源数据集**（OpenCMKG 的疾病关系聚合），不是自写文案。
-        info = dataset_kb.lookup_disease(entity or "")
+        # 若问题限定了分型（如“2型糖尿病有哪些症状”），用子型条目而不是父疾病卡。
+        lookup_entity = entity
+        if len(plan.filters.entities) == 1:
+            lookup_entity = plan.filters.entities[0]
+        info = dataset_kb.lookup_disease(lookup_entity or "")
         if info:
+            display = corpus.normalize_entity(info["matched"])
             facts = info["facts"]
             missing_fields = []
             if plan.filters.fields:
@@ -1348,7 +1412,7 @@ def ask(question: str, subject_id: str,
             dept = info["facts"].get("dept")
             base["interpretation"] = {
                 "source": dataset_kb.source_note(dataset_kb.DISEASE_FILE),
-                "title": f"关于「{info['matched']}」",
+                "title": f"关于「{display}」",
                 "text": ("以下条目来自开源医学知识图谱，**仅供参考**，"
                          "请以医生判断为准。"),
                 "items": dataset_kb.disease_fact_lines(facts),

@@ -35,13 +35,13 @@ interface NavItem {
 /**
  * 导航按角色过滤。
  *
- * 医护与病患的临床入口**故意相同**——两者的差别在于令牌能查到什么数据，
- * 不在于能进哪些页面。这正是演示要证明的：同一套界面、同一个问题，
- * 两类令牌给出不同结果。
+ * 患者只有一个临床入口「智慧医生」：提问后由服务端自动路由到医院主库、
+ * 知识库或拒答，不需要在「问答」与「查询」之间切换。医护与管理员保留
+ * 「可信问答」查询控制台，用于查看完整 SQL 与审计过程；`/console` 路由
+ * 仍然存在，方便医生/管理员使用或直连演示，只是不再出现在患者导航里。
  *
- * 患者默认进入「智慧医生」；同一平台下的「可信查询」是透明查询/审计视图，
- * 用于核对 SQL 与安全报告，不是第二个系统。管理员多出「数据源」「安全策略」
- * 「用户管理」：那是平台配置，不该开放给临床用户。
+ * 管理员多出「数据源」「安全策略」「用户管理」：那是平台配置，
+ * 不该开放给临床用户。
  */
 function navItems(role: UserRole): NavItem[] {
   const items: NavItem[] = [
@@ -58,10 +58,10 @@ function navItems(role: UserRole): NavItem[] {
     { to: '/users', label: '用户管理', note: '账号与角色', icon: 'users', roles: ['admin'] },
     {
       to: '/console',
-      label: role === 'patient' ? '可信查询' : '可信问答',
-      note: role === 'patient' ? '查 SQL 与审计' : '查询控制台',
+      label: '可信问答',
+      note: '查询控制台',
       icon: 'ask',
-      roles: ALL,
+      roles: ['admin', 'staff'],
     },
     { to: '/reports', label: '安全报告', note: '审计证据', icon: 'reports', roles: ALL },
   ]

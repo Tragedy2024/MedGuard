@@ -133,6 +133,152 @@ def test_unknown_department_question_does_not_inherit_an_unrelated_disease(facts
     assert out["interpretation"]["items"] == []
 
 
+@pytest.mark.parametrize("question", [
+    "糖尿病有哪几种",
+    "糖尿病分几种",
+    "糖尿病有哪些类型",
+])
+def test_disease_type_enumeration_does_not_return_parent_card(facts, question):
+    """问分型时不能拿父疾病的事实卡冒充答案。
+
+    数据集没有完整的 1 型/2 型糖尿病条目；这类问题应明确说“分型资料缺失”，
+    而不是返回父疾病的科室/症状/检查。
+    """
+    out = sd.ask(question, "P001")
+    assert out["retrieval_plan"]["strategy"] == "insufficient"
+    assert out["evidence"]["status"] == "insufficient"
+    assert out["interpretation"]["items"] == []
+    assert "分型" in out["interpretation"]["text"]
+
+
+def test_disease_symptom_question_still_returns_facts(facts):
+    """普通字段问题（有哪些症状）不能被分型守卫误伤。"""
+    out = sd.ask("糖尿病有哪些症状", "P001")
+    assert out["retrieval_plan"]["strategy"] == "structured_lookup"
+    assert out["interpretation"]["items"]
+
+
+def test_disease_type_enumeration_lists_known_subtypes(facts):
+    """有完整子型条目时，应列出分型，而不是只说资料不足。"""
+    cards = dataset_kb._CACHE[dataset_kb.DISEASE_FILE]["diseases"]
+    cards["1型糖尿病"] = {
+        "dept": "内分泌科", "symptoms": ["多饮", "多尿"], "checks": ["血糖"],
+    }
+    cards["2型糖尿病"] = {
+        "dept": "内分泌科", "symptoms": ["多饮", "体重下降"], "checks": ["糖化血红蛋白"],
+    }
+
+    out = sd.ask("糖尿病有哪几种", "P001")
+
+    assert out["retrieval_plan"]["strategy"] == "subtype_lookup"
+    titles = [item.get("ref_title") for item in out["interpretation"]["items"]]
+    assert "1型糖尿病" in titles
+    assert "2型糖尿病" in titles
+    assert out["evidence"]["status"] == "curated"
+
+
+def test_subtype_field_question_uses_subtype_card(facts):
+    """限定分型的字段问题不能回退到父疾病卡。"""
+    cards = dataset_kb._CACHE[dataset_kb.DISEASE_FILE]["diseases"]
+    cards["1型糖尿病"] = {"dept": "内分泌科", "symptoms": ["多饮"]}
+    cards["2型糖尿病"] = {
+        "dept": "内分泌科", "symptoms": ["多饮", "体重下降"],
+    }
+
+    out = sd.ask("2型糖尿病有哪些症状", "P001")
+
+    assert out["retrieval_plan"]["strategy"] == "structured_lookup"
+    assert "2型糖尿病" in out["interpretation"]["title"]
+    excerpts = " ".join(
+        str(item.get("ref_excerpt", ""))
+        for item in out["interpretation"]["items"])
+    assert "体重下降" in excerpts
+
+
+def test_ascii_roman_subtype_normalization():
+    """OpenCMKG 使用 I型/II型；必须和 1型/2型 归一。"""
+    assert corpus.normalize_entity("II型糖尿病") == "2型糖尿病"
+    assert corpus.normalize_entity("I型糖尿病") == "1型糖尿病"
+
+
+@pytest.mark.parametrize(("question", "strategy_name"), [
+    ("糖尿病有哪几种并发症", "structured_lookup"),
+    ("糖尿病有哪几种药", "structured_lookup"),
+    ("糖尿病有哪几种治疗方法", "structured_lookup"),
+    ("糖尿病有哪几种检查", "structured_lookup"),
+    ("糖尿病有哪几种症状", "structured_lookup"),
+])
+def test_subtype_guard_does_not_hijack_field_questions(facts, question, strategy_name):
+    """“有哪几种并发症/药/治疗/检查/症状”是字段问题，不是分型枚举。"""
+    out = sd.ask(question, "P001")
+    assert out["retrieval_plan"]["strategy"] == strategy_name
+    assert "分型" not in (out["interpretation"].get("title") or "")
+
+
+@pytest.mark.parametrize("question", [
+    "糖尿病是什么原因引起的",
+    "糖尿病会遗传吗",
+    "糖尿病严重吗",
+    "糖尿病能治好吗",
+])
+def test_unknown_disease_field_does_not_return_parent_card(facts, question):
+    """资料没有的字段要如实说暂缺，不能拿父疾病整张卡冒充答案。"""
+    out = sd.ask(question, "P001")
+    assert out["evidence"]["status"] == "insufficient"
+    assert out["interpretation"]["items"] == []
+
+
+def test_dataset_definition_question_matches_disease(facts):
+    """“甲状腺结节是什么”应由数据集病名命中，而不是只走 fallback/RAG。"""
+    cards = dataset_kb._CACHE[dataset_kb.DISEASE_FILE]["diseases"]
+    cards["甲状腺结节"] = {
+        "dept": "普外科", "symptoms": ["颈部肿块"], "checks": ["甲状腺超声"],
+    }
+
+    out = sd.ask("甲状腺结节是什么", "P001")
+
+    assert out["intent"] == "disease"
+    assert out["entity"] == "甲状腺结节"
+    assert out["interpretation"]["items"]
+
+
+def test_lab_alias_not_swallowed_by_disease_alias(facts):
+    """疾病别名“血糖高”不能把检验项“血糖”从实体集合中挤掉。"""
+    out = sd.ask("我血糖高怎么办", "P001")
+    filters = out["retrieval_plan"]["filters"]
+    assert filters["kinds"] == ["lab"]
+    assert filters["entities"] == ["血糖"]
+    assert out["interpretation"]["items"]
+
+
+def test_subtype_comparison_lists_both_cards(facts):
+    """1型 vs 2型 的比较应列出两个子型卡，而不是只说“换个问法”。"""
+    cards = dataset_kb._CACHE[dataset_kb.DISEASE_FILE]["diseases"]
+    cards["1型糖尿病"] = {"dept": "内分泌科", "symptoms": ["多饮"], "checks": ["血糖"]}
+    cards["2型糖尿病"] = {"dept": "内分泌科", "symptoms": ["体重下降"], "checks": ["糖化血红蛋白"]}
+
+    out = sd.ask("1型糖尿病和2型糖尿病有什么区别", "P001")
+
+    assert out["retrieval_plan"]["strategy"] == "subtype_lookup"
+    titles = [item.get("ref_title") for item in out["interpretation"]["items"]]
+    assert "1型糖尿病" in titles
+    assert "2型糖尿病" in titles
+    assert out["evidence"]["status"] == "curated"
+
+
+def test_which_is_more_severe_is_a_comparison(facts):
+    """“哪个更严重”也是比较问法，不能落回父疾病事实卡。"""
+    cards = dataset_kb._CACHE[dataset_kb.DISEASE_FILE]["diseases"]
+    cards["高血压"] = {"dept": "心血管内科", "symptoms": ["头晕"]}
+
+    plan = strategy.choose(
+        "糖尿病和高血压哪个更严重", "disease", "糖尿病",
+        sd.load_knowledge(), disease_names=dataset_kb.disease_names())
+
+    assert plan.strategy == "hybrid"
+    assert set(plan.filters.entities) == {"糖尿病", "高血压"}
+
+
 def test_new_symptom_stays_on_triage_even_with_known_disease_context(facts, monkeypatch):
     monkeypatch.setattr(sd, "_apply_ai_fallback", facts)
     dataset_kb._CACHE[dataset_kb.SYMPTOM_FILE]["symptoms"]["头晕"] = {
@@ -205,11 +351,13 @@ def test_explanation_reaches_filtered_hybrid(facts, monkeypatch):
 
 
 def test_comparison_needs_both_entities_before_generation(facts, monkeypatch):
+    cards = dataset_kb._CACHE[dataset_kb.DISEASE_FILE]["diseases"]
+    cards["高血压"] = {"dept": "心血管内科", "symptoms": ["头晕"]}
     monkeypatch.setattr(config, "LLM_API_KEY", "test-key")
     monkeypatch.setattr(sd, "_retrieve_context", lambda q, **kwargs: [
         {"ref_id": "a", "ref_entity": "糖尿病", "ref_title": "糖尿病",
          "ref_excerpt": "已有资料", "ref_source": "测试资料"}])
-    out = sd.ask("糖尿病和高血脂有什么区别", "P001")
+    out = sd.ask("糖尿病和高血压有什么区别", "P001")
     assert out["retrieval_plan"]["strategy"] == "hybrid"
     assert out["evidence"]["status"] == "insufficient"
     assert "比较资料不足" in out["interpretation"]["title"]

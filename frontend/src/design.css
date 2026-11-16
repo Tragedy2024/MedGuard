@@ -2898,3 +2898,193 @@ html { scroll-behavior: smooth; }
 @media (pointer: coarse), (prefers-reduced-motion: reduce) {
   .mouse-particles { display: none; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   患者单输入框：路由徽标 + 通用查询回答
+   ───────────────────────────────────────────────────────────────────
+   患者不选「问答」还是「查询」——服务端替他们路由。界面上只保留一条
+   可解释的去向：本次走到了哪里、为什么。徽标用小字号胶囊，不与安全
+   三色抢语义：知识库沿用「通俗解读」的沙色，层一拒绝才用红。
+   ═══════════════════════════════════════════════════════════════════ */
+
+.chat-route-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-bottom: 10px;
+}
+
+.route-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border: 1px solid color-mix(in oklch, var(--accent) 26%, var(--border));
+  border-radius: 999px;
+  background: var(--accent-wash);
+  color: var(--accent-deep);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.route-badge-eyebrow {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+/* 知识库与「通俗解读」同源，沿用沙色，避免新增第四种语义色。 */
+.route-badge[data-route='knowledge'] {
+  border-color: color-mix(in oklch, var(--sand) 52%, var(--border));
+  background: var(--sand-soft);
+  color: color-mix(in oklch, var(--warn) 62%, var(--fg));
+}
+
+/* 「请补充」不是安全事件，用中性面，不用警示色。 */
+.route-badge[data-route='clarify'] {
+  border-color: var(--border-strong);
+  background: var(--surface-sunk);
+  color: var(--fg-soft);
+}
+
+/* 路由外与层一拒绝：红是安全语义专用色，这里刚好承担它。 */
+.route-badge[data-route='unsupported'],
+.route-badge.is-refused {
+  border-color: color-mix(in oklch, var(--danger) 32%, var(--border));
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.route-reason {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+/* ── 通用查询回答卡 ─────────────────────────────────── */
+
+.query-answer {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  min-width: 0;
+}
+
+.query-answer-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 11px;
+  border-bottom: 1px solid var(--border);
+}
+
+.query-answer-heading { min-width: 0; }
+
+.query-answer-kicker {
+  margin: 0;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.query-answer-question {
+  margin: 5px 0 0;
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.query-answer-badges {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+}
+
+.query-answer-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.query-answer-status::before {
+  content: '';
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.query-answer-status.is-ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.query-answer-status.is-denied {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.query-answer-body {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  min-width: 0;
+}
+
+.query-answer-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+
+.query-answer-error {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.query-answer-error strong { font-weight: 600; }
+
+.query-answer-report {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.query-answer-report a {
+  color: var(--accent-deep);
+  font-weight: 600;
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in oklch, var(--accent) 40%, var(--border));
+}
+
+.query-answer-report a:hover { border-bottom-color: var(--accent-deep); }
+
+.query-answer .metrics-bar { margin: 0; }
+
+@media (max-width: 620px) {
+  .query-answer-head { flex-direction: column; gap: 9px; }
+  .query-answer-badges { align-items: flex-start; }
+  .query-answer .metrics-note { margin-left: 0; }
+}

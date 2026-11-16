@@ -473,25 +473,31 @@ async function uiChecks(browser) {
     const page = await ctx.newPage()
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
     page.on('pageerror', (e) => errors.push(e.message))
-    await page.route('**/api/smart-doctor/ask', (route) => route.fulfill({
+    await page.route('**/api/patient/ask', (route) => route.fulfill({
       json: {
-        intent: 'fallback',
-        question: '吃了他汀之后肌肉酸痛',
-        admission: { passed: true, reason: null, checked_tables: [], bound_to_subject: false },
-        degradation: { level: 'L0', label: '通过', message: '', message_cn: '' },
-        data: null,
-        interpretation: {
-          source: 'AI 智能导诊',
-          title: '用药咨询',
-          text: '他汀类药物可能引起肌肉酸痛，建议告知医生。',
-          items: [{
-            ref_title: '阿托伐他汀', ref_kind: '药品',
-            ref_source: '医院审核知识库',
-            ref_excerpt: '出现不明原因的肌肉酸痛、乏力请及时告知医生。',
-            ref_id: 'drug_atorvastatin', ref_score: 6.76,
-          }],
+        route: 'personal_record',
+        reason: '本人用药与检查记录，按个人记录路由',
+        smart_doctor: {
+          intent: 'fallback',
+          question: '吃了他汀之后肌肉酸痛',
+          admission: { passed: true, reason: null, checked_tables: [], bound_to_subject: false },
+          degradation: { level: 'L0', label: '通过', message: '', message_cn: '' },
+          data: null,
+          interpretation: {
+            source: 'AI 智能导诊',
+            title: '用药咨询',
+            text: '他汀类药物可能引起肌肉酸痛，建议告知医生。',
+            items: [{
+              ref_title: '阿托伐他汀', ref_kind: '药品',
+              ref_source: '医院审核知识库',
+              ref_excerpt: '出现不明原因的肌肉酸痛、乏力请及时告知医生。',
+              ref_id: 'drug_atorvastatin', ref_score: 6.76,
+            }],
+          },
+          advice: { source: 'AI 智能导诊', text: '请咨询医生。', actions: ['遵医嘱'], urgent: false },
         },
-        advice: { source: 'AI 智能导诊', text: '请咨询医生。', actions: ['遵医嘱'], urgent: false },
+        query: null,
+        error: null,
       },
     }))
     await signIn(page, 'patient')
@@ -505,6 +511,16 @@ async function uiChecks(browser) {
       check('智慧医生 · 渲染出 RAG 检索来源', txt.includes('阿托伐他汀'),
         txt.replace(/\s+/g, ' ').slice(0, 46))
       check('智慧医生 · 逐条标注条目出处', txt.includes('医院审核知识库'))
+      // 单输入框入口把服务端路由结果显示出来：患者能看见这条问题被当成
+      // 个人记录 / 通用查询 / 知识问答中的哪一类，而不是黑箱。
+      const routeBadges = page.locator('[data-route]')
+      const nRoutes = await routeBadges.count()
+      check('智慧医生 · 回答卡显示路由徽标', nRoutes > 0, `${nRoutes} 个`)
+      if (nRoutes > 0) {
+        const routeAttr = await routeBadges.first().getAttribute('data-route')
+        check('智慧医生 · 路由徽标标注 personal_record',
+          routeAttr === 'personal_record', `data-route=${routeAttr}`)
+      }
     } catch {
       fail('智慧医生 · RAG 检索来源渲染', '8s 内未出现 .sd-ref')
     }
@@ -520,19 +536,25 @@ async function uiChecks(browser) {
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
     page.on('pageerror', (e) => errors.push(e.message))
     const seen = []
-    await page.route('**/api/smart-doctor/ask', async (route) => {
+    await page.route('**/api/patient/ask', async (route) => {
       try { seen.push(JSON.parse(route.request().postData() || '{}')) } catch { seen.push({}) }
       await route.fulfill({
         json: {
-          intent: 'lab', entity: '血糖', question: 'x',
-          admission: { passed: true, reason: null, checked_tables: ['clinical_records'], bound_to_subject: true },
-          degradation: { level: 'L0', label: '通过', message: '', message_cn: '' },
-          data: {
-            source: '医院主库', columns: ['test_name', 'result_value'],
-            rows: [['血糖', '6.3']], sql_after: '', degradation_level: 'L0',
+          route: 'personal_record',
+          reason: '本人检验结果，按个人记录路由',
+          smart_doctor: {
+            intent: 'lab', entity: '血糖', question: 'x',
+            admission: { passed: true, reason: null, checked_tables: ['clinical_records'], bound_to_subject: true },
+            degradation: { level: 'L0', label: '通过', message: '', message_cn: '' },
+            data: {
+              source: '医院主库', columns: ['test_name', 'result_value'],
+              rows: [['血糖', '6.3']], sql_after: '', degradation_level: 'L0',
+            },
+            interpretation: { source: '医院审核知识库', title: '血糖结果解读', text: '……', items: [] },
+            advice: { source: '医院审核知识库', text: '遵医嘱。', actions: [], urgent: false },
           },
-          interpretation: { source: '医院审核知识库', title: '血糖结果解读', text: '……', items: [] },
-          advice: { source: '医院审核知识库', text: '遵医嘱。', actions: [], urgent: false },
+          query: null,
+          error: null,
         },
       })
     })
@@ -566,20 +588,26 @@ async function uiChecks(browser) {
     const page = await ctx.newPage()
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
     page.on('pageerror', (e) => errors.push(e.message))
-    await page.route('**/api/smart-doctor/ask', (route) => route.fulfill({
+    await page.route('**/api/patient/ask', (route) => route.fulfill({
       json: {
-        intent: 'fallback',
-        question: '怎么办理出院手续',
-        admission: { passed: true, reason: null, checked_tables: [], bound_to_subject: false },
-        degradation: { level: 'L0', label: '通过', message: '', message_cn: '' },
-        data: null,
-        interpretation: {
-          source: '医院审核知识库',
-          title: '换个问法试试',
-          text: '可以这样问我：……',
-          items: [],
+        route: 'personal_record',
+        reason: '规则外问题，交由智慧医生给出引导',
+        smart_doctor: {
+          intent: 'fallback',
+          question: '怎么办理出院手续',
+          admission: { passed: true, reason: null, checked_tables: [], bound_to_subject: false },
+          degradation: { level: 'L0', label: '通过', message: '', message_cn: '' },
+          data: null,
+          interpretation: {
+            source: '医院审核知识库',
+            title: '换个问法试试',
+            text: '可以这样问我：……',
+            items: [],
+          },
+          advice: { source: '医院审核知识库', text: '', actions: [], urgent: false },
         },
-        advice: { source: '医院审核知识库', text: '', actions: [], urgent: false },
+        query: null,
+        error: null,
       },
     }))
     await signIn(page, 'patient')
@@ -592,6 +620,57 @@ async function uiChecks(browser) {
       ok('智慧医生 · 离线引导文案渲染', '（换个问法试试）')
     } catch {
       fail('智慧医生 · 离线引导文案渲染', '8s 内未出现引导文案')
+    }
+    await ctx.close()
+  }
+
+  // ⑨ 通用查询：单输入框按服务端路由落到查询卡（.query-answer）。
+  //    这里固定一条必然被层一拒绝的通用查询，断言拒绝文案逐字出现在
+  //    查询卡里——单输入框上线后最容易被漏掉的就是这条安全路径。
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 1100 } })
+    const page = await ctx.newPage()
+    page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
+    page.on('pageerror', (e) => errors.push(e.message))
+    await page.route('**/api/patient/ask', (route) => route.fulfill({
+      json: {
+        route: 'general_query',
+        reason: '医院业务统计查询，需经层一准入判定',
+        smart_doctor: null,
+        query: {
+          admission: {
+            passed: false,
+            reason: DENY_TEXT,
+            checked_tables: ['clinical_records'],
+            bound_to_subject: false,
+          },
+          question: '得这个病的有多少人',
+          plan: [],
+          events: [],
+          rewrite: { applied: 0, log: [] },
+          degradation: {
+            level: 'L3',
+            label: '拒绝',
+            message: 'Rejected before execution.',
+            message_cn: DENY_TEXT,
+          },
+          metrics: { elapsed_ms: 0, llm_calls: 0, db_access: 0 },
+          result: null,
+        },
+        error: null,
+      },
+    }))
+    await signIn(page, 'patient')
+    try {
+      await page.fill('.sd-ask textarea', '得这个病的有多少人')
+      await page.click('.sd-ask button')
+      await page.waitForSelector('.query-answer', { timeout: 8000 })
+      ok('通用查询 · 路由渲染 .query-answer 查询卡', '（.query-answer）')
+      const txt = (await page.locator('.query-answer').last().innerText()).trim()
+      check('通用查询 · 层一拒答文案逐字匹配', txt.includes(DENY_TEXT),
+        txt.replace(/\s+/g, ' ').slice(0, 60))
+    } catch {
+      fail('通用查询 · .query-answer 渲染', '8s 内未出现 .query-answer')
     }
     await ctx.close()
   }
