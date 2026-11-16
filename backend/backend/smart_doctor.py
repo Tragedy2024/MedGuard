@@ -985,6 +985,15 @@ def _evidence_status(base: Dict[str, Any]) -> Dict[str, Any]:
             "model_used": False,
             "message": "模型输出未通过门禁，本轮仅展示可追溯的原始资料。",
         }
+    # 合成演示数据不是 OpenCMKG/医院审核资料，但也不该显示“暂无证据状态”。
+    # 明确标成 curated + 合成提示，避免把演示数据说成临床资料。
+    if "合成演示数据" in interpretation_source:
+        return {
+            "status": "curated",
+            "references": 0,
+            "model_used": model_used,
+            "message": "回答来自合成演示数据，仅用于演示，不是临床资料。",
+        }
     is_curated_source = (
         interpretation_source == _SOURCE_KB
         or "OpenCMKG" in interpretation_source

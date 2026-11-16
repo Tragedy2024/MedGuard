@@ -279,6 +279,20 @@ def test_which_is_more_severe_is_a_comparison(facts):
     assert set(plan.filters.entities) == {"糖尿病", "高血压"}
 
 
+def test_synthetic_demo_source_labeled_curated():
+    """合成演示数据要显示可核对的来源状态，而不是“暂无证据状态”。"""
+    status = sd._evidence_status({
+        "interpretation": {
+            "source": "合成演示数据（非临床）",
+            "title": "糖尿病的分型",
+            "items": [],
+        },
+        "advice": {},
+    })
+    assert status["status"] == "curated"
+    assert "合成演示数据" in status["message"]
+
+
 def test_new_symptom_stays_on_triage_even_with_known_disease_context(facts, monkeypatch):
     monkeypatch.setattr(sd, "_apply_ai_fallback", facts)
     dataset_kb._CACHE[dataset_kb.SYMPTOM_FILE]["symptoms"]["头晕"] = {
