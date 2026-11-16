@@ -77,6 +77,23 @@ def test_knowledge_question_returns_smart_doctor(client):
     assert body["smart_doctor"]["intent"] == "disease"
 
 
+def test_diabetes_subtype_question_returns_200(client):
+    """subtype_lookup 必须出现在响应模型的 Literal 中。
+
+    这曾经是一个真实的 500：`smart_doctor.ask` 能返回 subtype_lookup，
+    但 `SmartDoctorResponse` 的 Literal 没这个值，API 序列化直接失败。
+    """
+    r = _ask(client, sign("patient", "P001"), "糖尿病有几种？")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["route"] == "knowledge"
+    sd = body["smart_doctor"]
+    assert sd["retrieval_plan"]["strategy"] == "subtype_lookup"
+    titles = [item.get("ref_title") for item in sd["interpretation"]["items"]]
+    assert "1型糖尿病" in titles
+    assert "2型糖尿病" in titles
+
+
 # ── 通用查询：缓存命中（不走模型）──────────────────────────────
 
 def test_general_question_uses_cached_plan_without_llm(client, monkeypatch):

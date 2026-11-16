@@ -356,7 +356,10 @@ class SmartDoctorEvidenceInfo(BaseModel):
 
 class SmartDoctorRetrievalPlan(BaseModel):
     """服务器选择的取数策略；用于追踪，不赋予任何数据访问权限。"""
-    strategy: Literal["personal_sql", "structured_lookup", "hybrid", "clarify", "insufficient"]
+    strategy: Literal[
+        "personal_sql", "structured_lookup", "hybrid", "subtype_lookup",
+        "clarify", "insufficient",
+    ]
     reason: str
     filters: Dict[str, List[str]] = Field(default_factory=dict)
 
