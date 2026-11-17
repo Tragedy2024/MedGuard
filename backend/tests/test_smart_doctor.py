@@ -140,12 +140,12 @@ def test_ask_lab_returns_three_blocks(demo_db):
     assert len(r["data"]["rows"]) >= 1
     assert "patient_id" not in r["data"]["sql_after"] or \
         "P001" in r["data"]["sql_after"]
-    # 块二：通俗解读（来源：医院审核知识库）
-    assert r["interpretation"]["source"] == "医院审核知识库"
+    # 块二：通俗解读（来源：项目整理知识库）
+    assert r["interpretation"]["source"] == "项目整理知识库"
     assert r["interpretation"]["items"][0]["test_name"] == "血糖"
     assert r["interpretation"]["items"][0]["label"]  # 分档文案非空
     # 块三：下一步建议
-    assert r["advice"]["source"] == "医院审核知识库"
+    assert r["advice"]["source"] == "项目整理知识库"
     assert isinstance(r["advice"]["actions"], list)
 
 
@@ -270,7 +270,7 @@ def test_api_smart_doctor_ask(tmp_path, monkeypatch):
     assert r.status_code == 200
     body = r.json()
     assert body["intent"] == "lab"
-    assert body["interpretation"]["source"] == "医院审核知识库"
+    assert body["interpretation"]["source"] == "项目整理知识库"
     assert body["data"]["source"] == "医院主库"
     assert len(body["data"]["rows"]) >= 1
 
@@ -307,7 +307,7 @@ def test_api_smart_doctor_empty_question(tmp_path, monkeypatch):
 # 别名时，原先用的「我最近拉肚子，肚子疼怎么办」因为含 `肚子疼`（已加为
 # symptom_stomach 的别名）改为走症状导诊——那是**改进**（该导诊到消化内科，
 # 不该甩给模型），但让本组夹具失效：其中一条甚至变成"假绿"
-# （断言 source == 医院审核知识库，而症状命中的来源恰好也是它）。
+# （断言 source == 项目整理知识库，而症状命中的来源恰好也是它）。
 # 故换成**行政管理类**问法「怎么办出院手续」——它永远不会成为医学知识条目，
 # 以后再扩写知识库也不会再撞坏这组夹具。
 
@@ -358,7 +358,7 @@ def test_ai_fallback_without_key_keeps_guide(demo_db, monkeypatch):
     from backend import config as _config
     monkeypatch.setattr(_config, "LLM_API_KEY", "")
     r = smart_doctor.ask("怎么办理出院手续", "P001")
-    assert r["interpretation"]["source"] == "医院审核知识库"
+    assert r["interpretation"]["source"] == "项目整理知识库"
     assert "换个问法" in r["interpretation"]["title"]
 
 
@@ -388,9 +388,9 @@ def test_ai_call_failure_falls_back_to_guide(demo_db, monkeypatch):
 
     monkeypatch.setattr(smart_doctor, "_call_llm", boom)
     r = smart_doctor.ask("怎么办理出院手续", "P001")
-    assert r["interpretation"]["source"] == "医院审核知识库"
+    assert r["interpretation"]["source"] == "项目整理知识库"
     # 这条断言是**必需的**：只断言 source 的话，症状命中恰好也返回
-    # 「医院审核知识库」——测试会在走错路径时依然通过（曾经如此）。
+    # 「项目整理知识库」——测试会在走错路径时依然通过（曾经如此）。
     assert "换个问法" in r["interpretation"]["title"]
 
 
@@ -413,7 +413,7 @@ def test_ai_empty_output_falls_back_to_guide(demo_db, monkeypatch):
     monkeypatch.setattr(_config, "LLM_API_KEY", "sk-test")
     monkeypatch.setattr(smart_doctor, "_call_llm", lambda p: "")
     r = smart_doctor.ask("我膝盖疼怎么办", "P001")
-    assert r["interpretation"]["source"] == "医院审核知识库"
+    assert r["interpretation"]["source"] == "项目整理知识库"
 
 
 def test_parse_llm_json_robustness():

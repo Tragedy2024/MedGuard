@@ -6,8 +6,8 @@
  *
  * 每一块回答都带**来源标注**，这是产品差异点：
  *   院内数据   → 「来源：医院主库」（经医盾层一准入 + 层二审计，只读本人）
- *   通俗解读   → 「来源：医院审核知识库」
- *   下一步建议 → 「来源：医院审核知识库」
+ *   通俗解读   → 「来源：项目整理知识库」
+ *   下一步建议 → 「来源：项目整理知识库」
  */
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { Link } from 'react-router-dom'
@@ -193,7 +193,7 @@ function SmartDoctor() {
               <span className="chat-avatar" aria-hidden="true">盾</span>
               <div>
                 <strong id="chatTitle">MedGuard 智慧医生</strong>
-                <small>医院审核知识库 · 回答可回到来源</small>
+                <small>项目整理知识库 · 回答可回到来源</small>
               </div>
             </div>
             <span className="chat-subject">{session.displayName} · 演示</span>
@@ -348,7 +348,7 @@ function SmartDoctor() {
             <p>每个回答都按来源拆分，方便你分辨“记录写了什么”和“这意味着什么”。</p>
             <ul className="source-list">
               <li className="source-item"><span>医院主库 · 本人记录</span><small>限定</small></li>
-              <li className="source-item"><span>医院审核知识库</span><small>91 条核心</small></li>
+              <li className="source-item"><span>项目整理知识库</span><small>主知识资料</small></li>
               <li className="source-item"><span>{SOURCE_DATASET}</span><small>可追溯</small></li>
               <li className="source-item"><span>{SOURCE_AI}</span><small>仅作提示</small></li>
             </ul>
@@ -522,8 +522,9 @@ function InterpretationRow({
   aliasOf: (q: string) => string
 }) {
   if (item.ref_title !== undefined) {
-    const sourceType = item.ref_source_type === 'open_dataset' ? '开源数据' : '医院审核资料'
-    const quality = item.ref_quality_tier === 'opencmkg' ? '扩展资料' : '核心资料'
+    const isDataset = item.ref_source_type === 'open_dataset' || String(item.ref_source ?? '').includes('OpenCMKG')
+    const sourceType = item.ref_source_type === 'public_health' ? '公开机构资料' : isDataset ? '开源数据' : '项目整理资料'
+    const quality = item.ref_source_type === 'public_health' ? '项目中文整理，未经临床复核' : isDataset ? '未经临床复核' : ''
     const score = typeof item.ref_score === 'number' ? item.ref_score.toFixed(2) : ''
     return (
       <>
@@ -534,10 +535,14 @@ function InterpretationRow({
         <div className="sd-item-text sd-ref">
           {item.ref_excerpt ? <span>{String(item.ref_excerpt)}</span> : null}
           {item.ref_source ? <span className="sd-ref-source">出处：{String(item.ref_source)}</span> : null}
+          {typeof item.ref_url === 'string' && /^https:\/\//.test(item.ref_url) ? (
+            <a href={item.ref_url} target="_blank" rel="noopener noreferrer">查看来源原文{item.ref_original_title ? `：${String(item.ref_original_title)}` : ''}</a>
+          ) : null}
           <span className="sd-ref-meta">
             <span>{sourceType}</span>
-            <span>{quality}</span>
+            {quality && <span>{quality}</span>}
             {score && <span>匹配分 {score}</span>}
+            {item.ref_checked_on ? <span>核对日期 {String(item.ref_checked_on)}</span> : null}
             {item.ref_source_version ? <span>版本 {String(item.ref_source_version)}</span> : null}
             {item.ref_license ? <span>许可：{String(item.ref_license)}</span> : null}
           </span>

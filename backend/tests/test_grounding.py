@@ -55,11 +55,11 @@ def test_answer_evidence_status_distinguishes_grounded_generation():
 def test_answer_evidence_status_marks_insufficient_guide():
     status = smart_doctor._evidence_status({
         "interpretation": {
-            "source": "医院审核知识库",
+            "source": "项目整理知识库",
             "title": "请换个问法",
             "items": [],
         },
-        "advice": {"source": "医院审核知识库"},
+        "advice": {"source": "项目整理知识库"},
     })
     assert status["status"] == "insufficient"
     assert status["model_used"] is False

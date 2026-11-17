@@ -146,6 +146,20 @@ def decide(question: str, context: Optional[Dict[str, Any]] = None,
         disease_names=dataset_kb.disease_names(),
         personal_followup=personal_followup)
 
+    # 与智慧医生的公开资料及未支持项目守卫保持一致，避免徽标声称已访问记录。
+    from backend.knowledge import public_guidance, classifications
+    guidance = public_guidance.lookup(q)
+    classification = classifications.lookup(q, context)
+    if not _general_signal(q) and (guidance or classification):
+        topic = guidance or classification
+        return RouteDecision(ROUTE_KNOWLEDGE, "依据公开机构资料回答，未查询本人记录。",
+                             topic.get("intent", smart_doctor.INTENT_DISEASE), topic["entity"])
+    if plan.strategy == "personal_sql" and intent == smart_doctor.INTENT_LAB:
+        tests = smart_doctor._find_entities(q, kb.get("lab_tests") or {}) or ([entity] if entity else [])
+        unresolved = smart_doctor._unresolved_lab_target(q, tests, kb)
+        if unresolved:
+            return RouteDecision(ROUTE_CLARIFY, unresolved, intent, entity)
+
     # 1) 本人记录。非病患令牌不得走这条（HTTP 层已拒绝 staff，这里再兜一层，
     #    让 decide 单独被调用时语义也正确）。
     if plan.strategy == "personal_sql":
@@ -183,7 +197,7 @@ def decide(question: str, context: Optional[Dict[str, Any]] = None,
         return RouteDecision(
             ROUTE_KNOWLEDGE,
             f"识别为{_INTENT_LABELS.get(intent, '医学')}问题{entity_note}；"
-            f"不涉及患者个人数据，走医院审核知识库。",
+            f"不涉及患者个人数据，走项目整理知识库。",
             intent, entity)
     if plan.strategy in _KNOWLEDGE_STRATEGIES:
         return RouteDecision(

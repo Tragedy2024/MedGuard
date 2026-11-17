@@ -44,6 +44,93 @@ class AdmissionResult:
         }
 
 
+def _read_tree(sql):
+    try:
+        statements = sqlglot.parse(sql, read="sqlite")
+        if len(statements) != 1 or not isinstance(statements[0], (exp.Select, exp.Union, exp.Intersect, exp.Except)):
+            return None
+        tree = statements[0]
+        if tree.find(exp.Into):
+            return None
+        if any(isinstance(f, exp.Anonymous) and f.name.lower() in {"load_extension", "writefile", "readfile"}
+               for f in tree.find_all(exp.Func)):
+            return None
+        return tree
+    except Exception:
+        return None
+
+
+def is_read_only_query(sql):
+    """只允许一个查询语句；执行器另用只读连接作第二层约束。"""
+    return _read_tree(sql) is not None
+
+
+def _guarantees_self(node, alias, subject, unqualified_allowed):
+    if isinstance(node, (exp.Where, exp.Paren)):
+        return _guarantees_self(node.this, alias, subject, unqualified_allowed)
+    if isinstance(node, exp.And):
+        return (_guarantees_self(node.this, alias, subject, unqualified_allowed)
+                or _guarantees_self(node.expression, alias, subject, unqualified_allowed))
+    if isinstance(node, exp.Or):
+        return (_guarantees_self(node.this, alias, subject, unqualified_allowed)
+                and _guarantees_self(node.expression, alias, subject, unqualified_allowed))
+    if isinstance(node, exp.EQ):
+        for col, val in ((node.this, node.expression), (node.expression, node.this)):
+            if (isinstance(col, exp.Column) and col.name.lower() == "patient_id"
+                    and (col.table.lower() == alias or (not col.table and unqualified_allowed))
+                    and isinstance(val, exp.Literal) and val.is_string and val.this == subject):
+                return True
+    # 不从 NOT、EXISTS、SELECT投影或嵌套子查询中借用绑定。
+    return False
+
+
+def _join_equalities(node):
+    if isinstance(node, exp.Paren):
+        return _join_equalities(node.this)
+    if isinstance(node, exp.And):
+        return _join_equalities(node.this) + _join_equalities(node.expression)
+    return [node] if isinstance(node, exp.EQ) else []
+
+
+def _scope_bound(select, subject, patient_tables):
+    local = [t for t in select.find_all(exp.Table)
+             if t.find_ancestor(exp.Select) is select]
+    physical = {t.alias_or_name.lower(): t.name.lower() for t in local
+                if t.name.lower() in patient_tables}
+    if not physical:
+        return True
+    where = select.args.get("where")
+    bound = {alias for alias in physical
+             if _guarantees_self(where, alias, subject, len(local) == 1)}
+    edges = []
+    predicates = [where.this] if where else []
+    predicates.extend(j.args.get("on") for j in select.args.get("joins", []))
+    for predicate in predicates:
+        for eq in _join_equalities(predicate):
+            a, b = eq.this, eq.expression
+            if not isinstance(a, exp.Column) or not isinstance(b, exp.Column):
+                continue
+            aa, bb = a.table.lower(), b.table.lower()
+            if aa not in physical or bb not in physical or aa == bb:
+                continue
+            # patient_id等值连接可传递主体绑定；visit_id连接仅认当前演示模式
+            # 中的已知归属关系，不向任意表或其他ID列外推。
+            same_patient = a.name.lower() == b.name.lower() == "patient_id"
+            same_visit = (a.name.lower() == b.name.lower() == "visit_id"
+                          and set((physical[aa], physical[bb])) in (
+                              {"clinical_records", "visits"}, {"billing", "visits"}))
+            if same_patient or same_visit:
+                edges.append((aa, bb))
+    changed = True
+    while changed:
+        old = len(bound)
+        for a, b in edges:
+            if a in bound or b in bound:
+                bound.update((a, b))
+        changed = len(bound) != old
+    return set(physical) <= bound
+
+
 def admission_check(sql: str, subject_id: str,
                     patient_tables=None) -> AdmissionResult:
     """判定病患令牌能否发起此查询。
@@ -60,33 +147,19 @@ def admission_check(sql: str, subject_id: str,
     if patient_tables is None:
         patient_tables = config.PATIENT_TABLES
 
-    try:
-        tree = sqlglot.parse_one(sql, read="sqlite")
-    except Exception:
-        # fail-closed：解析不了就不放行
+    patient_tables = {name.lower() for name in patient_tables}
+    tree = _read_tree(sql)
+    if tree is None:
         return AdmissionResult(passed=False, reason=DENY_REASON)
-
     tables = sorted({t.name.lower() for t in tree.find_all(exp.Table)})
-    touches = [t for t in tables if t in patient_tables]
-
+    touches = bool(set(tables) & patient_tables)
     if not touches:
-        return AdmissionResult(
-            passed=True, checked_tables=tables, bound_to_subject=False,
-        )
-
-    for eq in tree.find_all(exp.EQ):
-        for col, val in ((eq.this, eq.expression), (eq.expression, eq.this)):
-            if isinstance(col, exp.Column) and col.name.lower() == "patient_id":
-                if isinstance(val, exp.Literal) and val.this == subject_id:
-                    return AdmissionResult(
-                        passed=True,
-                        checked_tables=tables,
-                        bound_to_subject=True,
-                    )
-
-    return AdmissionResult(
-        passed=False, reason=DENY_REASON, checked_tables=tables,
-    )
+        return AdmissionResult(passed=True, checked_tables=tables)
+    passed = bool(subject_id) and all(
+        _scope_bound(select, subject_id, patient_tables)
+        for select in tree.find_all(exp.Select))
+    return AdmissionResult(passed=passed, reason=None if passed else DENY_REASON,
+                           checked_tables=tables, bound_to_subject=passed)
 
 
 def admission_check_plan(plan: list, subject_id: str,

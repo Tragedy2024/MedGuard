@@ -15,10 +15,12 @@ AI 判定未急症、知识图谱未覆盖、未配置模型，也一样升级�
 「人人弹警告」会把真信号稀释掉（与 acuity 分诊的设计一致）。
 """
 from dataclasses import dataclass
+import re
 
 # (警示标签, 触发词组)。词组按子串匹配；同一组内长词在前（「胸口剧痛」
 # 先于「胸口痛」命中），避免显示的是短词。
 RED_FLAGS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("腹部急症警示", ("突然剧烈腹痛", "突然出现剧烈腹痛", "肚子剧痛", "腹部剧痛", "黑色黏便", "完全不能排便排气")),
     ("大出血", ("大出血", "血流不止", "大量出血", "出血不止", "止不住血", "呕血", "咯血")),
     ("意识障碍", ("昏迷", "晕厥", "失去意识", "神志不清", "意识不清", "叫不醒", "抽搐", "晕倒")),
     ("呼吸困难", ("呼吸困难", "喘不上气", "喘不过气", "无法呼吸", "窒息")),
@@ -48,9 +50,17 @@ def check(question: str) -> tuple[RedFlag, ...]:
     hits = []
     for label, phrases in RED_FLAGS:
         for phrase in phrases:
-            if phrase in question:
+            present = False
+            for match in re.finditer(re.escape(phrase), question):
+                prefix = question[max(0, match.start()-18):match.start()]
+                negative = re.search(r"(?:没有|未出现|未见|不伴有|不伴|并无|无)(?:出现|明显的?|持续的?)?$", prefix)
+                double_negative = re.search(r"(?:不是|并非)没有(?:出现|明显的?)?$", prefix)
+                if not negative or double_negative:
+                    present = True
+                    break
+            if present:
                 hits.append(RedFlag(label=label, matched=phrase))
-                break  # 每组只记一次命中
+                break  # 同一句出现多次时，不能因第一处否定而忽略后面的肯定
     return tuple(hits)
 
 

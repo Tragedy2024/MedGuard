@@ -102,7 +102,7 @@ lab_tests:
     # 这正是"单字别名"的典型风险：`肝`/`肾` 能用，是因为知识库里没有
     # 别的"肝/肾"条目可以冲突；`糖` 有。
     aliases: [血糖, 空腹血糖, 餐后血糖, 葡萄糖, 空腹葡萄糖, 血糖值, 血糖水平]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     desc: 反映血液中的葡萄糖浓度，糖尿病诊断与随访的核心指标
     unit: mmol/L
     normal: 3.9–6.1（空腹）
@@ -122,7 +122,7 @@ lab_tests:
   血常规:
     id: lab_cbc
     aliases: [血常规, 血象, 血细胞分析, 全血细胞计数]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     desc: 评估红细胞、白细胞、血小板三大系的常规检查
     unit: 计数
     normal: 白细胞 4–10 ×10⁹/L 等（综合判读）
@@ -139,7 +139,7 @@ lab_tests:
     # 条目，所以它只会指向肝功能，不会被别处抢走。没有它，「查一下肝」
     # 这类口语问法只能答"我没听懂"。
     aliases: [肝功能, 肝功, 转氨酶, 肝脏功能, 肝]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     desc: 反映肝脏合成与代谢功能的指标组合
     unit: U/L
     normal: ALT 7–40 等（综合判读）
@@ -153,7 +153,7 @@ lab_tests:
     id: lab_kidney
     # `肾` 同 `肝`，见上。
     aliases: [肾功能, 肾功, 肌酐, 肾脏功能, 肾]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     desc: 评估肾脏滤过与排泄功能的指标组合
     unit: µmol/L
     normal: 肌酐 44–104（综合判读）
@@ -166,7 +166,7 @@ lab_tests:
   血脂:
     id: lab_lipid
     aliases: [血脂, 血脂四项, 胆固醇, 甘油三酯]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     desc: 评估血液中脂类水平，与心血管风险相关
     unit: mmol/L
     normal: 总胆固醇 < 5.2（综合判读）
@@ -179,7 +179,7 @@ lab_tests:
   尿常规:
     id: lab_urine
     aliases: [尿常规, 尿检, 尿液检查]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     desc: 尿液物理、化学与镜下成分的快速筛查
     unit: 半定量
     normal: 各项阴性（-）
@@ -197,7 +197,7 @@ lab_tests:
   糖化血红蛋白:
     id: lab_hba1c
     aliases: [糖化血红蛋白, 糖化血红蛋白A1c, HbA1c]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     desc: 反映近 2–3 个月平均血糖水平，糖尿病长期控制的核心指标
     unit: "%"
     normal: 4–6
@@ -211,7 +211,7 @@ lab_tests:
   C反应蛋白:
     id: lab_crp
     aliases: [C反应蛋白, 超敏C反应蛋白, CRP]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     desc: 反映体内炎症水平的急性期指标
     unit: mg/L
     normal: < 8
@@ -225,7 +225,7 @@ lab_tests:
   尿酸:
     id: lab_uric
     aliases: [尿酸, 血尿酸]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     desc: 嘌呤代谢的终产物，与痛风及肾脏负担相关
     unit: µmol/L
     normal: 男性 208–428；女性 155–357（综合判读）
@@ -239,7 +239,7 @@ lab_tests:
   促甲状腺激素:
     id: lab_tsh
     aliases: [促甲状腺激素, 甲状腺功能, 甲功, TSH]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     desc: 反映甲状腺功能状态的核心筛查指标
     unit: mIU/L
     normal: 0.35–4.94
@@ -253,7 +253,7 @@ lab_tests:
   血钾:
     id: lab_potassium
     aliases: [血钾, 钾离子]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     desc: 维持心脏与神经肌肉功能的关键电解质
     unit: mmol/L
     normal: 3.5–5.3
@@ -268,7 +268,7 @@ lab_tests:
   肌钙蛋白:
     id: lab_troponin
     aliases: [肌钙蛋白, 心肌酶, cTnI]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     desc: 心肌损伤的特异性标志物
     unit: ng/mL
     normal: < 0.04
@@ -283,7 +283,7 @@ medications:
   阿司匹林:
     id: drug_aspirin
     aliases: [阿司匹林, 乙酰水杨酸]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     purpose: 抗血小板、预防血栓，常用于心脑血管疾病二级预防
     usage: 一般每日一次，遵医嘱剂量
     caution: 有消化道出血史或胃溃疡者需告知医生；出现黑便、牙龈出血不止请停药并就医
@@ -291,7 +291,7 @@ medications:
   二甲双胍:
     id: drug_metformin
     aliases: [二甲双胍, 盐酸二甲双胍]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     purpose: 降血糖，2型糖尿病一线用药
     usage: 随餐或餐后服用，减少胃肠反应
     caution: 极少数情况可能出现胃肠不适；肾功能不全者需医生评估
@@ -299,7 +299,7 @@ medications:
   氨氯地平:
     id: drug_amlodipine
     aliases: [氨氯地平, 苯磺酸氨氯地平]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     purpose: 降血压（钙通道阻滞剂）
     usage: 一般每日一次，晨起或固定时间服用
     caution: 部分人初期可能出现踝部水肿、面部潮红，通常可自行缓解
@@ -307,7 +307,7 @@ medications:
   奥美拉唑:
     id: drug_omeprazole
     aliases: [奥美拉唑, 奥美拉唑镁]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     purpose: 抑制胃酸，用于胃酸相关疾病
     usage: 一般晨起空腹服用
     caution: 长期使用需医生评估；出现严重腹泻请告知医生
@@ -315,7 +315,7 @@ medications:
   布洛芬:
     id: drug_ibuprofen
     aliases: [布洛芬]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     purpose: 解热镇痛抗炎
     usage: 一般每次1片，每日不超过3次，饭后服用
     caution: 消化道溃疡者慎用；不要与同类止痛药叠加
@@ -323,17 +323,15 @@ medications:
   头孢呋辛:
     id: drug_cefuroxime
     aliases: [头孢呋辛, 头孢呋辛酯]
-    provenance: {reviewed: true, source: 医院审核知识库}
-    purpose: 抗菌消炎（头孢类抗生素）
-    usage: 按医嘱足量足疗程，不可自行停药
-    caution: 对头孢/青霉素过敏者禁用；服药期间及停药一周内勿饮酒
-    note: 如出现皮疹、呼吸困难应立即停药就医
-
-  # ── 以下为 2026-09-21 扩写的药品 ──────────────────────────────
+    provenance: {reviewed: false, source: 项目整理知识库, url: 'https://medlineplus.gov/druginfo/meds/a601206.html'}
+    purpose: 头孢菌素类抗生素，用于医生判断适用的某些细菌感染，不用于普通感冒等病毒感染
+    usage: 剂量、频次和疗程以具体处方和药品说明书为准，不要自行增减或提前停用
+    caution: 有药物过敏史、肝肾疾病或正在合用其他药物时，先告知医生或药师
+    note: 出现呼吸困难、面部肿胀或严重皮疹等情况时，请立即就医
   阿托伐他汀:
     id: drug_atorvastatin
     aliases: [阿托伐他汀, 阿托伐他汀钙]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     purpose: 降低胆固醇，用于高血脂与心血管疾病预防
     usage: 一般每日一次，晚间或固定时间服用
     caution: 出现不明原因的肌肉酸痛、乏力请及时告知医生
@@ -341,7 +339,7 @@ medications:
   美托洛尔:
     id: drug_metoprolol
     aliases: [美托洛尔, 酒石酸美托洛尔, 琥珀酸美托洛尔]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     purpose: 降低心率与血压（β受体阻滞剂）
     usage: 一般每日一至两次，遵医嘱剂量
     caution: 哮喘或心动过缓者需告知医生；**不可自行突然停药**
@@ -349,7 +347,7 @@ medications:
   缬沙坦:
     id: drug_valsartan
     aliases: [缬沙坦]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     purpose: 降血压（血管紧张素受体拮抗剂）
     usage: 一般每日一次，固定时间服用
     caution: 妊娠期禁用；出现明显头晕请告知医生
@@ -357,7 +355,7 @@ medications:
   格列美脲:
     id: drug_glimepiride
     aliases: [格列美脲]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     purpose: 降血糖（磺脲类），用于2型糖尿病
     usage: 一般早餐前服用，遵医嘱剂量
     caution: 可能出现低血糖；规律进餐，勿自行加量
@@ -365,7 +363,7 @@ medications:
   阿莫西林:
     id: drug_amoxicillin
     aliases: [阿莫西林]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     purpose: 抗菌消炎（青霉素类抗生素）
     usage: 按医嘱足量足疗程，不可自行停药
     caution: 青霉素过敏者禁用；出现皮疹、呼吸困难立即停药就医
@@ -373,7 +371,7 @@ medications:
   左氧氟沙星:
     id: drug_levofloxacin
     aliases: [左氧氟沙星]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     purpose: 抗菌消炎（喹诺酮类抗生素）
     usage: 按医嘱服用，避免与含钙、镁的制剂同服
     caution: 18 岁以下一般不用；出现肌腱疼痛请停药就医
@@ -381,7 +379,7 @@ medications:
   对乙酰氨基酚:
     id: drug_paracetamol
     aliases: [对乙酰氨基酚, 扑热息痛]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     purpose: 解热镇痛
     usage: 按说明书或医嘱剂量，**每日总量不可超量**
     caution: 肝功能不全者慎用；不可与其他含同成分的感冒药叠加
@@ -389,7 +387,7 @@ medications:
   雷贝拉唑:
     id: drug_rabeprazole
     aliases: [雷贝拉唑]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     purpose: 抑制胃酸，用于胃酸相关疾病
     usage: 一般晨起空腹服用
     caution: 长期使用需医生评估
@@ -397,7 +395,7 @@ medications:
   呋塞米:
     id: drug_furosemide
     aliases: [呋塞米, 速尿]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     purpose: 利尿消肿，用于水肿与高血压
     usage: 一般晨起服用，避免夜间频繁起夜
     caution: 需监测血钾；出现明显乏力、心悸请告知医生
@@ -405,7 +403,7 @@ medications:
   螺内酯:
     id: drug_spironolactone
     aliases: [螺内酯]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     purpose: 保钾利尿，用于水肿与心力衰竭
     usage: 一般每日一次，遵医嘱剂量
     caution: 肾功能不全或高钾血症者慎用
@@ -413,7 +411,7 @@ medications:
   氢氯噻嗪:
     id: drug_hydrochlorothiazide
     aliases: [氢氯噻嗪]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     purpose: 利尿降压，常用于高血压
     usage: 一般每日一次，晨起服用
     caution: 痛风、糖尿病患者需告知医生
@@ -421,7 +419,7 @@ medications:
   氯吡格雷:
     id: drug_clopidogrel
     aliases: [氯吡格雷]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     purpose: 抗血小板，用于血栓预防
     usage: 一般每日一次，遵医嘱剂量
     caution: 出现黑便、牙龈出血不止请停药并就医
@@ -429,7 +427,7 @@ medications:
   沙丁胺醇:
     id: drug_salbutamol
     aliases: [沙丁胺醇]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     purpose: 舒张支气管，用于哮喘与喘息发作
     usage: 吸入给药，发作时按医嘱使用
     caution: 使用后心慌、手抖明显请告知医生
@@ -437,7 +435,7 @@ medications:
   孟鲁司特:
     id: drug_montelukast
     aliases: [孟鲁司特]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     purpose: 预防哮喘与过敏性鼻炎发作
     usage: 一般每日一次，晚间服用
     caution: 不能用于急性发作时的急救
@@ -445,7 +443,7 @@ medications:
   左甲状腺素:
     id: drug_levothyroxine
     aliases: [左甲状腺素, 优甲乐]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     purpose: 补充甲状腺激素，用于甲状腺功能减退
     usage: 一般晨起空腹服用，服后间隔一段时间再进食
     caution: 不可自行调整剂量；剂量需按复查结果调整
@@ -453,7 +451,7 @@ medications:
   别嘌醇:
     id: drug_allopurinol
     aliases: [别嘌醇]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     purpose: 降低尿酸，用于痛风与高尿酸血症
     usage: 一般每日一次，饭后服用
     caution: 出现皮疹请立即停药就医
@@ -461,7 +459,7 @@ medications:
   碳酸钙D3:
     id: drug_calcium_d3
     aliases: [碳酸钙D3, 钙片]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     purpose: 补充钙与维生素D，用于骨质疏松防治
     usage: 一般每日一次，饭后服用
     caution: 肾结石病史者需告知医生
@@ -469,7 +467,7 @@ medications:
   甲钴胺:
     id: drug_mecobalamin
     aliases: [甲钴胺]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     purpose: 营养神经，用于周围神经病变
     usage: 一般每日三次，遵医嘱剂量
     caution: 一个月以上无效请复诊评估
@@ -483,43 +481,43 @@ medications:
 symptoms:
   - id: symptom_chest
     aliases: [胸痛, 胸闷, 心慌, 胸口疼, 胸口痛, 心里发慌, 发慌]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     department: 心血管内科
     acuity: 2
     text: 胸闷胸痛需排查心脏问题，尤其是活动后加重、休息缓解的类型。
   - id: symptom_dizziness
     aliases: [头晕, 头痛, 眩晕, 脑袋晕, 头昏, 晕得慌]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     department: 神经内科
     acuity: 4
     text: 头晕头痛原因多样，需要结合血压、睡眠与发作特点判断。
   - id: symptom_stomach
     aliases: [胃痛, 胃疼, 腹痛, 反酸, 胃胀, 肚子疼, 肚子痛]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     department: 消化内科
     acuity: 4
     text: 消化道症状建议先做腹部相关检查，避免自行吃止痛药掩盖病情。
   - id: symptom_respiratory
     aliases: [咳嗽, 咳痰, 发热, 咽痛, 感冒, 流鼻涕, 发烧, 低烧, 嗓子疼, 流涕]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     department: 呼吸内科
     acuity: 4
     text: 呼吸道症状伴发热时注意休息与饮水，症状加重需就医。
   - id: symptom_bone
     aliases: [腰疼, 关节痛, 骨痛, 腰痛, 腰酸, 关节疼]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     department: 骨科
     acuity: 4
     text: 骨关节疼痛建议专科查体，必要时影像检查明确原因。
   - id: symptom_edema
     aliases: [水肿, 尿少, 乏力, 浮肿, 没劲]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     department: 肾内科
     acuity: 3
     text: 水肿与乏力可能与心、肾、营养等多因素有关，建议系统评估。
   - id: symptom_mood
     aliases: [失眠, 焦虑, 情绪低落, 睡不着, 睡不好, 入睡困难]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     # 这里的复合写法（`心理科/神经内科`）是 v1 原样保留的展示文案，
     # 会直接渲染成「建议优先咨询心理科/神经内科」。**不要为了对齐科室表
     # 而简化它**——那是行为变更，不是结构调整。科室表的守卫测试对复合值
@@ -529,7 +527,7 @@ symptoms:
     text: 睡眠与情绪问题建议规律作息，必要时专科评估。
   - id: symptom_gi_bleed
     aliases: [便血, 黑便, 大便带血, 血便, 柏油便]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     department: 消化内科
     acuity: 2
     text: 消化道出血需要尽快就医。
@@ -537,49 +535,49 @@ symptoms:
   # ── 以下为 2026-09-21 扩写的症状簇 ────────────────────────────
   - id: symptom_skin
     aliases: [皮肤瘙痒, 皮肤痒, 皮疹, 起疹子]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     department: 皮肤科
     acuity: 4
     text: 皮肤问题建议避免搔抓与热水烫洗，记录可能的诱因（食物、药物、接触物）。
   - id: symptom_vision
     aliases: [视力模糊, 视物模糊, 看东西模糊, 眼睛干涩]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     department: 眼科
     acuity: 3
     text: 视力变化需尽快明确原因；若突然视力下降或伴眼痛，请立即就医。
   - id: symptom_tinnitus
     aliases: [耳鸣, 耳朵响]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     department: 耳鼻喉科
     acuity: 4
     text: 耳鸣原因多样，建议同时关注听力变化与血压情况。
   - id: symptom_constipation
     aliases: [便秘, 排便困难, 大便干结]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     department: 消化内科
     acuity: 4
     text: 增加膳食纤维与饮水、规律排便是基础；持续改变需排除器质性问题。
   - id: symptom_nasal
     aliases: [鼻塞, 打喷嚏, 流鼻血]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     department: 耳鼻喉科
     acuity: 4
     text: 鼻部症状常见于过敏或感染；反复单侧鼻出血需专科检查。
   - id: symptom_urinary
     aliases: [尿频, 尿急, 尿痛]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     department: 泌尿外科
     acuity: 4
     text: 排尿不适多与感染相关，建议多饮水并尽早查尿常规。
   - id: symptom_hemoptysis
     aliases: [咯血, 咳血, 痰中带血]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     department: 呼吸内科
     acuity: 2
     text: 咯血需要尽快明确来源，量多或伴呼吸困难请立即就医。
   - id: symptom_joint_swelling
     aliases: [关节红肿, 关节肿胀]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     department: 风湿免疫科
     acuity: 3
     text: 关节红肿提示存在炎症，建议尽早专科评估，避免自行长期服用止痛药。
@@ -597,7 +595,7 @@ diseases:
   糖尿病:
     id: disease_diabetes
     aliases: [糖尿病, 血糖高, 2型糖尿病]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     what: 血液中葡萄糖水平长期偏高的慢性代谢病，分1型与2型，2型更为常见。
     advice: 核心管理是饮食、运动、用药三件事；定期监测血糖与糖化血红蛋白；每年检查眼底、尿蛋白与足部。
     relations:
@@ -609,7 +607,7 @@ diseases:
   高血压:
     id: disease_hypertension
     aliases: [高血压, 血压高]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     what: 血压长期高于正常范围的慢性病，多数早期无明显症状，被称为"沉默的杀手"。
     advice: 家庭自测血压记录趋势；低盐饮食、规律作息；遵医嘱服药，勿自行停药。
     relations:
@@ -621,7 +619,7 @@ diseases:
   高血脂:
     id: disease_hyperlipidemia
     aliases: [高血脂, 血脂高, 胆固醇高]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     what: 血液中胆固醇/甘油三酯水平升高，是动脉粥样硬化的重要风险因素。
     advice: 控制饱和脂肪摄入、增加运动；必要时药物干预并按医嘱复查。
     relations:
@@ -632,7 +630,7 @@ diseases:
   支气管炎:
     id: disease_bronchitis
     aliases: [支气管炎, 咳嗽, 气管炎]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     what: 支气管黏膜的炎症，常表现为咳嗽、咳痰，急性或慢性均可发生。
     advice: 急性期注意休息、多饮水；慢性者避免吸烟与冷空气刺激。
     relations:
@@ -643,7 +641,7 @@ diseases:
   胃炎:
     id: disease_gastritis
     aliases: [胃炎, 胃病, 胃疼, 胃痛]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     what: 胃黏膜的炎症，表现为上腹不适、反酸、胃胀等。
     advice: 规律三餐、避免辛辣刺激与空腹饮酒；症状反复建议胃镜检查。
     relations:
@@ -654,7 +652,7 @@ diseases:
   上呼吸道感染:
     id: disease_uri
     aliases: [感冒, 上呼吸道感染, 流感]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     what: 俗称"感冒"，多为病毒引起，通常7–10天自愈。
     advice: 多休息、多饮水；高热不退或症状加重超过一周需就医。
     relations:
@@ -667,7 +665,7 @@ diseases:
   冠心病:
     id: disease_chd
     aliases: [冠心病, 冠状动脉粥样硬化性心脏病]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     what: 冠状动脉粥样硬化导致心肌供血不足，可表现为活动后胸闷胸痛。
     advice: 控制血压血脂血糖；戒烟限酒；遵医嘱服药，出现持续胸痛立即就医。
     relations:
@@ -680,7 +678,7 @@ diseases:
   脑卒中:
     id: disease_stroke
     aliases: [脑卒中, 中风, 脑梗死, 脑梗]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     what: 脑部血管阻塞或破裂导致脑组织损伤，起病急，救治有明确时间窗。
     advice: 控制血压血脂血糖；出现口角歪斜、肢体无力、言语不清请立即拨打急救电话。
     relations:
@@ -692,7 +690,7 @@ diseases:
   慢性阻塞性肺疾病:
     id: disease_copd
     aliases: [慢性阻塞性肺疾病, 慢阻肺, 肺气肿]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     what: 以持续气流受限为特征的慢性肺部疾病，与长期吸烟密切相关。
     advice: 戒烟是最重要的一步；注意保暖、避免呼吸道感染；按医嘱规律用药。
     relations:
@@ -702,7 +700,7 @@ diseases:
   哮喘:
     id: disease_asthma
     aliases: [哮喘, 支气管哮喘]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     what: 气道慢性炎症导致反复发作的喘息、气促与胸闷。
     advice: 避免接触过敏原与冷空气；规律使用控制药物；随身携带急救吸入剂。
     relations:
@@ -713,7 +711,7 @@ diseases:
   甲状腺功能减退:
     id: disease_hypothyroidism
     aliases: [甲状腺功能减退, 甲减]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     what: 甲状腺激素分泌不足，常见乏力、怕冷、体重增加、反应变慢。
     advice: 需长期规律服药并定期复查甲功；不可自行停药或调整剂量。
     relations:
@@ -723,7 +721,7 @@ diseases:
   甲状腺功能亢进:
     id: disease_hyperthyroidism
     aliases: [甲状腺功能亢进, 甲亢]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     what: 甲状腺激素分泌过多，常见心慌、多汗、消瘦、易激动。
     advice: 避免含碘丰富的食物；规律复查甲功与血常规；遵医嘱治疗。
     relations:
@@ -733,7 +731,7 @@ diseases:
   脂肪肝:
     id: disease_fatty_liver
     aliases: [脂肪肝]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     what: 肝细胞内脂肪堆积过多，多与超重、饮酒、代谢异常相关。
     advice: 控制体重、减少精制糖与酒精摄入、规律运动；定期复查肝功能与血脂。
     relations:
@@ -744,7 +742,7 @@ diseases:
   缺铁性贫血:
     id: disease_ida
     aliases: [缺铁性贫血, 贫血]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     what: 体内铁储备不足导致血红蛋白合成减少，常见乏力、头晕、面色苍白。
     advice: 明确缺铁原因比单纯补铁更重要；补铁需按疗程并复查血常规。
     relations:
@@ -754,7 +752,7 @@ diseases:
   痛风:
     id: disease_gout
     aliases: [痛风]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     what: 尿酸盐结晶沉积在关节引起的炎症，典型表现为突发单关节红肿热痛。
     advice: 限制高嘌呤饮食与饮酒、多饮水；急性期与缓解期用药策略不同，需遵医嘱。
     relations:
@@ -766,7 +764,7 @@ diseases:
   骨质疏松:
     id: disease_osteoporosis
     aliases: [骨质疏松, 骨质疏松症]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     what: 骨量减少、骨微结构受损导致骨脆性增加，易发生骨折。
     advice: 保证钙与维生素D摄入、负重运动、防跌倒；必要时遵医嘱用药。
     relations:
@@ -775,7 +773,7 @@ diseases:
   胃溃疡:
     id: disease_peptic_ulcer
     aliases: [胃溃疡, 消化性溃疡]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     what: 胃黏膜破损深达黏膜肌层，表现为规律性上腹痛，进食后可能加重。
     advice: 规律饮食、戒烟限酒、避免长期服用损伤胃黏膜的药物；按疗程治疗并复查。
     relations:
@@ -786,7 +784,7 @@ diseases:
   慢性肾脏病:
     id: disease_ckd
     aliases: [慢性肾脏病, 慢性肾病, 肾功能不全]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     what: 肾脏结构或功能异常持续超过三个月，早期常无明显症状。
     advice: 控制血压血糖、避免肾毒性药物、低盐饮食；定期复查肾功能与尿常规。
     relations:
@@ -798,7 +796,7 @@ diseases:
   白内障:
     id: disease_cataract
     aliases: [白内障]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     what: 晶状体混浊导致视力逐渐下降，多见于中老年人。
     advice: 视力下降影响生活时可由眼科评估手术时机；外出注意防紫外线。
     relations:
@@ -806,7 +804,7 @@ diseases:
   过敏性鼻炎:
     id: disease_allergic_rhinitis
     aliases: [过敏性鼻炎, 鼻炎]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     what: 接触过敏原后出现阵发性喷嚏、清水样鼻涕、鼻塞与鼻痒。
     advice: 尽量回避已知过敏原；规范用药控制症状，必要时做过敏原检测。
     relations:
@@ -816,7 +814,7 @@ diseases:
   抑郁障碍:
     id: disease_depression
     aliases: [抑郁障碍, 抑郁症, 抑郁]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     what: 以持续情绪低落、兴趣减退为核心的表现，属可治疗的疾病而非性格问题。
     advice: 尽早就医评估；规律作息、保持社会联系；药物治疗需足量足疗程，勿自行停药。
     relations:
@@ -824,7 +822,7 @@ diseases:
   焦虑障碍:
     id: disease_anxiety
     aliases: [焦虑障碍, 焦虑症]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     what: 以过度、持续的担忧与紧张为核心，常伴心慌、出汗、睡眠变差。
     advice: 尽早就医评估；规律作息、限制咖啡因；必要时接受心理治疗或药物治疗。
     relations:
@@ -832,7 +830,7 @@ diseases:
   颈椎病:
     id: disease_cervical_spondylosis
     aliases: [颈椎病]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     what: 颈椎退行性改变压迫或刺激神经、血管，常见颈肩痛与上肢麻木。
     advice: 避免长时间低头、注意颈部保暖、适度锻炼颈肩肌群；症状加重需专科评估。
     relations:
@@ -842,7 +840,7 @@ diseases:
   良性前列腺增生:
     id: disease_bph
     aliases: [良性前列腺增生, 前列腺增生]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     what: 中老年男性前列腺体积增大引起排尿不畅，常见尿频、夜尿增多。
     advice: 避免憋尿与久坐、晚间减少饮水；症状明显时由泌尿外科评估治疗方案。
     relations:
@@ -851,7 +849,7 @@ diseases:
   腰椎间盘突出:
     id: disease_lumbar_disc
     aliases: [腰椎间盘突出, 腰椎间盘膨出]
-    provenance: {reviewed: true, source: 医院审核知识库}
+    provenance: {reviewed: false, source: 项目整理知识库}
     what: 椎间盘突出压迫神经根，常见腰痛并向下肢放射、久坐久站后加重。
     advice: 急性期适当休息、避免弯腰负重；症状持续或出现下肢无力需尽早专科评估。
     relations:

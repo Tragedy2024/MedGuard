@@ -1,0 +1,34 @@
+version: 1
+entries:
+  - entity: 糖尿病
+    aliases: [糖尿病]
+    source: NIDDK公开健康资料（项目中文整理，未经临床复核）
+    checked_on: '2026-11-16'
+    summary: 常见类型包括1型糖尿病、2型糖尿病和妊娠糖尿病，此外还有其他特定原因导致的类型，不能简单理解为只有两种。以下是科普分类，不能据此判断个人属于哪一型。
+    items:
+      - title: 1型糖尿病
+        text: 与免疫系统破坏胰腺中产生胰岛素的细胞有关，身体产生的胰岛素很少或没有。
+      - title: 2型糖尿病
+        text: 身体不能有效利用胰岛素，胰腺产生的胰岛素也可能不足；这是最常见的类型。
+      - title: 妊娠糖尿病
+        text: 在妊娠期间发生的糖尿病。妊娠期间发现的糖尿病也可能属于其他类型，需由医生判断。
+      - title: 其他特定类型
+        text: 还包括单基因改变、胰腺损伤或切除等特定原因引起的糖尿病。
+    url: https://www.niddk.nih.gov/health-information/diabetes/overview/what-is-diabetes
+    original_title: What Is Diabetes?
+  - entity: 癌症
+    aliases: [癌症, 恶性肿瘤]
+    source: NCI公开健康资料（项目中文整理，未经临床复核）
+    checked_on: '2026-11-16'
+    summary: 癌症有不同分类口径。可按发生部位列举，也可按起源组织或细胞分类，不能混在一起当作固定的总数。以下只是示例，不是全部癌症名单；具体类型需要结合病理等检查判断。
+    items:
+      - title: 按发生部位举例
+        text: 可列举肺癌、乳腺癌、结直肠癌、胃癌、肝癌等，每种还可能有不同的病理亚型。
+        url: https://www.cancer.gov/types
+        original_title: Cancer Types
+      - title: 按起源组织或细胞举例
+        text: 包括上皮来源的癌、肉瘤、白血病、淋巴瘤、多发性骨髓瘤和黑色素瘤等。这与按器官列举属于不同分类口径。
+        url: https://www.cancer.gov/about-cancer/understanding/what-is-cancer
+        original_title: What Is Cancer?
+    url: https://www.cancer.gov/about-cancer/understanding/what-is-cancer
+    original_title: What Is Cancer?

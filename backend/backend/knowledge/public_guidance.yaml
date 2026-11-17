@@ -1,0 +1,88 @@
+version: 1
+checked_on: '2026-11-17'
+topics:
+  high_glucose:
+    entity: 血糖
+    intent: lab
+    aliases: [血糖高, 高血糖, 血糖偏高, 血糖升高]
+    fields:
+      treatments:
+        title: 血糖升高的一般处理与治疗
+        summary: 血糖升高不等于已经确诊糖尿病。需要结合实际数值、单位、空腹或餐后、症状和既往诊断确定处理方式；以下是一般信息，不是针对个人的治疗方案。
+        items:
+          - title: 先评估原因和检测条件
+            text: 记录测量值、测量时间和近期饮食、活动及用药情况，交由医生判断是否需要复查或进一步检查。
+            source: 国家卫生健康委公开健康问答
+            url: https://www.nhc.gov.cn/xcs/nwwd/202003/8ab7b8e56fd048aaa471768a892e3509.shtml
+            original_title: 患者可以自己调整降糖方案吗？什么情况下必须立即就医？
+          - title: 生活方式与必要的药物治疗
+            text: 对已确诊糖尿病的管理，健康饮食、适当身体活动和血糖监测是基础；是否需要药物以及选择哪种药物，取决于糖尿病类型和个人健康状况。不能仅凭一句“血糖高”决定用药。
+            source: NIDDK公开健康资料
+            url: https://www.niddk.nih.gov/health-information/diabetes/overview/insulin-medicines-treatments
+            original_title: Insulin, Medicines, & Other Diabetes Treatments
+        advice: 不要自行停药、加量或更换降糖方案。如血糖异常伴明显呕吐、意识改变或呼吸困难，应立即就医。
+      drugs:
+        title: 降糖药物的通用信息
+        summary: 不能根据“高血糖”三个字直接推荐某一种药或剂量。需要先明确是否为糖尿病、具体类型和身体状况；以下只介绍治疗类别。
+        items:
+          - title: 口服药与注射药物
+            text: 糖尿病治疗可涉及二甲双胍等口服药，以及胰岛素等注射药物。不同类型和健康状况的适用方案不同；并非所有血糖升高都需要同一种药。
+            source: NIDDK公开健康资料
+            url: https://www.niddk.nih.gov/health-information/diabetes/overview/insulin-medicines-treatments
+            original_title: Insulin, Medicines, & Other Diabetes Treatments
+          - title: 选药前需要评估
+            text: 应由医生结合病情、其他疾病、现有用药与不良反应风险决定用药。不要自行购买、试服、停用或调整降糖药。
+            source: NIDDK公开健康资料
+            url: https://www.niddk.nih.gov/health-information/diabetes/overview/insulin-medicines-treatments
+            original_title: Insulin, Medicines, & Other Diabetes Treatments
+        advice: 带上血糖记录和现有药单咨询医生；不能据此自行选择药物或剂量。
+  glucose_department:
+    entity: 血糖异常
+    intent: lab
+    aliases: [血糖, 高血糖]
+    fields:
+      department:
+        title: 血糖异常的就诊方向
+        summary: 如果是血糖监测异常、复查或降糖方案问题，可以向内分泌科咨询；具体挂号仍以医院导诊安排和症状为准。
+        items:
+          - title: 内分泌科
+            text: 可携带血糖测量记录和正在使用的药物清单咨询。出现意识改变、明显呕吐、呼吸困难等情况时，应及时急诊就医。
+            source: 国家卫生健康委公开健康问答
+            url: https://www.nhc.gov.cn/xcs/nwwd/202003/8ab7b8e56fd048aaa471768a892e3509.shtml
+            original_title: 患者可以自己调整降糖方案吗？什么情况下必须立即就医？
+        advice: 请补充具体数值、单位、测量时间、是否空腹以及有无其他不适，便于进一步说明。
+  abdominal_discomfort:
+    entity: 腹部不适
+    intent: symptom
+    aliases: [肚子不舒服, 肚子难受, 腹部不适, 腹部不舒服, 胃不舒服]
+    fields:
+      triage:
+        title: 先了解腹部不适的具体情况
+        summary: 你描述的是腹部不适，不能仅凭这句话判断病因或确定科室。请说说具体部位、不舒服多久，是疼痛、腹胀、恶心还是腹泻，以及是否持续加重。
+        items:
+          - title: 稳定情况下的就诊方向
+            text: 如果没有急症表现，可以先向医院导诊台或全科咨询；持续或反复不适应就医评估，不要仅凭症状自己诊断。
+            source: NHS公开健康资料
+            url: https://www.nhs.uk/symptoms/stomach-ache/
+            original_title: Stomach ache
+          - title: 需要立即就医的情况
+            text: 突然出现剧烈腹痛、呕血、黑色黏便、大量便血或完全不能排便排气等情况，应及时急诊就医。
+            source: NHS公开健康资料
+            url: https://www.nhs.uk/symptoms/stomach-ache/
+            original_title: Stomach ache
+        advice: 请先补充部位、持续多久和伴随症状；若突然剧烈腹痛、呕血或有其他严重不适，请立即就医。
+  cefuroxime:
+    entity: 头孢呋辛
+    intent: medication
+    aliases: [头孢呋辛, 头孢呋辛酯]
+    fields:
+      overview:
+        title: 头孢呋辛是什么
+        summary: 头孢呋辛是一种头孢菌素类抗生素，用于医生判断适用的某些细菌感染，不能把它当作适用于所有炎症的通用药。
+        items:
+          - title: 作用与适用范围
+            text: 它通过抑制细菌生长发挥作用，不能治疗普通感冒、流感等病毒感染。是否适用需要医生判断。
+            source: MedlinePlus药品资料
+            url: https://medlineplus.gov/druginfo/meds/a601206.html
+            original_title: Cefuroxime
+        advice: 按处方和具体药品说明书服用；有药物过敏史、肝肾疾病或正在服用其他药物时，先告知医生或药师。

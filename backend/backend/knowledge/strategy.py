@@ -58,6 +58,17 @@ _RECORD_SIGNALS = {
     "lab": re.compile(r"报告|结果|化验单|数字|数值|正常[吗么]|正不正常|高吗|低吗|多少|查一下|调出来"),
     "medication": re.compile(r"处方|药单|用药记录|给我开|开的药|开了啥|开的啥|开了什么"),
 }
+# 患者工作区常省略“我的”。只把明确的结果判断送入绑定本人查询。
+_LAB_RESULT_JUDGMENT = re.compile(
+    r"(?:结果|报告|化验单)\s*(?:(?:是否|是|还|到底|算|显示)\s*)?"
+    r"(?:正不正常|正常|偏高|偏低|异常|高|低)"
+)
+_PUBLIC_LAB_QUESTION = re.compile(
+    r"正常范围|参考范围|参考值|参考区间|一般|通常|科普|假如|如果|例如|举例"
+)
+_IMPLICIT_OTHER_RECORD = re.compile(r"患者|病人|他(?:的|上次)|她(?:的|上次)")
+
+
 VAGUE_SYMPTOM_SIGNALS = ("蔫蔫的", "哪里难受", "浑身不对劲", "感觉不太对劲")
 
 
@@ -229,10 +240,24 @@ def choose(question: str, intent: str, entity: Optional[str], kb: Dict[str, Any]
             "按已收录子型条目列出分型",
             corpus.MetadataFilter(kinds=("disease",), entities=known),
         )
+    if intent == "lab" and entity:
+        aliases = [entity, *((kb.get("lab_tests", {}).get(entity) or {}).get("aliases") or [])]
+        supplied_pattern = r"(?:" + "|".join(re.escape(a) for a in aliases) + r")\s*(?:的?结果|数值|读数|是|为|测得|[:：])*\s*\d+(?:\.\d+)?"
+        if re.search(supplied_pattern, question):
+            return RetrievalPlan("clarify", "您已提供测量数值，系统不会另取院内记录替代。请补充单位、测量时间和是否空腹，再结合报告参考范围说明", filters)
+        if {"reference"}.intersection(filters.fields) and not _LAB_RESULT_JUDGMENT.search(question):
+            return RetrievalPlan("structured_lookup", "询问参考范围，提供通用资料，不查询本人记录", filters)
     if personal and not _OTHER_PERSON.search(question):
         explicit_self = _SELF_RECORD.search(question) and _RECORD_SIGNALS[intent].search(question)
         referring_to_record = personal_followup and not {"purpose", "caution"}.intersection(filters.fields)
-        if explicit_self or referring_to_record:
+        implicit_lab_result = (
+            intent == "lab" and entity in (kb.get("lab_tests") or {})
+            and _LAB_RESULT_JUDGMENT.search(question)
+            and not _PUBLIC_LAB_QUESTION.search(question)
+            and not _IMPLICIT_OTHER_RECORD.search(question)
+            and not re.search(r"\d", question)
+        )
+        if explicit_self or referring_to_record or implicit_lab_result:
             return RetrievalPlan("personal_sql", "读取本人记录，沿用身份准入和 SQL 审计")
 
     subtypes = requested_subtypes(question, [*kb.get("diseases", {}), *disease_names])

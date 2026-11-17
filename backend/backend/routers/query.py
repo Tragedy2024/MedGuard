@@ -19,7 +19,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from backend import config, llm_nl2sql, query_cache
-from backend.admission import admission_check_plan
+from backend.admission import admission_check_plan, is_read_only_query
 from backend.db import MetadataUnavailable, metadata_ready, save_report
 from backend.deps import audit_plan
 from backend.labels import DEGRADATION_LABELS, DEGRADATION_MESSAGES
@@ -107,6 +107,15 @@ def run_audited_plan(plan: list, question: str, token: Token,
     return resp, decision, report_id
 
 
+def _reject_unsafe_plan(question, reason, t0):
+    return QueryResponse(
+        admission=AdmissionInfo(passed=False, reason=reason, checked_tables=[], bound_to_subject=False),
+        question=question, plan=[], events=[], rewrite=RewriteInfo(applied=0, log=[]),
+        degradation=DegradationInfo(level="L3", label="无法处理", message=reason, message_cn=reason),
+        metrics=MetricsInfo(elapsed_ms=int((time.perf_counter()-t0)*1000), llm_calls=0, db_access=0),
+        result=None), None
+
+
 def _pipeline(plan: list, question: str, token: Token,
               datasource_id: str, t0: float) -> Tuple[QueryResponse, Optional[AuditDecision]]:
     """层一准入 → 层二审计 → 执行 → 组装响应。
@@ -127,6 +136,9 @@ def _pipeline(plan: list, question: str, token: Token,
         {**sq, "sql": (sq.get("sql") or "").replace("{subject_id}", subject)}
         for sq in plan
     ]
+
+    if not plan or any(not is_read_only_query(sq["sql"]) for sq in plan):
+        return _reject_unsafe_plan(question, "当前计划无法处理：仅支持单条只读查询。", t0)
 
     # 数据源就绪门禁（评审 B6）：演示库恒为兼容模式；严格模式下非演示
     # 数据源若存在未标注表/列（schema 与 SSA 有差距），在查询前直接拒绝
@@ -179,6 +191,9 @@ def _pipeline(plan: list, question: str, token: Token,
     audited_plan = outcome.audited_plan
     # 审计—执行绑定证据（评审 B5）：改写后计划每条子查询的规范化哈希。
     plan_hashes = {str(sq["id"]): _sql_sha256(sq["sql"]) for sq in audited_plan}
+
+    if token.type == "patient" and audited_plan and not admission_check_plan(audited_plan, subject).passed:
+        return _reject_unsafe_plan(question, "该查询涉及其他患者信息，无法提供。", t0)
 
     # 执行（仅当审计给出了可执行的计划）。
     # 「空审计计划回退执行原计划」已删除（评审 B5）：空计划默认不执行——
@@ -329,9 +344,11 @@ def _execute(sql: Optional[str], db_path: Optional[str] = None) -> Optional[Resu
     演示业务库。真实登记源按各自路径执行。
     """
     target = db_path or config.BUSINESS_DB
-    if not sql or not os.path.exists(target):
+    if not sql or not is_read_only_query(sql) or not os.path.exists(target):
         return None
-    con = sqlite3.connect(target)
+    from pathlib import Path
+    con = sqlite3.connect(Path(target).resolve().as_uri() + "?mode=ro", uri=True)
+    con.execute("PRAGMA query_only=ON")
     con.text_factory = lambda b: b.decode(errors="ignore")
     try:
         cur = con.execute(sql)

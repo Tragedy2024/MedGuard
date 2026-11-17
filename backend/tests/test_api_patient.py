@@ -88,7 +88,8 @@ def test_diabetes_subtype_question_returns_200(client):
     body = r.json()
     assert body["route"] == "knowledge"
     sd = body["smart_doctor"]
-    assert sd["retrieval_plan"]["strategy"] == "subtype_lookup"
+    assert sd["retrieval_plan"]["strategy"] == "structured_lookup"
+    assert sd["retrieval_plan"]["filters"]["fields"] == ["classification"]
     titles = [item.get("ref_title") for item in sd["interpretation"]["items"]]
     assert "1型糖尿病" in titles
     assert "2型糖尿病" in titles

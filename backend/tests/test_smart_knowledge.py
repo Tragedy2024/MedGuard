@@ -92,7 +92,7 @@ def test_canonical_name_is_always_searchable():
 def test_every_entry_has_provenance():
     """每个条目必须写明来源。
 
-    「医院审核知识库」这六个字是这个产品的诚实底线——它只能出现在
+    「项目整理知识库」这六个字是这个产品的诚实底线——它只能出现在
     **真被医院审核过**的条目上。字段缺失时界面会退化成不标注，
     那等于默认所有内容都可信。
     """

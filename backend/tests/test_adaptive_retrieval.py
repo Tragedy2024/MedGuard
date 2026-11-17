@@ -138,12 +138,15 @@ def test_unknown_department_question_does_not_inherit_an_unrelated_disease(facts
     "糖尿病分几种",
     "糖尿病有哪些类型",
 ])
-def test_disease_type_enumeration_does_not_return_parent_card(facts, question):
+def test_disease_type_enumeration_does_not_return_parent_card(facts, question, monkeypatch):
     """问分型时不能拿父疾病的事实卡冒充答案。
 
     数据集没有完整的 1 型/2 型糖尿病条目；这类问题应明确说“分型资料缺失”，
     而不是返回父疾病的科室/症状/检查。
     """
+    from backend.knowledge import classifications
+    # 同时缺少公开分类资料时，仍必须拒绝用父疾病卡冒充分类。
+    monkeypatch.setattr(classifications, "_entries", lambda: ())
     out = sd.ask(question, "P001")
     assert out["retrieval_plan"]["strategy"] == "insufficient"
     assert out["evidence"]["status"] == "insufficient"
@@ -158,7 +161,7 @@ def test_disease_symptom_question_still_returns_facts(facts):
     assert out["interpretation"]["items"]
 
 
-def test_disease_type_enumeration_lists_known_subtypes(facts):
+def test_disease_type_enumeration_lists_known_subtypes(facts, monkeypatch):
     """有完整子型条目时，应列出分型，而不是只说资料不足。"""
     cards = dataset_kb._CACHE[dataset_kb.DISEASE_FILE]["diseases"]
     cards["1型糖尿病"] = {
@@ -168,6 +171,9 @@ def test_disease_type_enumeration_lists_known_subtypes(facts):
         "dept": "内分泌科", "symptoms": ["多饮", "体重下降"], "checks": ["糖化血红蛋白"],
     }
 
+    from backend.knowledge import classifications
+    # 验证没有公开分类资料时，原有数据集子型列表路径仍然可用。
+    monkeypatch.setattr(classifications, "_entries", lambda: ())
     out = sd.ask("糖尿病有哪几种", "P001")
 
     assert out["retrieval_plan"]["strategy"] == "subtype_lookup"

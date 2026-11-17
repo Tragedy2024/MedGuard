@@ -145,7 +145,7 @@ def _lab_doc(key: str, e: Dict[str, Any]) -> Doc:
         source=_source(e),
         **_metadata(key, e),
         sections=(("overview", _join(e.get("desc"))),
-                  ("reference", _join(e.get("normal"), band_text, e.get("unit"))),
+                  ("reference", _join(e.get("normal"), e.get("unit"))),
                   ("advice", _join(e.get("advice_common"), e.get("urgent_text")))),
         text=_join(e.get("desc"), e.get("unit"), e.get("normal"),
                    band_text, e.get("advice_common"), e.get("urgent_text")),
