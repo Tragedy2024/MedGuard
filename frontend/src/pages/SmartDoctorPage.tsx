@@ -253,6 +253,27 @@ function SmartDoctor() {
                           这次没有可展示的回答，请换一种说法再试。
                         </p>
                       )}
+                      {m.answer.answer_review && (
+                        <div className="answer-block sd-answer-review" aria-label="资料审核与来源说明">
+                          <p className="sd-status-message">{m.answer.answer_review.message}</p>
+                          {m.answer.answer_review.status === 'reviewed' && (
+                            <p>{m.answer.answer_review.sufficient ? '资料覆盖审核：已覆盖本次问题' : '资料覆盖审核：尚有未覆盖内容'}</p>
+                          )}
+                          {m.answer.answer_review.missing.length > 0 && (
+                            <p>尚缺：{m.answer.answer_review.missing.join('；')}</p>
+                          )}
+                          {m.answer.answer_review.sections.map((section, index) => (
+                            <div className="answer-section sd-block" key={index}>
+                              <h5>{section.source_type === 'ai_supplement' ? 'AI 补充说明'
+                                : section.source_type === 'database' ? '您的检验结果'
+                                : section.source_type === 'local_interpretation' ? '结果对照说明' : '依据资料的说明'}</h5>
+                              <p>{section.text}</p>
+                              <small className="sd-source-tag">来源：{section.source_name}</small>
+                              {section.evidence_ids.length > 0 && <p><small>依据条目：{section.evidence_ids.join('、')}</small></p>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       {m.answer.routing_choices && m.answer.routing_choices.length > 0 && (
                         <RoutingChoices choices={m.answer.routing_choices} running={running}
                           onChoose={(question) => void ask(question, null)} />
@@ -444,6 +465,7 @@ function RouteLine({ answer }: { answer: PatientAskResponse }) {
         <span className="route-badge-eyebrow">{feature ? '本次功能' : '处理状态'}</span>
         {label}
       </span>
+      {answer.routing_model_used && <span className="route-query-scope">大模型分流</span>}
       {scope && <span className="route-query-scope">查询范围：{scope === 'self' ? '本人记录' : '医院业务'}</span>}
       {answer.interpretation_feature === 'smart_doctor' && (
         <span className="route-query-scope">查询控制台 → 智慧医生解读</span>

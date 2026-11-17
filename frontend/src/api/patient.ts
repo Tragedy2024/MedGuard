@@ -47,6 +47,14 @@ export interface PatientAskRequest {
 }
 
 export interface PatientAskResponse {
+  routing_model_used?: boolean
+  answer_review?: {
+    status: 'reviewed' | 'unavailable'
+    sufficient: boolean | null
+    missing: string[]
+    message: string
+    sections: { text: string; source_type: 'knowledge' | 'ai_supplement' | 'database' | 'local_interpretation'; source_name: string; evidence_ids: string[] }[]
+  } | null
   route: PatientRoute
   feature?: PatientFeature | null
   query_scope?: PatientQueryScope | null

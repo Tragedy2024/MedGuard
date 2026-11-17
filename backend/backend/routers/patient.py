@@ -13,8 +13,8 @@
 """
 from fastapi import APIRouter, HTTPException
 
-from backend import smart_doctor, semantic_understanding
-from backend.patient_router import decide
+from backend import smart_doctor, semantic_understanding, sourced_answers
+from backend.patient_router import decide, RouteDecision
 from backend.routers import query as query_console
 from backend.schemas import PatientAskRequest, PatientAskResponse
 from backend.security import verified
@@ -48,15 +48,28 @@ def ask(req: PatientAskRequest):
         )
 
     context = req.context.model_dump() if req.context else None
-    understanding = semantic_understanding.analyze(question, context)
-    decision = decide(
-        question, context=context, token_type=req.token.type,
-        subject_id=req.token.subject_id, understanding=understanding)
+    routing = sourced_answers.classify(question, context)
+    linked_lab = sourced_answers.linked_lab_request(question)
+    if linked_lab or (routing and routing.feature == 'query_console'):
+        understanding = None
+        decision = RouteDecision('personal_record' if linked_lab or routing.scope == 'self' else 'general_query',
+            '自动读取本人检验记录，再关联同一指标的参考资料。' if linked_lab else
+            '大模型识别为院内数据查询，查询继续由原控制台的权限与安全审计约束。', 'lab' if linked_lab else 'fallback', linked_lab)
+    else:
+        understanding = semantic_understanding.analyze(question, context)
+        decision = decide(question, context=context, token_type=req.token.type,
+                          subject_id=req.token.subject_id, understanding=understanding)
+        if routing and routing.feature == 'smart_doctor' and decision.feature == 'query_console':
+            understanding = semantic_understanding.Understanding(task='clarify',
+                message='本次功能判断不一致，请确认要了解医学知识，还是查询本人记录。',
+                operations=('knowledge', 'personal_record'))
+            decision = RouteDecision('clarify', understanding.message, 'fallback')
     # 路由理由必须可回看：评审/排查时能解释「为什么走这条管线」。
     print(f"[patient] route={decision.route} reason={decision.reason}",
           flush=True)
 
-    response_info = {'feature': decision.feature, 'query_scope': decision.query_scope}
+    response_info = {'feature': decision.feature, 'query_scope': decision.query_scope,
+                     'routing_model_used': routing is not None}
     # 顶层先选功能，查询控制台再按范围使用既有的审计执行器。
     use_original_console = decision.feature == 'query_console'
     if not use_original_console:
@@ -67,6 +80,8 @@ def ask(req: PatientAskRequest):
             route=decision.route, reason=decision.reason,
             **response_info,
             smart_doctor=reply, query=None, error=None,
+            answer_review=(sourced_answers.review(question, reply=reply)
+                           if decision.route == 'knowledge' else None),
             routing_choices=semantic_understanding.routing_choices(understanding))
 
     # 调用原控制台实现，而不是再维护一份只支持若干问法的查询能力。
@@ -83,7 +98,11 @@ def ask(req: PatientAskRequest):
         print(f'[patient] 通用查询异常（{type(exc).__name__}）：{exc}', flush=True)
         return PatientAskResponse(route=decision.route, reason=decision.reason,
                                   **response_info, error='通用查询翻译失败：查询服务暂时不可用，请稍后重试。')
+    review = sourced_answers.review(question, query=query_response,
+        explain=True if linked_lab else routing.explain if routing else any(w in question for w in ('看懂', '解读', '解释')))
+    review = sourced_answers.explain_linked_lab(question, query_response, review)
     return PatientAskResponse(
         route=decision.route, reason=decision.reason,
         **response_info,
-        smart_doctor=None, query=query_response, error=None)
+        smart_doctor=None, query=query_response, error=None,
+        answer_review=review)

@@ -593,6 +593,25 @@ export interface components {
             /** Db Access */
             db_access: number;
         };
+        /** PatientAnswerReview */
+        PatientAnswerReview: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "reviewed" | "unavailable";
+            /** Sufficient */
+            sufficient?: boolean | null;
+            /** Missing */
+            missing?: string[];
+            /** Sections */
+            sections?: components["schemas"]["SourcedAnswerSection"][];
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+        };
         /**
          * PatientAskRequest
          * @description 患者单输入框请求。
@@ -627,6 +646,12 @@ export interface components {
             route: "personal_record" | "general_query" | "knowledge" | "clarify" | "unsupported";
             /** Reason */
             reason: string;
+            /**
+             * Routing Model Used
+             * @default false
+             */
+            routing_model_used: boolean;
+            answer_review?: components["schemas"]["PatientAnswerReview"] | null;
             /** Feature */
             feature?: ("smart_doctor" | "query_console") | null;
             /** Query Scope */
@@ -1180,6 +1205,20 @@ export interface components {
              * @default 0
              */
             elapsed_ms: number;
+        };
+        /** SourcedAnswerSection */
+        SourcedAnswerSection: {
+            /** Text */
+            text: string;
+            /**
+             * Source Type
+             * @enum {string}
+             */
+            source_type: "knowledge" | "ai_supplement" | "database" | "local_interpretation";
+            /** Source Name */
+            source_name: string;
+            /** Evidence Ids */
+            evidence_ids?: string[];
         };
         /**
          * Token

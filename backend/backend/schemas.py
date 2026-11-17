@@ -440,6 +440,21 @@ class PatientRoutingChoice(BaseModel):
     query_scope: Optional[Literal['self', 'hospital']] = None
 
 
+class SourcedAnswerSection(BaseModel):
+    text: str
+    source_type: Literal['knowledge', 'ai_supplement', 'database', 'local_interpretation']
+    source_name: str
+    evidence_ids: List[str] = Field(default_factory=list)
+
+
+class PatientAnswerReview(BaseModel):
+    status: Literal['reviewed', 'unavailable']
+    sufficient: Optional[bool] = None
+    missing: List[str] = Field(default_factory=list)
+    sections: List[SourcedAnswerSection] = Field(default_factory=list)
+    message: str = ''
+
+
 class PatientAskResponse(BaseModel):
     """患者单输入框响应。
 
@@ -454,6 +469,8 @@ class PatientAskResponse(BaseModel):
         "personal_record", "general_query", "knowledge", "clarify", "unsupported"
     ]
     reason: str
+    routing_model_used: bool = False
+    answer_review: Optional[PatientAnswerReview] = None
     feature: Optional[Literal['smart_doctor', 'query_console']] = None
     query_scope: Optional[Literal['self', 'hospital']] = None
     interpretation_feature: Optional[Literal['smart_doctor']] = None

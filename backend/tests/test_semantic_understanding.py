@@ -154,7 +154,9 @@ def test_patient_api_reuses_one_semantic_result(semantic, tmp_path, monkeypatch)
     assert body['route'] == 'knowledge'
     assert body['smart_doctor']['understanding']['status'] == 'model'
     assert body['smart_doctor']['interpretation']['title'] == '血糖升高的一般处理与治疗'
-    assert len(calls) == 1
+    assert len([p for p in calls if '你是医疗问答的语义解析器' in p]) == 1
+    assert len([p for p in calls if '只做功能分流' in p]) == 1
+    assert len([p for p in calls if '你检查资料是否覆盖问题' in p]) == 1
 
 
 def test_model_cannot_turn_other_person_request_into_self_access(semantic, monkeypatch):
