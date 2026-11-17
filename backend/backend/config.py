@@ -113,8 +113,8 @@ METADATA_DATABASE_URL = "" if _TESTING else (
 ).strip()
 
 
-# ── LLM（自然语言 → SQL 的翻译环节）──────────────────────────────
-# 注意：审计环节（医盾）零 LLM，这条配置只影响「翻译」，不影响安全声明。
+# ── LLM（语义理解、自然语言转 SQL、基于证据的解释）──────────────────
+# 安全审计环节（医盾）仍为静态规则，模型调用发生在审计之外。
 LLM_API_KEY = (os.environ.get("OPENAI_API_KEY") or "") if not _TESTING else ""
 LLM_API_BASE = os.environ.get("OPENAI_API_BASE") or "https://api.deepseek.com/v1"
 LLM_MODEL = os.environ.get("MODEL_NAME") or "deepseek-v4-pro"
@@ -163,6 +163,12 @@ def _bounded_float(name: str, default: float,
 # 频繁静默回退。默认 2.5s，仍是有界等待；只在精确白名单问句上生效，
 # 不影响本人记录读取或普通问答。
 JEV_TIMEOUT_SEC = _bounded_float("MEDGUARD_JEV_TIMEOUT_SEC", 2.5, 0.1, 10.0)
+
+# 配置了真实模型密钥时，普通自然提问默认启用语义理解。确定的单一问法仍走规则。
+# 测试环境默认关闭，测试可显式注入假模型；不会因开发者机器的密钥而联网。
+SEMANTIC_ENABLED = not _TESTING and os.environ.get(
+    "MEDGUARD_SEMANTIC_ENABLED", "1").lower() not in {"0", "false", "off", "no"}
+SEMANTIC_TIMEOUT_SEC = _bounded_float("MEDGUARD_SEMANTIC_TIMEOUT_SEC", 8.0, 0.1, 15.0)
 
 # ── RAG 检索（默认尝试本地 BGE；不可用时自动降级为 BM25）──────────
 #

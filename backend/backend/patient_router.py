@@ -3,15 +3,17 @@
 患者只有一个输入框，问题可能是「我上次的血糖是多少」（本人记录）、
 「糖尿病挂什么科」（医学知识）、「统计各科室接诊量」（医院业务统计），
 也可能信息不足（「我不舒服」）。本模块只做一件事：在**服务端**把问题
-分到一条路由上，返回可解释的理由。
+分到智慧医生或查询控制台。查询范围为本人记录或医院业务；
+澄清与不支持是状态。``route`` 保留内部策略，``feature`` / ``query_scope``
+提供产品功能与查询范围，返回可解释的理由。
 
 约束（与 CONTRACT 一致）：
 
-- **零 LLM、零 Jev、零查库**：只用 `smart_doctor.parse_intent` 的关键词/
-  别名匹配与 `strategy.choose` 的规则。模型不参与数据访问权限的判定。
+- 本函数不调用 LLM/Jev、不查库；接收入口已校验的语义结果，或使用本地
+  关键词/别名规则。模型可辅助理解问题，不能判定数据访问权限。
 - 路由结果只决定「接下来走哪条既有管线」：
-  `personal_record` / `knowledge` / `clarify` / `unsupported` 交给智慧医生
-  `smart_doctor.ask`；`general_query` 交给通用查询管线
+  `knowledge` / `clarify` / `unsupported` 交给智慧医生
+  `smart_doctor.ask`；`personal_record` / `general_query` 均交给原查询控制台
   （`query_cache` → `llm_nl2sql` → `routers.query.run_audited_plan`）。
 - 病患令牌的通用查询**照样**要过层一准入与层二审计；路由不是授权。
 
@@ -75,6 +77,19 @@ class RouteDecision:
     intent: str
     entity: Optional[str] = None
 
+    @property
+    def feature(self) -> Optional[str]:
+        """产品只有两种功能；澄清与不支持是状态，不是第三种功能。"""
+        if self.route == 'knowledge':
+            return 'smart_doctor'
+        if self.route in {'personal_record', 'general_query'}:
+            return 'query_console'
+        return None
+
+    @property
+    def query_scope(self) -> Optional[str]:
+        return {'personal_record': 'self', 'general_query': 'hospital'}.get(self.route)
+
 
 def _general_signal(question: str) -> Optional[str]:
     match = _GENERAL_QUERY_SIGNAL.search(question)
@@ -93,7 +108,7 @@ def _is_department_knowledge(question: str, intent: str) -> bool:
 
 def decide(question: str, context: Optional[Dict[str, Any]] = None,
            token_type: str = "patient",
-           subject_id: Optional[str] = None) -> RouteDecision:
+           subject_id: Optional[str] = None, understanding=None) -> RouteDecision:
     """本地确定性地选择一条路由。
 
     Args:
@@ -112,6 +127,29 @@ def decide(question: str, context: Optional[Dict[str, Any]] = None,
         return RouteDecision(
             ROUTE_CLARIFY, "问题为空，请描述您想咨询或查询的内容。",
             smart_doctor.INTENT_FALLBACK, None)
+
+    if understanding is not None and understanding.handled:
+        from backend import semantic_understanding as semantics
+        entity = understanding.entities[0].name if understanding.entities else None
+        intent = understanding.intent
+        if understanding.task == 'general_query' and (understanding.accepted or understanding.status == 'rule'):
+            return RouteDecision(ROUTE_GENERAL_QUERY, '查询控制台查询医院业务，访问须经账号授权与安全审计。', intent, entity)
+        plan = semantics.plan_for(understanding)
+        route = ROUTE_KNOWLEDGE
+        if plan.strategy == "clarify":
+            route = ROUTE_CLARIFY
+        elif plan.strategy == "insufficient":
+            route = ROUTE_UNSUPPORTED
+        elif understanding.task == "general_query":
+            route = ROUTE_GENERAL_QUERY
+        elif plan.strategy == "personal_sql":
+            route = ROUTE_PERSONAL_RECORD if token_type == "patient" else ROUTE_CLARIFY
+        reason = plan.reason
+        if route == ROUTE_PERSONAL_RECORD:
+            reason = '查询控制台仅查询当前账号绑定的本人记录，并经过安全审计。'
+        elif route == ROUTE_KNOWLEDGE:
+            reason = '智慧医生使用知识资料回答，本次不读取本人病历。'
+        return RouteDecision(route, reason, intent, entity)
 
     raw_intent, raw_entity = smart_doctor.parse_intent(q)
     # 与 smart_doctor.ask 共用同一套指代解析，避免「路由说知识、ask 却
@@ -164,12 +202,9 @@ def decide(question: str, context: Optional[Dict[str, Any]] = None,
     #    让 decide 单独被调用时语义也正确）。
     if plan.strategy == "personal_sql":
         if token_type == "patient":
-            subject_note = f"（绑定主体 {subject_id}）" if subject_id else ""
-            entity_note = f"，实体「{entity}」" if entity else ""
             return RouteDecision(
                 ROUTE_PERSONAL_RECORD,
-                f"问题指向本人记录{entity_note}{subject_note}；"
-                f"策略 personal_sql：只读取本人数据并走层一/层二审计。",
+                "查询控制台仅查询当前账号绑定的本人记录，并经过安全审计。",
                 intent, entity)
         # 医护令牌问「我的…」不构成病患本人数据授权，按知识/其他路由处理。
 

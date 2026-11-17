@@ -43,6 +43,7 @@ import re
 import sys
 import threading
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
@@ -61,6 +62,7 @@ INTENT_MEDICATION = "medication"  # 医生开的药怎么吃
 INTENT_SYMPTOM = "symptom"    # 我不舒服，不知道挂什么科
 INTENT_DISEASE = "disease"    # 我想了解一种疾病
 INTENT_FALLBACK = "fallback"  # 没能识别
+INTENT_BILLING = "billing"  # 本人已收录账单汇总
 
 _SOURCE_DATA = "医院主库"
 _SOURCE_KB = "项目整理知识库"
@@ -453,6 +455,15 @@ def _build_lab_plan(subject: str, test_names: List[str], limit: int = 3) -> List
             f"LIMIT {limit}"
         ),
     }]
+
+
+def _build_billing_plan(subject: str) -> List[dict]:
+    subject_literal = subject.replace("'", "''")
+    return [{"id": 0, "description": "汇总当前账号已收录账单费用",
+             "sql": 'SELECT ROUND(SUM(b.amount), 2) AS "账单金额合计", '
+                    'COUNT(*) AS "账单笔数", MIN(b.bill_date) AS "最早账单日期", '
+                    'MAX(b.bill_date) AS "最近账单日期" FROM billing b '
+                    f"WHERE b.patient_id = '{subject_literal}'"}]
 
 
 def _build_medication_plan(subject: str, drug: Optional[str], limit: int = 5) -> List[dict]:
@@ -900,14 +911,24 @@ def _apply_ai_fallback(base: Dict[str, Any], question: str) -> bool:
         found = {normalize_entity(r.get("ref_entity") or "") for r in refs}
         if not all(normalize_entity(e) in found for e in wanted):
             base["interpretation"] = {
-                "source": _SOURCE_KB, "title": "比较资料不足",
-                "text": "未找到覆盖所有比较对象的证据，暂不能给出完整比较。",
+                "source": _SOURCE_KB, "title": "比较资料不足" if (base.get("understanding") or {}).get("task") != "relationship" else "关系资料不足",
+                "text": "未找到覆盖所有对象的证据，暂不能回答完整问题。",
                 "items": refs,
             }
             base["advice"] = {"source": _SOURCE_KB, "text": "请补充具体对象或咨询医生。",
                               "actions": ["补充比较对象"], "urgent": False}
             base["_evidence_insufficient"] = True
             return True
+    required = set((plan.get("filters") or {}).get("fields") or [])
+    covered = {field for ref in refs for field in ref.get("ref_fields", [])}
+    if (base.get("understanding") or {}).get("status") == "model" and required - covered:
+        base["interpretation"] = {
+            "source": _SOURCE_KB, "title": "部分问题资料不足",
+            "text": "检索资料未覆盖所问的全部内容，以下只展示已取得的相关依据。", "items": refs}
+        base["advice"] = {"source": _SOURCE_KB, "text": "未覆盖的内容请进一步咨询医生。",
+                          "actions": [], "urgent": False}
+        base["_evidence_insufficient"] = True
+        return True
     ai = ai_triage(question, refs=refs)
     if ai is None:
         # 模型不可用、输出不合法或证据门禁不通过时，仍可直接展示原始证据；
@@ -967,6 +988,13 @@ def _finalize(base: Dict[str, Any], question: str) -> Dict[str, Any]:
         base["evidence"] = {"status": "insufficient", "references": len(
             (base.get("interpretation") or {}).get("items") or []),
             "model_used": False, "message": "现有证据未覆盖本次问题。"}
+    understanding = base.get("understanding") or {}
+    if (understanding.get("status") == "model" and base["evidence"]["status"] == "insufficient"
+            and not base.get("data") and base.get("interpretation")
+            and base["interpretation"].get("title") == "换个问法试试"):
+        base["interpretation"]["title"] = "已理解问题，现有资料不足"
+        base["interpretation"]["text"] = (
+            understanding.get("summary", "") + "现有资料尚不足以支持对这个问题的回答，不能据此作出诊断或用药判断。")
     flags = redflag_check(question)
     advice = base.get("advice")
     if advice and flags:
@@ -988,6 +1016,9 @@ def _finalize(base: Dict[str, Any], question: str) -> Dict[str, Any]:
 
 def _evidence_status(base: Dict[str, Any]) -> Dict[str, Any]:
     """从最终回答结构确定性推导证据状态，所有回答出口共用。"""
+    if base.get("intent") == INTENT_BILLING:
+        return {"status": "not_applicable", "references": 0, "model_used": False,
+                "message": "本次为本人账单查询，不涉及医学结论。"}
     interpretation = base.get("interpretation") or {}
     advice = base.get("advice") or {}
     items = interpretation.get("items") or []
@@ -1051,15 +1082,67 @@ def _evidence_status(base: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _semantic_guidance(question, understanding):
+    """组合已知字段资料；只有全部诉求都有对应条目才返回完整回答。"""
+    from backend.knowledge import classifications, public_guidance
+    if (len(understanding.entities) != 1 or not understanding.fields
+            or understanding.scope != "public"):
+        return None
+    entity = understanding.entities[0].name
+    blocks = []
+    for field in understanding.fields:
+        entry = public_guidance.lookup(question + " " + entity,
+                                       requested_fields=(field,), expected_entity=entity)
+        if entry:
+            if len(understanding.fields) == 1:
+                return {**entry, "fields": list(understanding.fields)}
+            blocks.append(entry["interpretation"])
+            continue
+        if field == "classification":
+            classification = classifications.lookup(entity + "有几种")
+            if classification:
+                blocks.append(classifications.interpretation(classification))
+                continue
+        if field == "department" and understanding.intent == INTENT_DISEASE:
+            info = dataset_kb.lookup_disease(entity, exact=True)
+            facts = (info or {}).get("facts") or {}
+            departments = facts.get("departments") or ([facts["dept"]] if facts.get("dept") else [])
+            if departments:
+                source = dataset_kb.source_note(dataset_kb.DISEASE_FILE)
+                blocks.append({"source": source, "title": entity + " · 就诊科室",
+                               "text": "以下为数据集记录的科室，具体挂号请向医院导诊台确认。",
+                               "items": [{"ref_title": name, "ref_kind": "就诊科室", "ref_source": source,
+                                          "ref_source_type": "open_dataset", "ref_quality_tier": "opencmkg"}
+                                         for name in departments]})
+                continue
+        return None
+    if len(blocks) == 1:
+        interpretation = blocks[0]
+    else:
+        interpretation = {
+            "source": _SOURCE_KB, "title": entity + " · 分项说明",
+            "text": "按您询问的内容分项列出资料，各条保留来源。",
+            "items": [{**item, "ref_kind": block["title"]} for block in blocks for item in block["items"]],
+        }
+    return {"intent": understanding.intent, "entity": entity,
+            "field": understanding.fields[0], "fields": list(understanding.fields),
+            "interpretation": interpretation,
+            "advice": {"source": _SOURCE_KB, "text": "以上为资料说明，不构成个人诊断或处方；具体诊疗请咨询医生。",
+                       "actions": [], "urgent": False}}
+
+
 def ask(question: str, subject_id: str,
         context: Optional[Dict[str, Any]] = None, *,
         token: Optional[Token] = None,
-        datasource_id: str = config.DEMO_DATASOURCE_ID) -> Dict[str, Any]:
+        datasource_id: str = config.DEMO_DATASOURCE_ID,
+        understanding=None) -> Dict[str, Any]:
     """处理一次提问，返回三块结构的响应（供路由直接返回）。
 
     `context` 是上一轮的意图、实体及本人记录标记，用于解析指代（见
     _resolve_with_context）。不传即等价于单轮问答。
     """
+    from backend import semantic_understanding as semantics
+    understanding = understanding if understanding is not None else semantics.analyze(question, context)
     kb = load_knowledge()
     raw_intent, raw_entity = parse_intent(question)
     intent, entity = _resolve_with_context(raw_intent, raw_entity, context, question=question)
@@ -1076,10 +1159,23 @@ def ask(question: str, subject_id: str,
             personal_followup = True
 
     from backend.knowledge import classifications, public_guidance
-    guidance = public_guidance.lookup(question)
-    classification = classifications.lookup(question, context)
+    if understanding.accepted or (understanding.handled and understanding.status == 'rule'):
+        intent = understanding.intent
+        entity = understanding.entities[0].name if understanding.entities else None
+        personal_followup = False
+        # 已有资料能逐项覆盖单一对象的诉求时直接回答，其余交给受约束检索。
+        guidance = _semantic_guidance(question, understanding)
+        classification = (classifications.lookup((entity or "") + "有几种", context)
+                          if understanding.task == "classification" and len(understanding.entities) == 1
+                          and understanding.fields == ("classification",) else None)
+    elif understanding.attempted:
+        # 理解失败不能静默使用首个关键词代答。
+        guidance = classification = None
+    else:
+        guidance = public_guidance.lookup(question)
+        classification = classifications.lookup(question, context)
     jev_route = None
-    if (guidance is None and classification is None and intent == INTENT_FALLBACK and jev_client.is_approved(question.strip())
+    if (not understanding.attempted and guidance is None and classification is None and intent == INTENT_FALLBACK and jev_client.is_approved(question.strip())
             and not redflag_check(question)):
         jev_route = jev_client.classify(question.strip())
         if jev_route == INTENT_DISEASE:
@@ -1097,6 +1193,7 @@ def ask(question: str, subject_id: str,
         "intent": intent,
         "entity": entity,
         "question": question,
+        "understanding": understanding.info(),
         "data": None,
         "interpretation": None,
         "advice": None,
@@ -1107,11 +1204,36 @@ def ask(question: str, subject_id: str,
         "trace_id": "",
     }
 
+    if understanding.task == "disease_examples":
+        from backend.knowledge import catalog
+        entries, coverage = catalog.page(kb, offset=understanding.example_offset,
+                                         requested_count=understanding.example_limit)
+        base["catalog"] = coverage
+        base["intent"], base["entity"] = INTENT_DISEASE, None
+        base["admission"] = {"passed": True, "reason": None, "checked_tables": [], "bound_to_subject": False}
+        base["degradation"] = {"level": "L0", "label": "通过", "message": "", "message_cn": ""}
+        base["retrieval_plan"] = semantics.plan_for(understanding).describe()
+        base["retrieval_plan"]["filters"]["entities"] = [entry["ref_title"] for entry in entries]
+        start = coverage["offset"] + 1 if entries else 0
+        end = coverage["offset"] + len(entries)
+        base["interpretation"] = {
+            "source": _SOURCE_KB, "title": "疾病资料目录",
+            "text": (f"当前本地资料包含 {coverage['total_diseases']} 个疾病名称条目，其中 {coverage['overview_count']} 种有可展示的简介；其余关系条目不代表已具备完整介绍。"
+                     f"本页展示第 {start}–{end} 条。" +
+                     (f"按你指定的数量浏览，最多展示 {understanding.example_limit} 种，实际以已收录简介为准。" if understanding.example_limit is not None else "可继续翻页查看其他简介。") +
+                     "这些是知识资料，不是针对个人的诊断。"),
+            "items": entries,
+        }
+        base["advice"] = {"source": _SOURCE_KB, "text": "想进一步了解某一种，可以直接说出病名。",
+                          "actions": [], "urgent": False}
+        base["_evidence_insufficient"] = not entries
+        return _finalize(base, question)
+
     if guidance:
         base["intent"], base["entity"] = guidance["intent"], guidance["entity"]
         base["retrieval_plan"] = {
-            "strategy": "structured_lookup", "reason": "按主题与字段提供公开机构健康资料",
-            "filters": {"kinds": [guidance["intent"]], "entities": [guidance["entity"]], "fields": [guidance["field"]]},
+            "strategy": "structured_lookup", "reason": "按主题与字段提供有来源的资料",
+            "filters": {"kinds": [guidance["intent"]], "entities": [guidance["entity"]], "fields": guidance.get("fields") or [guidance["field"]]},
         }
         base["admission"] = {"passed": True, "reason": None,
                              "checked_tables": [], "bound_to_subject": False}
@@ -1139,6 +1261,8 @@ def ask(question: str, subject_id: str,
     plan = strategy.choose(question, intent, entity, kb,
                            disease_names=dataset_kb.disease_names(),
                            personal_followup=personal_followup)
+    if understanding.handled:
+        plan = semantics.plan_for(understanding)
     if jev_route == "clarify":
         plan = strategy.RetrievalPlan("clarify", "请补充具体病名或主要症状")
     elif jev_route == "out_of_scope":
@@ -1152,19 +1276,31 @@ def ask(question: str, subject_id: str,
         base["degradation"] = {"level": "L0", "label": "通过", "message_cn": "", "message": ""}
     if plan.strategy in {"clarify", "insufficient"}:
         text = plan.reason
+        symptom_followup = (plan.strategy == "clarify" and understanding.accepted
+                            and bool(understanding.entities)
+                            and all(e.kind == INTENT_SYMPTOM for e in understanding.entities))
+        purpose_confirmation = plan.strategy == "clarify" and bool(semantics.routing_choices(understanding))
+        dialogue_followup = symptom_followup or purpose_confirmation
         # “资料不足”已经有具体原因（如分型缺失），不再追加通用的补问句。
         if plan.strategy == "clarify" and not text.endswith(("？", "。", "！")):
             text += "。"
         base["interpretation"] = {
-            "source": _SOURCE_KB,
-            "title": "请补充具体信息" if plan.strategy == "clarify" else "暂缺对应资料",
+            "source": "功能确认" if purpose_confirmation else "对话补问" if symptom_followup else _SOURCE_KB,
+            "title": "请选择本次功能" if purpose_confirmation else "请补充具体信息" if plan.strategy == "clarify" else "暂缺对应资料",
             "text": text,
             "items": [],
         }
-        base["advice"] = {"source": _SOURCE_KB, "text": "资料不足时无法作进一步判断。",
-                          "actions": ["补充问题信息"], "urgent": False}
-        base["_evidence_insufficient"] = True
-        return _finalize(base, question)
+        base["advice"] = {"source": _SOURCE_KB,
+                          "text": "" if dialogue_followup else "资料不足时无法作进一步判断。",
+                          "actions": [] if dialogue_followup else ["补充问题信息"], "urgent": False}
+        base["_evidence_insufficient"] = not dialogue_followup
+        reply = _finalize(base, question)
+        if dialogue_followup:
+            reply["evidence"] = {"status": "not_applicable", "references": 0, "model_used": False,
+                                 "message": "正在确认本次功能，尚未读取院内数据。" if purpose_confirmation else "正在补充症状信息，尚未作医学判断。"}
+            if not reply["advice"]["urgent"]:
+                reply["advice"] = None
+        return reply
     if plan.strategy == "subtype_lookup":
         entries = []
         for subtype in plan.filters.entities:
@@ -1253,6 +1389,17 @@ def ask(question: str, subject_id: str,
         if not reply["advice"]["urgent"]:
             reply["advice"] = None
         return reply
+    if plan.strategy == "structured_lookup" and intent == INTENT_DISEASE and plan.filters.fields == ("overview",):
+        docs = [d for d in corpus.build_docs(kb) if plan.filters.matches(d)]
+        if docs:
+            base["interpretation"] = {
+                "source": _SOURCE_KB, "title": f"关于「{entity}」的基本情况",
+                "text": "以下为项目整理的通用疾病简介，不代表个人诊断。",
+                "items": [{"ref_title": d.name, "ref_source": d.source,
+                           "ref_excerpt": corpus.evidence_text(d, plan.filters)} for d in docs],
+            }
+            base["advice"] = {"source": _SOURCE_KB, "text": "具体诊疗请咨询医生。", "actions": [], "urgent": False}
+            return _finalize(base, question)
     if plan.strategy == "structured_lookup" and intent in {INTENT_LAB, INTENT_MEDICATION}:
         docs = [d for d in corpus.build_docs(kb) if plan.filters.matches(d)]
         display_filters = plan.filters
@@ -1270,16 +1417,44 @@ def ask(question: str, subject_id: str,
         base["_evidence_insufficient"] = not bool(docs)
         return _finalize(base, question)
 
+    # ── 本人费用汇总：固定查询，仍经过与控制台相同的安全管线 ──
+    if plan.strategy == "personal_sql" and understanding.task == "billing_query":
+        base["intent"] = INTENT_BILLING
+        personal = fetch_personal_data(_build_billing_plan(subject), subject,
+            question=question, token=token, datasource_id=datasource_id, persist=token is not None)
+        adm, deg, cols, rows, final_sql = personal
+        base["admission"], base["degradation"] = adm, deg
+        base["audit_status"] = "blocked" if not adm.get("passed") or deg.get("level") == "L3" else "passed"
+        base["report_id"], base["trace_id"] = personal.report_id, personal.trace_id
+        if cols is None:
+            base["interpretation"], base["advice"] = _unavailable(adm, deg, "账单数据")
+            return _finalize(base, question)
+        count = int(rows[0][1] or 0) if rows else 0
+        base["data"] = {"source": _SOURCE_DATA, "columns": cols or [], "rows": rows if count else [],
+                        "sql_after": final_sql, "degradation_level": deg.get("level", "L0")}
+        total = format(Decimal(str(rows[0][0])), '.2f') if count else None
+        base["interpretation"] = {
+            "source": "账单范围说明", "title": "本人已收录账单汇总" if count else "未找到本人已收录账单",
+            "text": (f"当前数据源已收录 {count} 笔本人账单，记账金额合计 {total}。"
+                     "本次只汇总已收录账单金额，不能据此确定全部历史支出或医保报销后的个人实付金额。"
+                     if count else "当前数据源未找到你的账单记录，这不表示你看病没有花钱。"),
+            "items": [],
+        }
+        base["advice"] = {"source": "账单范围说明", "text": "可与医院结算单核对，未收录的账单不在本次汇总中。",
+                          "actions": [], "urgent": False}
+        return _finalize(base, question)
+
     # ── 检查报告解读 ──
     if plan.strategy == "personal_sql" and intent == INTENT_LAB:
         # parse_intent 只给**主**检验项；这里取全部命中项，问题里提到几个
         # 就查几个（"我的血脂和血糖结果正常吗"不能只回血糖）。
-        tests = _find_entities(question, kb.get("lab_tests") or {})
+        tests = ([e.name for e in understanding.entities] if understanding.accepted else
+                 _find_entities(question, kb.get("lab_tests") or {}))
         if tests:
             entity = tests[0]
         elif entity:
             tests = [entity]
-        unresolved = _unresolved_lab_target(question, tests, kb)
+        unresolved = _unresolved_lab_target("、".join(tests) if understanding.accepted else question, tests, kb)
         if unresolved:
             base["retrieval_plan"] = {"strategy": "clarify", "reason": unresolved, "filters": {}}
             base["admission"] = {"passed": True, "reason": None,
@@ -1524,11 +1699,12 @@ def ask(question: str, subject_id: str,
             return _finalize(base, question)
         base["interpretation"] = {
             "source": _SOURCE_KB,
-            "title": "暂未收录该疾病",
-            "text": "您可以直接问「我想了解糖尿病」这类常见疾病，或到查询控制台查阅您的检查结果。",
+            "title": "暂缺这个名称的对应资料",
+            "text": f"已识别你在询问「{entity or '这个名称'}」，但当前本地资料未提供可支持本次回答的内容。识别出名称不等于已核实其医学含义，暂不能据此给出解释。",
             "items": [],
         }
-        base["advice"] = {"source": _SOURCE_KB, "text": "",
+        base["_evidence_insufficient"] = True
+        base["advice"] = {"source": _SOURCE_KB, "text": "可以核对名称，或补充这个词出现的上下文。",
                           "actions": [], "urgent": False}
         return _finalize(base, question)
 

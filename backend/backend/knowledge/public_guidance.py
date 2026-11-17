@@ -18,7 +18,24 @@ def _catalog():
     return data if isinstance(data, dict) and data.get('version') == 1 else {}
 
 
-def lookup(question):
+def topic_aliases():
+    """提供已整理的话题别名，不含医学正文或任何患者信息。"""
+    return tuple((topic['entity'], topic['intent'], tuple(topic.get('aliases') or []))
+                 for topic in _catalog().get('topics', {}).values())
+
+
+def available_fields(entity):
+    return frozenset(field for topic in _catalog().get('topics', {}).values()
+                     if topic.get('entity') == entity for field in topic.get('fields', {}))
+
+
+def symptom_topic(name):
+    matches = {topic['entity'] for topic in _catalog().get('topics', {}).values()
+               if topic.get('intent') == 'symptom' and name in (topic['entity'], *topic.get('aliases', []))}
+    return next(iter(matches)) if len(matches) == 1 else None
+
+
+def lookup(question, *, requested_fields=(), expected_entity=None):
     from backend.knowledge.strategy import DEPARTMENT_QUESTION_SIGNALS
     q = re.sub(r'\s+', '', question)
     fields = []
@@ -30,27 +47,35 @@ def lookup(question):
         fields.append('treatments')
     if re.search(r'是什么|是啥|有什么用|干什么用|作用|用途', q):
         fields.append('overview')
+    if requested_fields:
+        fields = list(requested_fields)
     catalog = _catalog()
     matches = []
     for key, topic in catalog.get('topics', {}).items():
+        if expected_entity is not None and topic.get('entity') != expected_entity:
+            continue
         aliases = [a for a in topic.get('aliases', []) if a in q]
         if not aliases:
             continue
-        requested = fields or (['triage'] if key == 'abdominal_discomfort' else [])
+        requested = fields or (['triage'] if topic.get('intent') == 'symptom' and 'triage' in topic.get('fields', {}) else [])
         for field in requested:
             entry = topic.get('fields', {}).get(field)
             if entry:
                 matches.append((max(map(len, aliases)), topic, field, entry))
     # 腹部不适同时包含挂科词时，仍先问清症状；不能臆测成某种疾病。
-    if not matches:
+    if not matches and (not requested_fields or tuple(requested_fields) in {("triage",), ("department",)}):
         topic = catalog.get('topics', {}).get('abdominal_discomfort', {})
-        if any(a in q for a in topic.get('aliases', [])):
+        if (expected_entity in {None, topic.get('entity')}
+                and any(a in q for a in topic.get('aliases', []))):
             matches.append((100, topic, 'triage', topic['fields']['triage']))
     if not matches:
         return None
     _, topic, field, entry = max(matches, key=lambda m: m[0])
     items = [{
-        'ref_title': i['title'], 'ref_kind': field,
+        'ref_title': i['title'], 'ref_kind': {
+            'triage': '症状与就诊提示', 'overview': '基本情况', 'department': '就诊方向',
+            'drugs': '药物信息', 'treatments': '一般处理原则',
+        }.get(field, field),
         'ref_excerpt': i['text'], 'ref_source': i['source'],
         'ref_url': i['url'], 'ref_original_title': i['original_title'],
         'ref_source_type': 'public_health', 'ref_quality_tier': 'public_reference',

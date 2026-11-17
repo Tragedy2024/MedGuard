@@ -153,6 +153,9 @@ def _normalize_output(raw: str) -> str:
     t = re.sub(r'(?im)^[ \t]*SQL[ \t]*[:：]?[ \t]*```', 'SQL\n```', t)
     # 2) 子问题行写成 "SQL:" 单独一行，其后才是围栏——合并掉多余的冒号行
     t = re.sub(r'(?im)^[ \t]*SQL[ \t]*[:：][ \t]*$', 'SQL', t)
+    # 只补解析器要求的格式，不修改 SQL 内容或身份条件。
+    t = re.sub(r'(?im)^(Sub question\s+\d+\s*[:：][^\n]*\n)'
+               r'([ \t]*```sql[ \t]*\r?\n)', r'\1SQL\n\2', t)
     return t
 
 

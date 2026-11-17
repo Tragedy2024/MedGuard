@@ -1,6 +1,111 @@
 version: 1
 checked_on: '2026-11-17'
 topics:
+  lung_cancer:
+    entity: 肺癌
+    intent: disease
+    aliases: [肺癌]
+    fields:
+      overview:
+        title: 肺癌的基本情况
+        summary: 肺癌是发生在肺部的癌症。了解肺癌时需要区分具体类型和分期，不能仅凭咳嗽等症状自行确诊。
+        items:
+          - title: 主要类型
+            text: 主要分为非小细胞肺癌和小细胞肺癌，前者更常见。不同类型的细胞特点、病情发展及治疗选择可能不同。
+            source: NCI公开患者资料
+            url: https://www.cancer.gov/types/lung/patient/non-small-cell-lung-treatment-pdq
+            original_title: Non-Small Cell Lung Cancer Treatment (PDQ)–Patient Version
+          - title: 诊断与分期
+            text: 需要结合肺部影像和必要的组织病理等检查判断是否为肺癌、属于什么类型以及是否扩散，具体由医生评估。
+            source: NCI公开患者资料
+            url: https://www.cancer.gov/types/lung/patient/non-small-cell-lung-treatment-pdq
+            original_title: Non-Small Cell Lung Cancer Treatment (PDQ)–Patient Version
+        advice: 这些是通用资料，不代表个人诊断；已有检查报告时可向医生核对类型和分期。
+      classification:
+        title: 肺癌的主要类型
+        summary: 肺癌主要分为非小细胞肺癌和小细胞肺癌，具体类型需结合病理等检查确定。
+        items:
+          - title: 非小细胞肺癌与小细胞肺癌
+            text: 非小细胞肺癌更常见，其中还可分为腺癌、鳞状细胞癌等；分类不能仅凭症状自行判断。
+            source: NCI公开患者资料
+            url: https://www.cancer.gov/types/lung/patient/non-small-cell-lung-treatment-pdq
+            original_title: Non-Small Cell Lung Cancer Treatment (PDQ)–Patient Version
+        advice: 请结合原始病理报告向医生核对具体类型。
+  sore_throat:
+    entity: 喉咙痛
+    intent: symptom
+    aliases: [喉咙痛, 喉咙疼, 嗓子痛, 嗓子疼, 咽痛, 咽喉痛, 咽喉疼痛]
+    fields:
+      triage:
+        title: 喉咙痛的初步说明
+        summary: 喉咙痛是一种症状，仅凭这句话不能确定病因。疼了多久，有没有发热、咳嗽，吞咽或呼吸是否受影响？
+        items:
+          - title: 可以先采取的一般措施
+            text: 注意休息，适量喝水，选择容易吞咽的柔软或偏凉食物，避免吸烟及烟雾刺激；不要自行使用抗生素。
+            source: NHS公开健康资料
+            url: https://www.nhs.uk/symptoms/sore-throat/
+            original_title: Sore throat
+          - title: 就医提示
+            text: 如果持续一周仍未改善或反复发作，应就医评估；出现呼吸困难、无法吞咽口水或严重症状迅速加重，应立即就医。
+            source: NHS公开健康资料
+            url: https://www.nhs.uk/symptoms/sore-throat/
+            original_title: Sore throat
+        advice: 请先补充持续多久、是否发热和吞咽情况；是否需要药物应由医生或药师结合个人情况判断。
+  pneumonia:
+    entity: 肺炎
+    intent: disease
+    aliases: [肺炎]
+    fields:
+      overview:
+        title: 肺炎是什么
+        summary: 肺炎是肺部的炎症，通常由感染引起，细菌和病毒感染都是常见原因。具体病因和严重程度需要结合症状与检查评估。
+        items:
+          - title: 可能伴随的表现
+            text: 可出现咳嗽、发热、气短或明显疲倦等表现，但不能仅凭这些表现自行确诊肺炎。
+            source: NHS公开健康资料
+            url: https://www.nhs.uk/conditions/pneumonia/
+            original_title: Pneumonia
+        advice: 如果是在咨询自身情况，请补充症状、持续多久以及是否已有医生诊断；严重呼吸困难等紧急情况应立即就医。
+  dizziness:
+    entity: 头晕
+    intent: symptom
+    aliases: [头晕, 头昏, 眩晕, 脑袋晕, 晕得慌]
+    fields:
+      triage:
+        title: 头晕需要结合具体表现判断
+        summary: 头晕是一种症状，单凭“头晕”不能确定是哪一种病。你感觉是天旋地转、快要晕倒，还是走路不稳？从什么时候开始，持续多久，是否反复？
+        items:
+          - title: 病因需要结合其他表现评估
+            text: 头晕可能与多种情况有关，例如脱水、药物影响或内耳问题，不能仅凭这个症状自行判断病因。
+            source: NHS公开健康资料
+            url: https://www.nhs.uk/symptoms/dizziness/
+            original_title: Dizziness
+          - title: 当前注意事项
+            text: 头晕时避免开车、登高或操作机器；如果持续不缓解、反复发生或伴有其他不适，应就医评估。
+            source: NHS公开健康资料
+            url: https://www.nhs.uk/symptoms/dizziness/
+            original_title: Dizziness
+        advice: 请先说明开始时间、持续多久及伴随不适，再进一步讨论就诊方向；若同时出现急症警示症状，应立即就医。
+  abdominal_pain:
+    entity: 腹痛
+    intent: symptom
+    aliases: [腹痛, 肚子疼, 肚子痛, 肚子疼痛]
+    fields:
+      triage:
+        title: 先了解腹痛的部位和经过
+        summary: 腹痛可能有多种原因，单凭“肚子疼”不能确定病因或直接指定一个科室。是哪个部位疼，从什么时候开始、持续多久，是持续疼痛还是一阵一阵，是否伴有呕吐、腹泻或其他不适？
+        items:
+          - title: 就诊方向需要结合具体情况
+            text: 持续或反复腹痛应就医评估；尚不清楚具体部位和伴随表现时，可先向医院导诊台或全科咨询，不要自行诊断。
+            source: NHS公开健康资料
+            url: https://www.nhs.uk/symptoms/stomach-ache/
+            original_title: Stomach ache
+          - title: 需要立即就医的表现
+            text: 突然出现剧烈腹痛、呕血、大量便血或黑色黏便、完全不能排便排气等情况，应立即就医。
+            source: NHS公开健康资料
+            url: https://www.nhs.uk/symptoms/stomach-ache/
+            original_title: Stomach ache
+        advice: 请先补充疼痛部位、持续多久和伴随症状，便于进一步说明就诊方向。
   high_glucose:
     entity: 血糖
     intent: lab

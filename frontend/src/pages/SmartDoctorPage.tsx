@@ -11,7 +11,7 @@
  */
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { askPatient, type PatientAskResponse } from '../api/patient'
+import { askPatient, type PatientAskResponse, type PatientRoutingChoice } from '../api/patient'
 import type { SmartDoctorResponse } from '../api/models'
 import { AliasProvider, useAliases } from '../store/aliases'
 import { useAuth } from '../store/auth'
@@ -58,11 +58,11 @@ const EVIDENCE_LABEL: Record<string, string> = {
 
 /** 路由徽标文案：患者只需要知道「这次走到了哪里」。 */
 const ROUTE_LABEL: Record<PatientAskResponse['route'], string> = {
-  personal_record: '医院主库',
-  general_query: '医院主库',
-  knowledge: '知识库',
-  clarify: '请补充',
-  unsupported: '已拒绝',
+  personal_record: '查询控制台',
+  general_query: '查询控制台',
+  knowledge: '智慧医生',
+  clarify: '待确认功能',
+  unsupported: '暂不支持',
 }
 
 interface Message {
@@ -105,23 +105,25 @@ function SmartDoctor() {
 
   if (!session) return null
 
-  const ask = async (question: string) => {
+  const ask = async (question: string, suppliedContext?: Parameters<typeof askPatient>[0]['context']) => {
     if (running) return
     setRunning(true)
     setError(null)
     setTaskHint(null)
     // 把**上一轮的识别结果**交给后端，用来解析「它」「那个」这类指代。
     // 只有智慧医生回答带 intent/entity；通用查询没有可复用的解析结果。
-    const prev = messages
-      .filter((m) => m.role === 'doctor' && m.answer?.smart_doctor)
-      .at(-1)?.answer?.smart_doctor
-    const context = prev
+    const prev = messages.at(-1)?.answer?.smart_doctor
+    const context = suppliedContext !== undefined ? suppliedContext : (prev
       ? {
           intent: prev.intent,
           entity: prev.entity ?? null,
           personal: prev.retrieval_plan?.strategy === 'personal_sql' && prev.audit_status === 'passed',
+          entities: prev.understanding?.entities ?? [],
+          task: prev.understanding?.task ?? '',
+          catalog_offset: prev.catalog?.next_offset ?? null,
+          catalog_limit: prev.catalog?.requested_count ?? null,
         }
-      : undefined
+      : undefined)
 
     setMessages((m) => [...m, { role: 'user', text: question }])
     try {
@@ -178,9 +180,9 @@ function SmartDoctor() {
     <section className="view is-active" aria-labelledby="doctorTitle">
       <div className="view-head">
         <div className="view-head-copy">
-          <h2 id="doctorTitle">记录与解释，分开呈现。</h2>
+          <h2 id="doctorTitle">咨询与查询，一个入口。</h2>
           <p className="view-sub">
-            医院记录、审核知识库与导诊建议分开显示；通俗解释不会被写成诊断，也不会改动处方。
+            智慧医生提供医学知识与就诊建议；查询控制台查询本人记录和获准访问的院内信息。查询结果可在安全报告中回看。
           </p>
         </div>
         <div className="view-head-aside"><span className="quiet-badge">来源分离 · 演示患者</span></div>
@@ -239,8 +241,10 @@ function SmartDoctor() {
                           resp={m.answer.smart_doctor}
                           aliasOf={aliasOf}
                           inlineAlias={inlineAlias}
+                          onAsk={ask}
+                          running={running}
                         />
-                      ) : m.answer.route === 'general_query' ? (
+                      ) : m.answer.feature === 'query_console' || m.answer.route === 'general_query' ? (
                         <QueryAnswer query={m.answer.query} error={m.answer.error} />
                       ) : m.answer.error ? (
                         <div className="alert-error" role="alert">{m.answer.error}</div>
@@ -248,6 +252,10 @@ function SmartDoctor() {
                         <p className="query-answer-note">
                           这次没有可展示的回答，请换一种说法再试。
                         </p>
+                      )}
+                      {m.answer.routing_choices && m.answer.routing_choices.length > 0 && (
+                        <RoutingChoices choices={m.answer.routing_choices} running={running}
+                          onChoose={(question) => void ask(question, null)} />
                       )}
                     </div>
                   </div>
@@ -372,24 +380,75 @@ function SmartDoctor() {
  * knowledge / clarify / unsupported），文案再翻译成患者能读懂的去向；
  * 层一拒绝时文案显示「已拒绝」，但路由值不变——拒绝是执行结果，不是另一条路由。
  */
+function RoutingChoices({ choices, running, onChoose }: {
+  choices: PatientRoutingChoice[]
+  running: boolean
+  onChoose: (question: string) => void
+}) {
+  return (
+    <div className="sd-routing-choices" aria-label="选择本次要使用的功能">
+      {(['smart_doctor', 'query_console'] as const).map((feature) => {
+        const items = choices.filter((choice) => choice.feature === feature)
+        if (!items.length) return null
+        const label = feature === 'smart_doctor' ? '智慧医生' : '查询控制台'
+        return (
+          <div className="sd-routing-group" key={feature} data-feature={feature}>
+            {items.length === 1 ? (
+              <button type="button" className="sd-task chat-chip" disabled={running}
+                onClick={() => onChoose(items[0].question)}>{label}</button>
+            ) : (
+              <><strong>{label}</strong><div className="sd-routing-scopes">
+                {items.map((choice) => (
+                  <button key={choice.question} type="button" className="sd-task chat-chip" disabled={running}
+                    onClick={() => onChoose(choice.question)}>
+                    {choice.query_scope === 'self' ? '本人记录' : '医院业务'}
+                  </button>
+                ))}
+              </div></>
+            )}
+            <small>{feature === 'smart_doctor' ? '了解医学知识，不读取本人记录' : items.length > 1
+              ? '选择查询范围，访问须经安全审计' : `查询范围：${items[0].query_scope === 'self' ? '本人记录' : '医院业务'}，访问须经安全审计`}</small>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function RouteLine({ answer }: { answer: PatientAskResponse }) {
   const refused = answer.query
     ? !answer.query.admission.passed
     : answer.smart_doctor
       ? !answer.smart_doctor.admission.passed
       : false
-  const label = refused ? '已拒绝' : ROUTE_LABEL[answer.route]
+  const feature = answer.feature ?? (answer.route === 'knowledge' ? 'smart_doctor'
+    : ['personal_record', 'general_query'].includes(answer.route) ? 'query_console' : null)
+  const scope = answer.query_scope ?? (answer.route === 'personal_record' ? 'self'
+    : answer.route === 'general_query' ? 'hospital' : null)
+  const featureLabel = feature === 'smart_doctor' ? '智慧医生'
+    : feature === 'query_console' ? '查询控制台' : ROUTE_LABEL[answer.route]
+  const label = refused ? `${featureLabel} · 已拒绝` : featureLabel
+  const explanation = answer.smart_doctor?.interpretation?.text
+  const understanding = answer.smart_doctor?.understanding
+  const showReason = answer.reason && answer.reason !== explanation
+    && answer.reason !== understanding?.message && answer.reason !== understanding?.summary
 
   return (
     <div className="chat-route-line">
       <span
         className={`route-badge${refused ? ' is-refused' : ''}`}
         data-route={answer.route}
+        data-feature={feature ?? undefined}
+        data-query-scope={scope ?? undefined}
       >
-        <span className="route-badge-eyebrow">本次走</span>
+        <span className="route-badge-eyebrow">{feature ? '本次功能' : '处理状态'}</span>
         {label}
       </span>
-      {answer.reason && <span className="route-reason">{answer.reason}</span>}
+      {scope && <span className="route-query-scope">查询范围：{scope === 'self' ? '本人记录' : '医院业务'}</span>}
+      {answer.interpretation_feature === 'smart_doctor' && (
+        <span className="route-query-scope">查询控制台 → 智慧医生解读</span>
+      )}
+      {showReason && <span className="route-reason">{answer.reason}</span>}
     </div>
   )
 }
@@ -399,10 +458,14 @@ function AnswerView({
   resp,
   aliasOf,
   inlineAlias,
+  onAsk,
+  running,
 }: {
   resp: SmartDoctorResponse
   aliasOf: (q: string) => string
   inlineAlias: (t: string) => string | null
+  onAsk: (question: string, context?: Parameters<typeof askPatient>[0]['context']) => Promise<void>
+  running: boolean
 }) {
   if (!resp.admission.passed) {
     return <AdmissionPanel admission={resp.admission} />
@@ -412,6 +475,11 @@ function AnswerView({
   const columns = resp.data?.columns ?? []
   const items = resp.interpretation?.items ?? []
   const actions = resp.advice?.actions ?? []
+  const understandingText = resp.understanding?.summary || resp.understanding?.message
+  const understandingFailed = resp.understanding?.attempted
+    && ['invalid', 'timeout', 'unavailable'].includes(resp.understanding.status)
+  const gatheringSymptoms = ['对话补问', '功能确认'].includes(resp.interpretation?.source ?? '')
+    && resp.retrieval_plan?.strategy === 'clarify'
   const evidence = resp.evidence ?? {
     status: 'not_applicable' as const,
     references: 0,
@@ -421,18 +489,23 @@ function AnswerView({
 
   return (
     <div className="answer-block sd-answer">
-      <div className="sd-answer-status" aria-label="本次回答状态">
+      {resp.understanding?.attempted && understandingText !== resp.interpretation?.text && (
+        <p className="sd-understanding" role="status">
+          {understandingText}
+        </p>
+      )}
+      {!understandingFailed && !gatheringSymptoms && <div className="sd-answer-status" aria-label="本次回答状态">
         {resp.audit_status !== 'not_applicable' && (
           <span className={`sd-status-pill is-${resp.audit_status}`}>
             {resp.audit_status === 'passed' ? '数据访问已审计' : '数据访问已阻止'}
           </span>
         )}
-        <span className={`sd-status-pill is-${evidence.status}`}>
+        {resp.intent !== 'billing' && <span className={`sd-status-pill is-${evidence.status}`}>
           {EVIDENCE_LABEL[evidence.status] ?? evidence.status}
           {evidence.references > 0 ? ` · ${evidence.references} 条依据` : ''}
-        </span>
+        </span>}
         <span className="sd-status-message">{evidence.message}</span>
-      </div>
+      </div>}
 
       {resp.data && rows.length > 0 && (
         <div className="answer-section source-hospital sd-block">
@@ -479,6 +552,20 @@ function AnswerView({
               ))}
             </ul>
           )}
+        </div>
+      )}
+
+      {resp.catalog && (
+        <div className="sd-catalog-navigation" aria-label="疾病简介翻页">
+          <span>已收录简介 {resp.catalog.overview_count} 种 · 本页 {resp.catalog.returned_count} 种</span>
+          {resp.catalog.offset > 0 && <button type="button" className="sd-task chat-chip" disabled={running}
+            onClick={() => void onAsk('继续查看疾病介绍', { intent: 'disease', personal: false, task: 'disease_examples',
+              catalog_offset: Math.max(0, resp.catalog!.offset - resp.catalog!.page_size),
+              catalog_limit: resp.catalog!.requested_count })}>上一页</button>}
+          {resp.catalog.has_more && resp.catalog.next_offset != null && <button type="button"
+            className="sd-task chat-chip" disabled={running}
+            onClick={() => void onAsk('继续查看疾病介绍', { intent: 'disease', personal: false, task: 'disease_examples',
+              catalog_offset: resp.catalog!.next_offset, catalog_limit: resp.catalog!.requested_count })}>继续查看</button>}
         </div>
       )}
 

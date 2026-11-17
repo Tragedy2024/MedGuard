@@ -37,21 +37,17 @@ def _ask(client, token, question, **extra):
 
 # ── 本人记录 ───────────────────────────────────────────────────
 
-def test_personal_question_goes_through_smart_doctor(client):
+def test_personal_question_goes_through_original_console(client):
     r = _ask(client, sign("patient", "P001"), "我上次的血糖是多少")
     assert r.status_code == 200
     body = r.json()
     assert body["route"] == "personal_record"
     assert body["reason"]
-    assert body["query"] is None
+    assert body["query"] is not None
     assert body["error"] is None
-    sd = body["smart_doctor"]
-    assert sd is not None
-    assert sd["intent"] == "lab"
-    # 三块结构中的院内数据确实来自本人记录（经层一/层二）
-    assert sd["admission"]["passed"] is True
-    assert sd["data"]["source"] == "医院主库"
-    assert sd["data"]["rows"]
+    assert body["smart_doctor"] is None
+    assert body["query"]["admission"]["passed"] is True
+    assert body["query"]["result"]["rows"]
 
 
 def test_context_followup_stays_on_personal_record(client):
@@ -62,7 +58,8 @@ def test_context_followup_stays_on_personal_record(client):
     assert r.status_code == 200
     body = r.json()
     assert body["route"] == "personal_record"
-    assert body["smart_doctor"]["intent"] == "lab"
+    assert body["smart_doctor"] is None
+    assert body["feature"] == 'query_console'
 
 
 # ── 知识问答 ───────────────────────────────────────────────────

@@ -1,21 +1,21 @@
 """患者统一入口：一个输入框，服务端确定性分流。
 
-路由规则见 ``backend/patient_router.py``（本地、零 LLM、零查库）。本路由
-只负责 HTTP 边界与两条既有管线的接线：
+普通自然提问先做有界的语义理解，再交 ``backend/patient_router.py`` 本地规则选择管线。本路由
+先按 ``feature`` 选择智慧医生或查询控制台，再根据查询范围复用既有执行器。
+本路由负责 HTTP 边界与执行器的接线，内部 ``route`` 兼容值如下：
 
-- ``personal_record`` / ``knowledge`` / ``clarify`` / ``unsupported``
-  → ``smart_doctor.ask``（本人记录仍走层一/层二）；
-- ``general_query`` → ``query_cache.lookup`` → 未命中 ``llm_nl2sql.decompose``
-  → ``routers.query.run_audited_plan``。**绝不直接执行 SQL**。
+- 医学咨询及澄清 → ``smart_doctor.ask``；
+- 所有院内查询（含本人检验、用药、费用、就诊及医院业务）→ 原控制台 ``query.run_direct_query``，完整复用
+  缓存、NL→SQL、准入、审计与执行绑定。**绝不直接执行 SQL**。
 
 令牌约束：仅病患令牌，且必须绑定 ``subject_id``——没有本人绑定就无从
 保证「只读本人」。通用查询对病患令牌同样走层一准入；路由不构成授权。
 """
 from fastapi import APIRouter, HTTPException
 
-from backend import llm_nl2sql, query_cache, smart_doctor
-from backend.patient_router import ROUTE_GENERAL_QUERY, decide
-from backend.routers.query import run_audited_plan
+from backend import smart_doctor, semantic_understanding
+from backend.patient_router import decide
+from backend.routers import query as query_console
 from backend.schemas import PatientAskRequest, PatientAskResponse
 from backend.security import verified
 
@@ -48,63 +48,42 @@ def ask(req: PatientAskRequest):
         )
 
     context = req.context.model_dump() if req.context else None
+    understanding = semantic_understanding.analyze(question, context)
     decision = decide(
         question, context=context, token_type=req.token.type,
-        subject_id=req.token.subject_id)
+        subject_id=req.token.subject_id, understanding=understanding)
     # 路由理由必须可回看：评审/排查时能解释「为什么走这条管线」。
     print(f"[patient] route={decision.route} reason={decision.reason}",
           flush=True)
 
-    if decision.route != ROUTE_GENERAL_QUERY:
+    response_info = {'feature': decision.feature, 'query_scope': decision.query_scope}
+    # 顶层先选功能，查询控制台再按范围使用既有的审计执行器。
+    use_original_console = decision.feature == 'query_console'
+    if not use_original_console:
         reply = smart_doctor.ask(
             question, req.token.subject_id, context=context,
-            token=req.token, datasource_id=req.datasource_id)
+            token=req.token, datasource_id=req.datasource_id, understanding=understanding)
         return PatientAskResponse(
             route=decision.route, reason=decision.reason,
-            smart_doctor=reply, query=None, error=None)
+            **response_info,
+            smart_doctor=reply, query=None, error=None,
+            routing_choices=semantic_understanding.routing_choices(understanding))
 
-    # ── 通用查询：缓存优先，未命中再翻译 ──
-    # 缓存的是**计划**不是答案：命中后照样走层一准入与层二审计。
-    plan = query_cache.lookup(
-        question, req.token.type, req.token.subject_id)
-    if plan is None:
-        if not llm_nl2sql.llm_available():
-            print(f"[patient] 通用查询未收录且无可用模型，问题：{question[:50]!r}",
-                  flush=True)
-            return PatientAskResponse(
-                route=decision.route, reason=decision.reason,
-                smart_doctor=None, query=None, error=_NO_MODEL_ERROR)
-        try:
-            plan = llm_nl2sql.decompose(
-                question, req.datasource_id,
-                token_type=req.token.type,
-                subject_id=req.token.subject_id or "",
-            )
-        except llm_nl2sql.NL2SQLError as exc:
-            # 翻译失败**不是**服务端故障：HTTP 200 + 中文原因，避免患者
-            # 看到 500 而反复重试。原文已在 llm_nl2sql 内进日志。
-            return PatientAskResponse(
-                route=decision.route, reason=decision.reason,
-                smart_doctor=None, query=None,
-                error=f"通用查询翻译失败：{exc}")
-        except Exception as exc:  # noqa: BLE001 - 翻译环节任何异常都不得变成 500
-            # 未预期的翻译异常也按「这次问题没办成」处理；精确原因只进
-            # 服务端日志，界面只给可读中文。
-            print(f"[patient] 通用查询翻译异常（{type(exc).__name__}）：{exc}",
-                  flush=True)
-            return PatientAskResponse(
-                route=decision.route, reason=decision.reason,
-                smart_doctor=None, query=None,
-                error="通用查询翻译失败：翻译服务暂时不可用，请稍后重试，"
-                      "或换一种问法。")
-        # 只写回成功的翻译；失败不该污染缓存。
-        query_cache.store(question, plan, req.token.type,
-                          req.token.subject_id, source="llm")
-
-    # 所有数据库路径都必须跨过这个 seam（层一准入 → 层二审计 → 哈希绑定
-    # 执行 → 报告落盘）；本路由不持有、也不执行任何 SQL。
-    query_response, _audit_decision, _report_id = run_audited_plan(
-        plan, question, req.token, req.datasource_id)
+    # 调用原控制台实现，而不是再维护一份只支持若干问法的查询能力。
+    try:
+        query_response = query_console.run_direct_query(query_console.DirectQueryRequest(
+            token=req.token, datasource_id=req.datasource_id, question=question))
+    except HTTPException as exc:
+        if exc.status_code not in {502, 503}:
+            raise
+        message = _NO_MODEL_ERROR if exc.status_code == 503 and '模型' in str(exc.detail) else str(exc.detail)
+        return PatientAskResponse(route=decision.route, reason=decision.reason,
+                                  **response_info, error=message)
+    except Exception as exc:
+        print(f'[patient] 通用查询异常（{type(exc).__name__}）：{exc}', flush=True)
+        return PatientAskResponse(route=decision.route, reason=decision.reason,
+                                  **response_info, error='通用查询翻译失败：查询服务暂时不可用，请稍后重试。')
     return PatientAskResponse(
         route=decision.route, reason=decision.reason,
+        **response_info,
         smart_doctor=None, query=query_response, error=None)

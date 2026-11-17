@@ -30,6 +30,11 @@ def _question_text(question: str) -> str:
     return re.sub(r'^(?:(?:请问|请介绍一下|介绍一下|请告诉我|我想知道|我想了解一下|我想了解))+', '', q)
 
 
+def topic_aliases():
+    """分类知识也是可供语义理解使用的明确话题，不只存在于回答阶段。"""
+    return tuple((entry['entity'], tuple(entry.get('aliases') or [entry['entity']])) for entry in _entries())
+
+
 def lookup(question: str, context: Optional[Dict[str, Any]] = None):
     """有边界的枚举语法，全文匹配防止截走药品、症状、个人诊断或复合问题。"""
     q = _question_text(question)

@@ -330,6 +330,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/patient/ask": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask
+         * @description 患者单输入框问答入口。
+         */
+        post: operations["ask_api_patient_ask_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -572,6 +592,70 @@ export interface components {
             llm_calls: number;
             /** Db Access */
             db_access: number;
+        };
+        /**
+         * PatientAskRequest
+         * @description 患者单输入框请求。
+         *
+         *     ``context`` 与 `/api/smart-doctor/ask` 同构：上一轮的 intent/entity/
+         *     personal，用于解析「它正常吗」这类指代式追问。
+         */
+        PatientAskRequest: {
+            token: components["schemas"]["Token"];
+            /** Datasource Id */
+            datasource_id: string;
+            /** Question */
+            question: string;
+            context?: components["schemas"]["SmartDoctorContext"] | null;
+        };
+        /**
+         * PatientAskResponse
+         * @description 患者单输入框响应。
+         *
+         *     ``feature`` 是顶层功能，``query_scope`` 只是查询控制台内部的数据范围。
+         *     ``route`` 保留内部执行策略，兼容已有客户端；不是额外的产品功能。
+         *     两种响应载荷互斥：``smart_doctor`` 对应知识/澄清/不支持，
+         *     ``query`` 对应所有院内查询，含本人记录与医院业务（完整的 ``QueryResponse``，含层一、层二
+         *     与审计绑定证据）。翻译失败时 HTTP 仍是 200，``query`` 为 null、
+         *     ``error`` 给出可读中文原因。
+         */
+        PatientAskResponse: {
+            /**
+             * Route
+             * @enum {string}
+             */
+            route: "personal_record" | "general_query" | "knowledge" | "clarify" | "unsupported";
+            /** Reason */
+            reason: string;
+            /** Feature */
+            feature?: ("smart_doctor" | "query_console") | null;
+            /** Query Scope */
+            query_scope?: ("self" | "hospital") | null;
+            /** Interpretation Feature */
+            interpretation_feature?: "smart_doctor" | null;
+            smart_doctor?: components["schemas"]["SmartDoctorResponse"] | null;
+            /** Routing Choices */
+            routing_choices?: components["schemas"]["PatientRoutingChoice"][];
+            query?: components["schemas"]["QueryResponse"] | null;
+            /** Error */
+            error?: string | null;
+        };
+        /**
+         * PatientRoutingChoice
+         * @description 下一句明确的自然语言需求；不提供 SQL、身份或数据授权。
+         */
+        PatientRoutingChoice: {
+            /** Label */
+            label: string;
+            /** Question */
+            question: string;
+            /**
+             * Feature
+             * @enum {string}
+             */
+            feature: "smart_doctor" | "query_console";
+            /** Query Scope */
+            query_scope?: ("self" | "hospital") | null;
         };
         /** PlanItem */
         PlanItem: {
@@ -870,6 +954,28 @@ export interface components {
             urgent: boolean;
         };
         /**
+         * SmartDoctorCatalog
+         * @description 名称条目覆盖量不等于已有简介数量；页面大小不代表知识覆盖上限。
+         */
+        SmartDoctorCatalog: {
+            /** Total Diseases */
+            total_diseases: number;
+            /** Overview Count */
+            overview_count: number;
+            /** Offset */
+            offset: number;
+            /** Returned Count */
+            returned_count: number;
+            /** Page Size */
+            page_size: number;
+            /** Requested Count */
+            requested_count?: number | null;
+            /** Has More */
+            has_more: boolean;
+            /** Next Offset */
+            next_offset?: number | null;
+        };
+        /**
          * SmartDoctorContext
          * @description 上一轮的识别结果，用于解析明确的指代式追问。
          */
@@ -878,8 +984,22 @@ export interface components {
             intent: string;
             /** Entity */
             entity?: string | null;
-            /** @default false */
+            /**
+             * Personal
+             * @default false
+             */
             personal: boolean;
+            /** Entities */
+            entities?: string[];
+            /**
+             * Task
+             * @default
+             */
+            task: string;
+            /** Catalog Offset */
+            catalog_offset?: number | null;
+            /** Catalog Limit */
+            catalog_limit?: number | null;
         };
         /**
          * SmartDoctorDataBlock
@@ -970,7 +1090,7 @@ export interface components {
              * Intent
              * @enum {string}
              */
-            intent: "lab" | "medication" | "symptom" | "disease" | "fallback";
+            intent: "lab" | "medication" | "symptom" | "disease" | "billing" | "fallback";
             /** Entity */
             entity?: string | null;
             /** Question */
@@ -995,6 +1115,8 @@ export interface components {
              */
             trace_id: string;
             retrieval_plan?: components["schemas"]["SmartDoctorRetrievalPlan"] | null;
+            understanding?: components["schemas"]["SmartDoctorUnderstanding"] | null;
+            catalog?: components["schemas"]["SmartDoctorCatalog"] | null;
         };
         /**
          * SmartDoctorRetrievalPlan
@@ -1005,13 +1127,59 @@ export interface components {
              * Strategy
              * @enum {string}
              */
-            strategy: "personal_sql" | "structured_lookup" | "hybrid" | "clarify" | "insufficient";
+            strategy: "personal_sql" | "structured_lookup" | "hybrid" | "subtype_lookup" | "clarify" | "insufficient";
             /** Reason */
             reason: string;
             /** Filters */
             filters?: {
                 [key: string]: string[];
             };
+        };
+        /**
+         * SmartDoctorUnderstanding
+         * @description 语义理解状态与医学回答证据状态分别记录；不代表授权或诊断。
+         */
+        SmartDoctorUnderstanding: {
+            /**
+             * Status
+             * @default rule
+             * @enum {string}
+             */
+            status: "rule" | "model" | "invalid" | "timeout" | "unavailable";
+            /**
+             * Attempted
+             * @default false
+             */
+            attempted: boolean;
+            /**
+             * Model Used
+             * @default false
+             */
+            model_used: boolean;
+            /**
+             * Task
+             * @default
+             */
+            task: string;
+            /** Entities */
+            entities?: string[];
+            /** Fields */
+            fields?: string[];
+            /**
+             * Summary
+             * @default
+             */
+            summary: string;
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+            /**
+             * Elapsed Ms
+             * @default 0
+             */
+            elapsed_ms: number;
         };
         /**
          * Token
@@ -1601,6 +1769,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SmartDoctorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ask_api_patient_ask_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatientAskRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PatientAskResponse"];
                 };
             };
             /** @description Validation Error */

@@ -306,6 +306,11 @@ class SmartDoctorContext(BaseModel):
     intent: str
     entity: Optional[str] = None
     personal: bool = False
+    entities: List[str] = Field(default_factory=list, max_length=8)
+    task: str = ""
+
+    catalog_offset: Optional[int] = Field(default=None, ge=0, le=100000)
+    catalog_limit: Optional[int] = Field(default=None, ge=1, le=1000)
 
 
 class SmartDoctorRequest(BaseModel):
@@ -364,8 +369,33 @@ class SmartDoctorRetrievalPlan(BaseModel):
     filters: Dict[str, List[str]] = Field(default_factory=dict)
 
 
+class SmartDoctorUnderstanding(BaseModel):
+    """语义理解状态与医学回答证据状态分别记录；不代表授权或诊断。"""
+    status: Literal["rule", "model", "invalid", "timeout", "unavailable"] = "rule"
+    attempted: bool = False
+    model_used: bool = False
+    task: str = ""
+    entities: List[str] = Field(default_factory=list)
+    fields: List[str] = Field(default_factory=list)
+    summary: str = ""
+    message: str = ""
+    elapsed_ms: int = 0
+
+
+class SmartDoctorCatalog(BaseModel):
+    """名称条目覆盖量不等于已有简介数量；页面大小不代表知识覆盖上限。"""
+    total_diseases: int
+    overview_count: int
+    offset: int
+    returned_count: int
+    page_size: int
+    requested_count: Optional[int] = None
+    has_more: bool
+    next_offset: Optional[int] = None
+
+
 class SmartDoctorResponse(BaseModel):
-    intent: Literal["lab", "medication", "symptom", "disease", "fallback"]
+    intent: Literal["lab", "medication", "symptom", "disease", "billing", "fallback"]
     # 本轮命中的知识条目名（如「血糖」）。前端拿它作为下一轮的 context 回传，
     # 指代才能一轮轮接下去。不是患者数据——它只是知识库里的条目名。
     entity: Optional[str] = None
@@ -382,6 +412,8 @@ class SmartDoctorResponse(BaseModel):
     report_id: Optional[int] = None
     trace_id: str = ""
     retrieval_plan: Optional[SmartDoctorRetrievalPlan] = None
+    understanding: Optional[SmartDoctorUnderstanding] = None
+    catalog: Optional[SmartDoctorCatalog] = None
 
 
 # ════════════════════════════════════════════════════════════════
@@ -400,11 +432,21 @@ class PatientAskRequest(BaseModel):
     context: Optional[SmartDoctorContext] = None
 
 
+class PatientRoutingChoice(BaseModel):
+    """下一句明确的自然语言需求；不提供 SQL、身份或数据授权。"""
+    label: str
+    question: str
+    feature: Literal['smart_doctor', 'query_console']
+    query_scope: Optional[Literal['self', 'hospital']] = None
+
+
 class PatientAskResponse(BaseModel):
     """患者单输入框响应。
 
-    两条数据访问路径互斥：``smart_doctor`` 对应本人记录/知识/澄清/不支持，
-    ``query`` 对应通用查询（内部仍是完整的 ``QueryResponse``，含层一、层二
+    ``feature`` 是顶层功能，``query_scope`` 只是查询控制台内部的数据范围。
+    ``route`` 保留内部执行策略，兼容已有客户端；不是额外的产品功能。
+    两种响应载荷互斥：``smart_doctor`` 对应知识/澄清/不支持，
+    ``query`` 对应所有院内查询，含本人记录与医院业务（完整的 ``QueryResponse``，含层一、层二
     与审计绑定证据）。翻译失败时 HTTP 仍是 200，``query`` 为 null、
     ``error`` 给出可读中文原因。
     """
@@ -412,6 +454,10 @@ class PatientAskResponse(BaseModel):
         "personal_record", "general_query", "knowledge", "clarify", "unsupported"
     ]
     reason: str
+    feature: Optional[Literal['smart_doctor', 'query_console']] = None
+    query_scope: Optional[Literal['self', 'hospital']] = None
+    interpretation_feature: Optional[Literal['smart_doctor']] = None
     smart_doctor: Optional[SmartDoctorResponse] = None
+    routing_choices: List[PatientRoutingChoice] = Field(default_factory=list)
     query: Optional[QueryResponse] = None
     error: Optional[str] = None

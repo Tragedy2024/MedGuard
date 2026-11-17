@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from typing import Optional
+from urllib.parse import urlparse
 
 from backend import config
 
@@ -16,7 +17,7 @@ class LLMCallError(RuntimeError):
 
 
 def call_llm(prompt: str, *, system: Optional[str] = None,
-             timeout: float = 30.0) -> str:
+             timeout: float = 30.0, structured: bool = False) -> str:
     if not config.LLM_API_KEY:
         raise LLMCallError("未配置模型 API Key。")
     try:
@@ -34,12 +35,20 @@ def call_llm(prompt: str, *, system: Optional[str] = None,
             api_key=config.LLM_API_KEY,
             base_url=config.LLM_API_BASE,
             timeout=timeout,
-            max_retries=1,
+            max_retries=0 if structured else 1,
         )
+        options = {}
+        if structured:
+            options = {"response_format": {"type": "json_object"}, "max_tokens": 1200}
+            # 仅对官方 DeepSeek 的已支持型号关闭思考；其他服务不接收此私有参数。
+            if (urlparse(config.LLM_API_BASE).hostname == "api.deepseek.com"
+                    and config.LLM_MODEL in {"deepseek-flash", "deepseek-v4-flash", "deepseek-v4-pro"}):
+                options["extra_body"] = {"thinking": {"type": "disabled"}}
         response = client.chat.completions.create(
             model=config.LLM_MODEL,
             messages=messages,
             temperature=0,
+            **options,
         )
     except Exception as exc:  # noqa: BLE001 - 统一转换为产品可读错误
         raise LLMCallError(f"模型调用失败：{exc}") from exc

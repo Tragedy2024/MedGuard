@@ -66,6 +66,9 @@ def test_medication_definition_is_not_a_dump_of_every_field():
 
 
 def test_dataset_department_votes_do_not_prescribe_priority(monkeypatch):
+    from backend.knowledge import public_guidance
+    # 本用例专测图谱投票分支；有来源的症状补问优先路径由独立用例覆盖。
+    monkeypatch.setattr(public_guidance, 'lookup', lambda *a, **k: None)
     monkeypatch.setattr(dataset_kb, 'lookup_symptom', lambda _: {
         'matched': '头晕', 'total': 4,
         'candidates': [{'department': '科室甲', 'disease_count': 3},

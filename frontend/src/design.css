@@ -1618,6 +1618,23 @@ html { scroll-behavior: smooth; }
 
 /* ── 三块卡片 ── */
 .sd-answer { display: flex; flex-direction: column; gap: 12px; }
+.sd-routing-choices { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; }
+.sd-routing-group { display: flex; flex: 1 1 180px; flex-direction: column; align-items: flex-start; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; }
+.sd-routing-group small { font-size: 12px; line-height: 1.6; color: var(--muted); }
+.sd-routing-scopes { display: flex; flex-wrap: wrap; gap: 8px; }
+.route-query-scope { font-size: 12px; line-height: 1.6; color: var(--muted); }
+.sd-catalog-navigation { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 10px 0; font-size: 13px; }
+.sd-understanding {
+  margin: 0;
+  padding: 10px 14px;
+  border-left: 3px solid var(--brand);
+  border-radius: 4px 10px 10px 4px;
+  background: var(--paper-raised);
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
 
 .sd-answer-status {
   display: flex;
