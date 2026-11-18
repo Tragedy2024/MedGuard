@@ -270,7 +270,6 @@ function SmartDoctor() {
                                 : section.source_type === 'local_interpretation' ? '结果对照说明' : '依据资料的说明'}</h5>
                               <p>{section.text}</p>
                               <small className="sd-source-tag">来源：{section.source_name}</small>
-                              {section.evidence_ids.length > 0 && <p><small>依据条目：{section.evidence_ids.join('、')}</small></p>}
                             </div>
                           ))}
                         </div>
