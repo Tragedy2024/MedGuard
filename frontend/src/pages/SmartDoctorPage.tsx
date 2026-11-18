@@ -265,6 +265,7 @@ function SmartDoctor() {
                           {m.answer.answer_review.sections.map((section, index) => (
                             <div className="answer-section sd-block" key={index}>
                               <h5>{section.source_type === 'ai_supplement' ? 'AI 补充说明'
+                                : section.source_type === 'medical_interpretation' ? 'AI 医学解读'
                                 : section.source_type === 'database' ? '您的检验结果'
                                 : section.source_type === 'local_interpretation' ? '结果对照说明' : '依据资料的说明'}</h5>
                               <p>{section.text}</p>

@@ -1214,7 +1214,7 @@ export interface components {
              * Source Type
              * @enum {string}
              */
-            source_type: "knowledge" | "ai_supplement" | "database" | "local_interpretation";
+            source_type: "knowledge" | "ai_supplement" | "database" | "local_interpretation" | "medical_interpretation";
             /** Source Name */
             source_name: string;
             /** Evidence Ids */

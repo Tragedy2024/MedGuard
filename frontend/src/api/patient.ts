@@ -53,7 +53,7 @@ export interface PatientAskResponse {
     sufficient: boolean | null
     missing: string[]
     message: string
-    sections: { text: string; source_type: 'knowledge' | 'ai_supplement' | 'database' | 'local_interpretation'; source_name: string; evidence_ids: string[] }[]
+    sections: { text: string; source_type: 'knowledge' | 'ai_supplement' | 'database' | 'local_interpretation' | 'medical_interpretation'; source_name: string; evidence_ids: string[] }[]
   } | null
   route: PatientRoute
   feature?: PatientFeature | null

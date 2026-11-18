@@ -442,7 +442,7 @@ class PatientRoutingChoice(BaseModel):
 
 class SourcedAnswerSection(BaseModel):
     text: str
-    source_type: Literal['knowledge', 'ai_supplement', 'database', 'local_interpretation']
+    source_type: Literal['knowledge', 'ai_supplement', 'database', 'local_interpretation', 'medical_interpretation']
     source_name: str
     evidence_ids: List[str] = Field(default_factory=list)
 
